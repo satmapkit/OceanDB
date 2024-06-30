@@ -1,5 +1,6 @@
+import duckdb
+import pyarrow as pa
 import netCDF4 as nc
-import psycopg2 as ps
 from psycopg2 import sql
 import struct
 from io import BytesIO
@@ -10,11 +11,7 @@ from dateutil.relativedelta import relativedelta
 
 # Connection string
 def db_connection():
-	conn = ps.connect(host="localhost",
-		dbname="eddy_local",
-		user="postgres",
-		password="eJ^n$+%Ghwq3#oFW"
-	)
+	conn = duckdb.connect("/Users/briancurtis/Documents/Eddy/eddydbs/eddy_duckdb.db")
 	return conn
 
 # Define the function to extract data from NetCDF file
@@ -35,12 +32,7 @@ def extract_data_from_netcdf(file_path):
 	ds.variables['tpa_correction'].set_auto_maskandscale(False)
 
 	time_data = ds.variables['time'] # Extract dates from the dataset and convert them to to standard datetime
-	time_min = time_data[:].min()
-	time_max = time_data[:].max()
-	time_min = nc.num2date(time_min,time_data.units, only_use_cftime_datetimes=False, only_use_python_datetimes=False)
-	time_max = nc.num2date(time_max,time_data.units, only_use_cftime_datetimes=False, only_use_python_datetimes=False)
 
-	create_partitions(time_min, time_max, 1) # If necessary, create partitions now in preparation for data upload. 1 for monthly partitions, 12 for yearly partitions
 
 	time_data = nc.num2date(time_data[:],time_data.units, only_use_cftime_datetimes=False, only_use_python_datetimes=False)
 	time_data = nc.date2num(time_data[:], "microseconds since 2000-01-01 00:00:00") #Convert the standard date back to the 8-byte integer PSQL uses
@@ -181,45 +173,7 @@ def import_data_to_postgresql(fname, time_data, lat_data, lon_data, cycle_data, 
 # End import_data_to_postgresql
 
 def import_metadata_to_psql(ds):
-	# 	create_table_query = '''
-	# 		CREATE TABLE
-	#   public.cop_meta (
-	#	 nme text NOT NULL,
-	#	 conventions text NULL,
-	#	 metadata_conventions text NULL,
-	#	 cdm_data_type text NULL,
-	#	 comment
-	#	   text NULL,
-	#	   contact text NULL,
-	#	   creator_email text NULL,
-	#	   creator_name text NULL,
-	#	   creator_url text NULL,
-	#	   date_created timestamp with time zone NULL,
-	#	   date_issued timestamp with time zone NULL,
-	#	   date_modified timestamp with time zone NULL,
-	#	   history text NULL,
-	#	   institution text NULL,
-	#	   keywords text NULL,
-	#	   license text NULL,
-	#	   platform text NULL,
-	#	   processing_level text NULL,
-	#	   product_version text NULL,
-	#	   project text NULL,
-	#	   "references" text NULL,
-	#	   software_version text NULL,
-	#	   source text NULL,
-	#	   ssalto_duacs_comment text NULL,
-	#	   summary text NULL,
-	#	   title text NULL
-	#   );
 
-	# ALTER TABLE
-	#   public.cop_meta
-	# ADD
-	#   CONSTRAINT cop_meta_pkey PRIMARY KEY (nme)
-	# 	'''
-	# 	cur.execute(create_table_query)
-	#  	conn.commit()
 
 	conn = db_connection()
 	query = sql.SQL("INSERT INTO {table} ({fields}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s)").format(

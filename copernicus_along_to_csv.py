@@ -58,74 +58,74 @@ for filename in glob.glob(directory + '/*.nc'):
 	names = [os.path.basename(x) for x in glob.glob(filename)]
 	fname = names[0] #filename will be used to link data to metadata
 	# First read the metadata and insert into table. 
-	# cols = list(ds.variables.keys())
-	# print(ds.ncattrs())           
-	# for attrname in ds.ncattrs():
-	# 	print(attrname + ': ' + str(ds.getncattr(attrname)))
-	# print(ds.comment)
-	# print(cols)
+	cols = list(ds.variables.keys())
+	print(ds.ncattrs())           
+	for attrname in ds.ncattrs():
+		print(attrname + ': ' + str(ds.getncattr(attrname)))
+	print(ds.comment)
+	print(cols)
 	
-	# with psycopg.connect('host=eddydb-psi.cxintbkhx78d.us-east-2.rds.amazonaws.com port=5432 dbname=eddy user=postgres password=bX3vV5uV2nq(8!V') as conn:
-	# 	query = sql.SQL("INSERT INTO {table} ({fields}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s ,%s ,%s ,%s ,%s ,%s ,%s ,%s, %s,%s,%s,%s,%s,%s,%s,%s)").format(
-	# 	fields=sql.SQL(',').join([
-	# 		sql.Identifier('nme'),
-	# 		sql.Identifier('conventions'),
-	# 		sql.Identifier('metadata_conventions'),
-	# 		sql.Identifier('cdm_data_type'),
-	# 		sql.Identifier('comment'),
-	# 		sql.Identifier('contact'),
-	# 		sql.Identifier('creator_email'),
-	# 		sql.Identifier('creator_name'),
-	# 		sql.Identifier('creator_url'),
-	# 		sql.Identifier('date_created'),
-	# 		sql.Identifier('date_issued'),
-	# 		sql.Identifier('date_modified'),
-	# 		sql.Identifier('history'),
-	# 		sql.Identifier('institution'),
-	# 		sql.Identifier('keywords'),
-	# 		sql.Identifier('license'),
-	# 		sql.Identifier('platform'),
-	# 		sql.Identifier('processing_level'),
-	# 		sql.Identifier('product_version'),
-	# 		sql.Identifier('project'),
-	# 		sql.Identifier('references'),
-	# 		sql.Identifier('software_version'),
-	# 		sql.Identifier('source'),
-	# 		sql.Identifier('ssalto_duacs_comment'),
-	# 		sql.Identifier('summary'),
-	# 		sql.Identifier('title'),
-	# 	]),
-	# 	table=sql.Identifier('cop_meta'),
-	# 	)
-	# 	with conn.cursor() as curs:
-	# 		data = (fname , 
-	# 		ds.Conventions , 
-	# 		ds.Metadata_Conventions , 
-	# 		ds.cdm_data_type , 
-	# 		ds.comment , 
-	# 		ds.contact , 
-	# 		ds.creator_email , 
-	# 		ds.creator_name , 
-	# 		ds.creator_url , 
-	# 		ds.date_created , 
-	# 		ds.date_issued , 
-	# 		ds.date_modified , 
-	# 		ds.history , 
-	# 		ds.institution , 
-	# 		ds.keywords , 
-	# 		ds.license , 
-	# 		ds.platform , 
-	# 		ds.processing_level , 
-	# 		ds.product_version , 
-	# 		ds.project , 
-	# 		ds.references , 
-	# 		ds.software_version , 
-	# 		ds.source , 
-	# 		ds.ssalto_duacs_comment , 
-	# 		ds.summary , 
-	# 		ds.title)
-	# 		
-	# 		curs.execute(query, data)
+	with psycopg.connect('host=eddydb-psi.cxintbkhx78d.us-east-2.rds.amazonaws.com port=5432 dbname=eddy user=postgres password=bX3vV5uV2nq(8!V') as conn:
+		query = sql.SQL("INSERT INTO {table} ({fields}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s ,%s ,%s ,%s ,%s ,%s ,%s ,%s, %s,%s,%s,%s,%s,%s,%s,%s)").format(
+		fields=sql.SQL(',').join([
+			sql.Identifier('nme'),
+			sql.Identifier('conventions'),
+			sql.Identifier('metadata_conventions'),
+			sql.Identifier('cdm_data_type'),
+			sql.Identifier('comment'),
+			sql.Identifier('contact'),
+			sql.Identifier('creator_email'),
+			sql.Identifier('creator_name'),
+			sql.Identifier('creator_url'),
+			sql.Identifier('date_created'),
+			sql.Identifier('date_issued'),
+			sql.Identifier('date_modified'),
+			sql.Identifier('history'),
+			sql.Identifier('institution'),
+			sql.Identifier('keywords'),
+			sql.Identifier('license'),
+			sql.Identifier('platform'),
+			sql.Identifier('processing_level'),
+			sql.Identifier('product_version'),
+			sql.Identifier('project'),
+			sql.Identifier('references'),
+			sql.Identifier('software_version'),
+			sql.Identifier('source'),
+			sql.Identifier('ssalto_duacs_comment'),
+			sql.Identifier('summary'),
+			sql.Identifier('title'),
+		]),
+		table=sql.Identifier('cop_meta'),
+		)
+		with conn.cursor() as curs:
+			data = (fname , 
+			ds.Conventions , 
+			ds.Metadata_Conventions , 
+			ds.cdm_data_type , 
+			ds.comment , 
+			ds.contact , 
+			ds.creator_email , 
+			ds.creator_name , 
+			ds.creator_url , 
+			ds.date_created , 
+			ds.date_issued , 
+			ds.date_modified , 
+			ds.history , 
+			ds.institution , 
+			ds.keywords , 
+			ds.license , 
+			ds.platform , 
+			ds.processing_level , 
+			ds.product_version , 
+			ds.project , 
+			ds.references , 
+			ds.software_version , 
+			ds.source , 
+			ds.ssalto_duacs_comment , 
+			ds.summary , 
+			ds.title)
+			
+			curs.execute(query, data)
 # 
 # 	
 # 	# Convert downloaded Along Track NetCDF files to .csv # Importing from CSV is the fastest way to import the data	
