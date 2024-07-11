@@ -18,7 +18,7 @@ We now need to install PostgreSQL with the PostGIS extension. On macos, there is
 
 Now we need to interact with the server as a client.
 ```
-pip install psycopg2-binary
+pip install psycopg2 psycopg2-binary
 ```
 
 https://www.postgresql.org/docs/current/populate.html
