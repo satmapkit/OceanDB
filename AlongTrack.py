@@ -41,6 +41,7 @@ class AlongTrackDatabase:
 
             atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS plpgsql;"))
             atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS postgis;"))
+            atdb_conn.commit()
 
             atdb_cur.close()
             atdb_conn.close()
@@ -119,7 +120,27 @@ class AlongTrackDatabase:
 
         query_create_filename_index = f"""
             CREATE INDEX IF NOT EXISTS nme_alng_idx
-         	ON public.cop_along USING btree
+         	ON public.{self.alongTrackTableName} USING btree
          	(nme COLLATE pg_catalog."default" ASC NULLS LAST)
          	WITH (deduplicate_items=True);
         """
+
+        # Brian says this may require some additional initialization.
+        query_create_combined_point_date_index = f"""
+            CREATE INDEX IF NOT EXISTS cat_pt_date_idx
+         	ON public.{self.alongTrackTableName} USING gist
+         	(cat_point, ("time"::date))
+         	WITH (buffering=auto);
+        """
+
+        conn = self.connection()
+        cur = conn.cursor()
+
+        cur.execute(query_create_point_index)
+        cur.execute(query_create_date_index)
+        cur.execute(query_create_filename_index)
+        conn.commit()
+
+        cur.close()
+        conn.close()
+
