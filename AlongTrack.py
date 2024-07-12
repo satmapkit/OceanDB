@@ -33,6 +33,8 @@ class AlongTrackDatabase:
         else:
             # Create the new database
             cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.dbName)))
+
+            # Now create a connection to the new db, and add postgis (autocommit set to true!)
             atdb_conn = self.connection()
             atdb_conn.autocommit = True
             atdb_cur = atdb_conn.cursor()
@@ -93,8 +95,31 @@ class AlongTrackDatabase:
         cur = conn.cursor()
 
         cur.execute(query)
+        conn.commit()
 
         cur.close()
         conn.close()
 
         print(f"Table '{self.alongTrackTableName} added to database '{self.dbName}'.")
+
+    def create_along_track_indices(self):
+        query_create_point_index = f"""
+            CREATE INDEX IF NOT EXISTS cat_pt_idx
+ 	        ON public.{self.alongTrackTableName} USING gist
+ 	        (cat_point)
+ 	        WITH (buffering=auto);
+        """
+
+        query_create_date_index = f"""
+            CREATE INDEX IF NOT EXISTS date_idx
+            ON public.{self.alongTrackTableName} USING btree
+        	(("time"::date) ASC NULLS LAST)
+         	WITH (deduplicate_items=True);
+        """
+
+        query_create_filename_index = f"""
+            CREATE INDEX IF NOT EXISTS nme_alng_idx
+         	ON public.cop_along USING btree
+         	(nme COLLATE pg_catalog."default" ASC NULLS LAST)
+         	WITH (deduplicate_items=True);
+        """
