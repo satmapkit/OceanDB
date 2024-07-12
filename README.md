@@ -9,6 +9,8 @@ Now we need to interact with the server as a client from within python. The [psy
 pip install psycopg2-binary
 ```
 
+It is also useful to download [pgAdmin](https://www.pgadmin.org), which is a postgresql client.
+
 ## Initialize the along-track database
 
 As of 2024-07-12, I am piecing together code snippets and building a class `AlongTrack.py` which will handling building, indexing, populating, and querying the database. The script `create_along_track_db.py` shows basic usage.
