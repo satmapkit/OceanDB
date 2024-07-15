@@ -1,19 +1,19 @@
 import netCDF4 as nc
-import psycopg2 as ps
-from psycopg2 import sql
-
+import psycopg as pg
+from psycopg import sql
+from sys import exit
 
 class AlongTrackDatabase:
-    dbName: str = 'along-track'
+    dbName: str = 'along_track'
     alongTrackTableName: str = 'alongTrack'
 
     def __init__(self, host, username, port="5432"):
-        self.host = host
-        self.username = username
-        self.port = port
+        self.host = 'localhost'
+        self.username = 'postgres'
+        self.port = 5432
 
     def connection(self):
-        conn = ps.connect(host=self.host,
+        conn = pg.connect(host=self.host,
                           dbname=self.dbName,
                           user=self.username,
                           port=self.port
@@ -21,50 +21,35 @@ class AlongTrackDatabase:
         return conn
 
     def create_database(self):
-        pg_conn = ps.connect(dbname="postgres", user=self.username, host=self.host, port=self.port)
-        pg_conn.autocommit = True  # Enable autocommit to execute CREATE DATABASE command
+        with pg.connect(dbname="postgres", user=self.username, host=self.host, port=self.port) as pg_conn:
+            pg_conn.autocommit = True  # Enable autocommit to execute CREATE DATABASE command
 
-        # SQL module usage: https://www.psycopg.org/docs/sql.html#module-psycopg2.sql
-        cur = pg_conn.cursor()
-        cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{self.dbName}'")
-        exists = cur.fetchone()
-        if exists is not None:
-            print(f"Database '{self.dbName}' already exists.")
-        else:
-            # Create the new database
-            cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.dbName)))
+            # SQL module usage: https://www.psycopg.org/docs/sql.html#module-psycopg2.sql
+            with pg_conn.cursor() as cur:
+                cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{self.dbName}'")
+                exists = cur.fetchone()
+                if exists is not None:
+                    print(f"Database '{self.dbName}' already exists.")
+                else:
+                    # Create the new database
+                    cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.dbName)))
 
-            # Now create a connection to the new db, and add postgis (autocommit set to true!)
-            atdb_conn = self.connection()
-            atdb_conn.autocommit = True
-            atdb_cur = atdb_conn.cursor()
-
-            atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS plpgsql;"))
-            atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS postgis;"))
-            atdb_conn.commit()
-
-            atdb_cur.close()
-            atdb_conn.close()
+                    # Now create a connection to the new db, and add postgis (autocommit set to true!)
+                    with self.connection() as atdb_conn:
+                        with atdb_conn.cursor() as atdb_cur:
+                            atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS plpgsql;"))
+                            atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS postgis;"))
+                    atdb_conn.commit()
 
             print(f"Database '{self.dbName}' created successfully.")
 
-        # Close the cursor and connection
-        cur.close()
-        pg_conn.close()
-
     def drop_database(self):
-        conn = ps.connect(dbname="postgres", user=self.username, host=self.host, port=self.port)
-        conn.autocommit = True  # Enable autocommit to execute CREATE DATABASE command
-
-        # Create a cursor object
-        cur = conn.cursor()
-
-        # Create the new database
-        cur.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(self.dbName)))
-
-        # Close the cursor and connection
-        cur.close()
-        conn.close()
+        with pg.connect(dbname="postgres", user=self.username, host=self.host, port=self.port) as conn:
+            conn.autocommit = True  # Enable autocommit to execute CREATE DATABASE command
+            # Create a cursor object
+            with conn.cursor() as cur:
+                # Create the new database
+                cur.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(self.dbName)))
 
         print(f"Database '{self.dbName}' dropped.")
 
@@ -92,14 +77,10 @@ class AlongTrackDatabase:
         ) PARTITION BY RANGE ("time");
         """
 
-        conn = self.connection()
-        cur = conn.cursor()
-
-        cur.execute(query)
-        conn.commit()
-
-        cur.close()
-        conn.close()
+        with self.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                conn.commit()
 
         print(f"Table '{self.alongTrackTableName} added to database '{self.dbName}'.")
 
@@ -133,14 +114,10 @@ class AlongTrackDatabase:
          	WITH (buffering=auto);
         """
 
-        conn = self.connection()
-        cur = conn.cursor()
-
-        cur.execute(query_create_point_index)
-        cur.execute(query_create_date_index)
-        cur.execute(query_create_filename_index)
-        conn.commit()
-
-        cur.close()
-        conn.close()
+        with self.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query_create_point_index)
+                cur.execute(query_create_date_index)
+                cur.execute(query_create_filename_index)
+                conn.commit()
 
