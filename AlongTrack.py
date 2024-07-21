@@ -82,15 +82,12 @@ class AlongTrackDatabase:
             CONSTRAINT cop_along_pkey PRIMARY KEY (date_time, idx)
         ) PARTITION BY RANGE (date_time)
         """).format(table_name=sql.Identifier(self.alongTrackTableName))
-        try:
-            with pg.connect(self.connect_string()) as conn:
-                with conn.cursor() as cur:
-                    cur.execute(query)
-                    conn.commit()
-            print(f"Table '{self.alongTrackTableName} added to database '{self.dbName}'.")
-        except Exception as e:
-            print(e)
-            print(f"Table '{self.alongTrackTableName} not added to database '{self.dbName}'.")
+
+        with pg.connect(self.connect_string()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                conn.commit()
+        print(f"Table '{self.alongTrackTableName} added to database (if it did not previously exist) '{self.dbName}'.")
 
     def create_along_track_indices(self):
         query_create_point_index = sql.SQL("""
@@ -101,7 +98,7 @@ class AlongTrackDatabase:
         """).format(
             table_name=sql.Identifier(self.alongTrackTableName)
         )
-        print(query_create_point_index)
+
         query_create_date_index = sql.SQL("""
             CREATE INDEX IF NOT EXISTS date_idx
             ON public.{table_name} USING btree
@@ -171,7 +168,7 @@ class AlongTrackDatabase:
                 cur.execute(query_create_ocean_basins_index)
                 conn.commit()
 
-        print(f"Table '{self.oceanBasinsTableName}' added to database '{self.dbName}'.")
+        print(f"Table '{self.oceanBasinsTableName}' added to database (if they did not previously exist) '{self.dbName}'.")
 
     def create_ocean_basin_connection_tables(self):
         query_create_ocean_basins_connections_table = sql.SQL("""
@@ -220,29 +217,29 @@ class AlongTrackDatabase:
                 ]),
                 table=sql.Identifier(self.oceanBasinsTableName),
             )
-        try:
-            for filename in glob.glob(f'{self.directory}/ocean_basins.csv'):
-                # for filename in glob.glob(loadfile):
-                with conn.cursor() as cur:
-                    with open(filename, 'r') as f:
-                        # f = f.read()
-                        with cur.copy(query) as copy:
-                            while data := f.read(100):
-                                copy.write(data)
-                    conn.commit()
-        except FileNotFoundError:
-            print("File 'ocean_basins.csv' not found")
-        else:
-            print('Ocean basins loaded')
+            try:
+                for filename in glob.glob(f'{self.directory}/ocean_basins.csv'):
+                    # for filename in glob.glob(loadfile):
+                    with conn.cursor() as cur:
+                        with open(filename, 'r') as f:
+                            # f = f.read()
+                            with cur.copy(query) as copy:
+                                while data := f.read(100):
+                                    copy.write(data)
+                        conn.commit()
+            except FileNotFoundError:
+                print("File 'ocean_basins.csv' not found")
+            else:
+                print('Ocean basins loaded')
 
     def insert_ocean_basin_connections_from_csv(self):
         with pg.connect(self.connect_string()) as conn:
             query = sql.SQL("COPY {table} ({fields}) FROM STDIN WITH (FORMAT CSV, HEADER)").format(
                 fields=sql.SQL(',').join([
-                    sql.Identifier('basinid'),
-                    sql.Identifier('connected_basin'),
+                    sql.Identifier('basin_id'),
+                    sql.Identifier('connected_id'),
                 ]),
-                table=sql.Identifier('cop_along'),
+                table=sql.Identifier(self.oceanBasinsConnectionsTableName),
             )
             try:
                 for filename in glob.glob(f'{self.directory}/basin_connections_for_load.csv'):
