@@ -10,7 +10,7 @@ port = 5432
 # Path to directory with files to be uploaded.
 directory = os.path.abspath(os.getcwd()) # Default to current active script directory
 
-atdb = AlongTrackDatabase(host, username, password, directory)
+atdb = AlongTrackDatabase(host, username, password, port, directory)
 # Build Database
 atdb.create_database()
 atdb.create_along_track_table()
