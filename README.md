@@ -1,12 +1,13 @@
 
 ## Installing PostgreSQL
 
-We need to install PostgreSQL with the PostGIS extension. On macos, there is a [nice simple installer](https://postgresapp.com) which includes the necessary components. Open up the app, and then hit `initialize` and now the PostgreSQL server is running locally on our machine.
+We need to install PostgreSQL with the PostGIS extension. On macOS, there is a [nice simple installer](https://postgresapp.com) which includes the necessary components. Open up the app, and then hit `initialize` and now the PostgreSQL server is running locally on our machine.
 
-Now we need to interact with the server as a client from within python. The [psycopg2](https://www.psycopg.org) package is the primary interface we will use. There is a pre-compiled binary available which should work fine, but if not, you can just request `psycopg2`.
+Now we need to interact with the server as a client from within python. The [psycopg](https://www.psycopg.org) package is the primary interface we will use. There is a pre-compiled binary available which should work fine, but if not, you can just request `psycopg`.
 
 ```
-pip install psycopg2-binary
+pip install --upgrade pip
+pip install "psycopg[binary,pool]"
 ```
 
 It is also useful to download [pgAdmin](https://www.pgadmin.org), which is a postgresql client.
