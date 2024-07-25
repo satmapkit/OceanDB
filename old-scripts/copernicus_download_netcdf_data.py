@@ -5,7 +5,7 @@
 import copernicusmarine
 from pprint import pprint
 
-dataset_id = ['']*32
+dataset_id = ['']*33
 dataset_id[0]="cmems_obs-sl_glo_phy-ssh_my_al-l3-duacs_PT1S"
 dataset_id[1]="cmems_obs-sl_glo_phy-ssh_my_alg-l3-duacs_PT1S"
 dataset_id[2]="cmems_obs-sl_glo_phy-ssh_my_c2-l3-duacs_PT1S"
@@ -40,17 +40,18 @@ dataset_id[30]="cmems_obs-sl_glo_phy-ssh_myint_s3a-l3-duacs_PT1S"
 dataset_id[31]="cmems_obs-sl_glo_phy-ssh_myint_s3b-l3-duacs_PT1S"
 dataset_id[32]="cmems_obs-sl_glo_phy-ssh_myint_s6a-lr-l3-duacs_PT1S"
 
-# Define parameters to run the extraction
-dataset_id_yearly = dataset_id[13]
-
 # Define output storage parameters
 # output_directory = "/Users/briancurtis/Documents/Eddy/Along_files2"
-output_directory = "/Users/jearly/Documents/Data/along-track-data"
+# output_directory = "/Users/jearly/Documents/Data/along-track-data"
+output_directory = "/Volumes/MoreStorage/along-track-data"
 
 # Call the get function to save data
-get_result_annualmean = copernicusmarine.get(
-	dataset_id=dataset_id_yearly,
+get_result = copernicusmarine.get(
+	dataset_id=dataset_id[13],
 	output_directory=output_directory,
-	no_directories=True)
+	filter="*200[2-3]*",
+	sync=True
+	# no_directories=True
+)
 
-pprint(f"List of saved files: {get_result_annualmean}")
+pprint(f"List of saved files: {get_result}")
