@@ -1,3 +1,6 @@
+# Documentation for this API is found here:
+# https://help.marine.copernicus.eu/en/articles/8286883-copernicus-marine-toolbox-api-get-original-files#h_26674730f3
+
 # Import modules
 import copernicusmarine
 from pprint import pprint
