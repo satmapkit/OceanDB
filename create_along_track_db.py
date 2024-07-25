@@ -8,12 +8,13 @@ username = 'postgres'
 port = 5432
 
 # Path to directory with Ocean basin files to be uploaded.
-directory_basins = os.path.abspath(os.getcwd()) # Default to current active script directory
+directory_basins = os.path.abspath(os.getcwd())  # Default to current active script directory
 # Path to Along Track NetCDF files
 directory_nc = 'path/to/netcdf'
 
 # atdb = AlongTrackDatabase(host, username, password, port)
-atdb = AlongTrackDatabase(host, username, port)
+atdb = AlongTrackDatabase(host, username, port, db_name='along_track2')
+
 # Build Database
 atdb.create_database()
 atdb.create_along_track_table()
@@ -32,6 +33,6 @@ atdb.insert_ocean_basin_connections_from_csv(directory_basins)
 
 # Load Along Track NetCDF files from an existing directory of files
 # atdb.create_along_track_table_partitions('monthly') Create partitions is done in real time as data is loaded.
-# Add a partitition size parameter to the insert data from NetCDF function?
+# Add a partition size parameter to the insert data from NetCDF function?
 # atdb.insert_along_track_data_from_netcdf('/Users/briancurtis/Documents/Eddy/along_test_ncs')
-atdb.insert_along_track_data_from_netcdf('/Users/jearly/Documents/Data/along-track-data')
+atdb.insert_along_track_data_from_netcdf('/Users/jearly/Documents/Data/along-track-data-2002')
