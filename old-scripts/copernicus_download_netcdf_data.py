@@ -44,8 +44,8 @@ dataset_id[32]="cmems_obs-sl_glo_phy-ssh_myint_s6a-lr-l3-duacs_PT1S"
 
 # Define output storage parameters
 # output_directory = "/Users/briancurtis/Documents/Eddy/Along_files2"
-output_directory = "/Users/jearly/Documents/Data/along-track-data"
-# output_directory = "/Volumes/MoreStorage/along-track-data"
+# output_directory = "/Users/jearly/Documents/Data/along-track-data"
+output_directory = "/Volumes/MoreStorage/along-track-data"
 
 # Call the get function to save data
 get_result = copernicusmarine.get(

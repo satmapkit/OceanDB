@@ -12,6 +12,7 @@ import os
 class AlongTrackDatabase:
     db_name: str = 'along_track'
     alongTrackTableName: str = 'along_track'
+    alongTrackMetadataTableName: str = 'along_track_metadata'
     oceanBasinsTableName: str = 'basins'
     oceanBasinsConnectionsTableName: str = 'basin_connections'
 
@@ -95,6 +96,20 @@ class AlongTrackDatabase:
                 conn.commit()
         print(f"Table '{self.alongTrackTableName} added to database (if it did not previously exist) '{self.db_name}'.")
 
+    def drop_along_track_table(self):
+        query_drop_table = sql.SQL("""
+                    DROP TABLE IF EXISTS public.{table_name}
+                    """).format(
+            table_name=sql.Identifier(self.alongTrackTableName)
+        )
+
+        with pg.connect(self.connect_string()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query_drop_table)
+                conn.commit()
+
+        print(f"Table '{self.alongTrackTableName} dropped from database.'{self.db_name}'.")
+
     def create_along_track_indices(self):
         query_create_point_index = sql.SQL("""
             CREATE INDEX IF NOT EXISTS cat_pt_idx
@@ -139,10 +154,45 @@ class AlongTrackDatabase:
                 cur.execute(query_create_filename_index)
                 conn.commit()
 
+    def drop_along_track_indices(self):
+        query_drop_point_index = sql.SQL("""
+            DROP INDEX IF EXISTS cat_pt_idx
+            ON public.{table_name}
+            """).format(
+            table_name=sql.Identifier(self.alongTrackTableName)
+        )
+
+        query_drop_date_index = sql.SQL("""
+            DROP INDEX IF EXISTS date_idx
+            ON public.{table_name}
+        """).format(
+            table_name=sql.Identifier(self.alongTrackTableName)
+        )
+
+        query_drop_filename_index = sql.SQL("""
+            DROP INDEX IF EXISTS nme_alng_idx
+            ON public.{table_name}
+        """).format(
+            table_name=sql.Identifier(self.alongTrackTableName)
+        )
+
+        query_drop_combined_point_date_index = sql.SQL("""
+            DROP INDEX IF EXISTS cat_pt_date_idx
+            ON public.{table_name}
+            """).format(
+            table_name=sql.Identifier(self.alongTrackTableName)
+        )
+
+        with pg.connect(self.connect_string()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query_drop_point_index)
+                cur.execute(query_drop_date_index)
+                cur.execute(query_drop_filename_index)
+                conn.commit()
+
     def create_along_track_metadata_table(self):
-        create_table_query = sql.SQL('''
-        CREATE TABLE IF NOT EXISTS
-            public.cop_meta (
+        create_table_query = sql.SQL("""
+        CREATE TABLE IF NOT EXISTS public.{table_name} (
             nme text NOT NULL,
             conventions text NULL,
             metadata_conventions text NULL,
@@ -168,26 +218,30 @@ class AlongTrackDatabase:
             source text NULL,
             ssalto_duacs_comment text NULL,
             summary text NULL,
-            title text NULL
+            title text NULL,
+            CONSTRAINT cop_meta_pkey PRIMARY KEY (nme)
           );
-          ''')
+          """).format(table_name=sql.Identifier(self.alongTrackMetadataTableName))
 
-        add_primary_key_query = sql.SQL('''ALTER TABLE
-        public.cop_meta
-        ADD
-        CONSTRAINT cop_meta_pkey PRIMARY KEY (nme);
-        ''')
         with pg.connect(self.connect_string()) as conn:
             with conn.cursor() as cur:
                 cur.execute(create_table_query)
-                # Postgres does not have an "IF DOES NOT EXIST" statement for constraints. We'll catch the error and
-                # move on if it already exists
-                try:
-                    cur.execute(add_primary_key_query)
-                except:
-                    print('cop_meta_pkey not created because it already exists.')
                 conn.commit()
-        print(f"Table 'cop_meta' added to database (if it did not previously exist) '{self.db_name}'.")
+        print(f"Table {self.alongTrackMetadataTableName} added to database {self.db_name} (if it did not previously exist).")
+
+    def drop_along_track_metadata_table(self):
+        query_drop_table = sql.SQL("""
+                    DROP TABLE IF EXISTS public.{table_name}
+                    """).format(
+            table_name=sql.Identifier(self.alongTrackMetadataTableName)
+        )
+
+        with pg.connect(self.connect_string()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query_drop_table)
+                conn.commit()
+
+        print(f"Table {self.alongTrackMetadataTableName} dropped from database {self.db_name}.")
 
     def create_ocean_basin_tables(self):
         query_create_ocean_basins_table = sql.SQL("""
@@ -336,7 +390,7 @@ class AlongTrackDatabase:
                 sql.Identifier('summary'),
                 sql.Identifier('title'),
             ]),
-            table=sql.Identifier('cop_meta'),
+            table=sql.Identifier(self.alongTrackMetadataTableName),
         )
         with pg.connect(self.connect_string()) as conn:
             with conn.cursor() as cur:
