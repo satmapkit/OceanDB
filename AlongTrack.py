@@ -110,6 +110,20 @@ class AlongTrackDatabase:
 
         print(f"Table '{self.alongTrackTableName} dropped from database.'{self.db_name}'.")
 
+    def truncate_along_track_table(self):
+        query_drop_table = sql.SQL("""
+                    TRUNCATE public.{table_name}
+                    """).format(
+            table_name=sql.Identifier(self.alongTrackTableName)
+        )
+
+        with pg.connect(self.connect_string()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query_drop_table)
+                conn.commit()
+
+        print(f"All data removed from table '{self.alongTrackTableName} in database.'{self.db_name}'.")
+
     def create_along_track_indices(self):
         query_create_point_index = sql.SQL("""
             CREATE INDEX IF NOT EXISTS cat_pt_idx
@@ -242,6 +256,20 @@ class AlongTrackDatabase:
                 conn.commit()
 
         print(f"Table {self.alongTrackMetadataTableName} dropped from database {self.db_name}.")
+
+    def truncate_along_track_metadata_table(self):
+        query_drop_table = sql.SQL("""
+                    TRUNCATE public.{table_name}
+                    """).format(
+            table_name=sql.Identifier(self.alongTrackMetadataTableName)
+        )
+
+        with pg.connect(self.connect_string()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query_drop_table)
+                conn.commit()
+
+        print(f"All data removed from table '{self.alongTrackMetadataTableName} in database.'{self.db_name}'.")
 
     def create_ocean_basin_tables(self):
         query_create_ocean_basins_table = sql.SQL("""
@@ -456,6 +484,90 @@ class AlongTrackDatabase:
         except FileNotFoundError:
             print("File '{}' not found".format(file_path))
 
+    def extract_data_tuple_from_netcdf(self, file_path, fname):
+        # Open the NetCDF file
+        try:
+            ds = nc.Dataset(file_path, 'r')
+
+            self.import_metadata_to_psql(ds, fname)
+
+            # Don't scale most variables, so they are stored more efficiently in db
+            ds.variables['sla_unfiltered'].set_auto_maskandscale(False)
+            ds.variables['sla_filtered'].set_auto_maskandscale(False)
+            ds.variables['ocean_tide'].set_auto_maskandscale(False)
+            ds.variables['internal_tide'].set_auto_maskandscale(False)
+            ds.variables['lwe'].set_auto_maskandscale(False)
+            ds.variables['mdt'].set_auto_maskandscale(False)
+            ds.variables['dac'].set_auto_maskandscale(False)
+            ds.variables['tpa_correction'].set_auto_maskandscale(False)
+
+            time_data = ds.variables['time']  # Extract dates from the dataset and convert them to standard datetime
+            time_min = time_data[:].min()
+            time_max = time_data[:].max()
+            time_min = nc.num2date(time_min, time_data.units, only_use_cftime_datetimes=False,
+                                   only_use_python_datetimes=False)
+            time_max = nc.num2date(time_max, time_data.units, only_use_cftime_datetimes=False,
+                                   only_use_python_datetimes=False)
+
+            self.create_partitions(time_min, time_max,
+                                   1)  # If necessary, create partitions now in preparation for data upload. 1 for monthly partitions, 12 for yearly partitions
+
+            time_data = nc.num2date(time_data[:], time_data.units, only_use_cftime_datetimes=False,
+                                    only_use_python_datetimes=False)
+            # time_data = nc.date2num(time_data[:],
+            #                         "microseconds since 2000-01-01 00:00:00")  # Convert the standard date back to the 8-byte integer PSQL uses
+
+            data = {
+                'time': time_data,
+                'latitude': ds.variables['latitude'][:],
+                'longitude': ds.variables['longitude'][:],
+                'cycle': ds.variables['cycle'][:],
+                'track': ds.variables['track'][:],
+                'sla_unfiltered': ds.variables['sla_unfiltered'][:],
+                'sla_filtered': ds.variables['sla_filtered'][:],
+                'dac': ds.variables['dac'][:],
+                'ocean_tide': ds.variables['ocean_tide'][:],
+                'internal_tide': ds.variables['internal_tide'][:],
+                'lwe': ds.variables['lwe'][:],
+                'mdt': ds.variables['mdt'][:],
+                'tpa_correction': ds.variables['tpa_correction'][:]
+            }
+
+            ds.close()
+
+            return data
+        except FileNotFoundError:
+            print("File '{}' not found".format(file_path))
+
+    def import_data_tuple_to_postgresql(self, data, filename):
+        copy_query = sql.SQL(
+            "COPY {along_tbl_nme} ( nme, track, cycle, lat, lon, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt, tpa_correction) FROM STDIN").format(
+            along_tbl_nme=sql.Identifier(self.alongTrackTableName))
+        copy_query = sql.SQL(
+            "COPY {along_tbl_nme} (  nme, track, cycle, lat, lon, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt) FROM STDIN").format(
+            along_tbl_nme=sql.Identifier(self.alongTrackTableName))
+
+        with pg.connect(self.connect_string()) as connection:
+            with connection.cursor() as cursor:
+                with cursor.copy(copy_query) as copy:
+                    for i in range(len(data['time'])):
+                        copy.write_row([
+                            filename,
+                            data['track'][i],
+                            data['cycle'][i],
+                            data['latitude'][i],
+                            data['longitude'][i],
+                            data['sla_unfiltered'][i],
+                            data['sla_filtered'][i],
+                            data['time'][i],
+                            data['dac'][i],
+                            data['ocean_tide'][i],
+                            data['internal_tide'][i],
+                            data['lwe'][i],
+                            data['mdt'][i]
+                        ])
+
+
     # Define the function to import data into PostgreSQL using copy_from in binary format
     def import_data_to_postgresql(self, fname, time_data, lat_data, lon_data, cycle_data, track_data, sla_un_data,
                                   sla_f_data,
@@ -493,9 +605,9 @@ class AlongTrackDatabase:
                     "COPY {along_tbl_nme} ( nme, track, cycle, lat, lon, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt, tpa_correction) FROM STDIN WITH (FORMAT binary);").format(
                     along_tbl_nme=sql.Identifier(self.alongTrackTableName))
                 with cur.copy(copy_query) as copy:
-                    while data := output.read(100):
+                    while data := output.read(8192):
                         copy.write(data)
-                conn.commit()
+                # conn.commit()
 
     # End import_data_to_postgresql
 
@@ -562,5 +674,18 @@ class AlongTrackDatabase:
                                            tpa_corr_data)
             import_end = time.time()
             print(f"{fname} import time: {import_end - import_start}")
+        end = time.time()
+        print(f"Script end. Total time: {end - start}")
+
+    def insert_along_track_data_from_netcdf_with_tuples(self, directory):
+        start = time.time()
+        for file_path in glob.glob(directory + '/*.nc'):
+            names = [os.path.basename(x) for x in glob.glob(file_path)]
+            filename = names[0]  # filename will be used to link data to metadata
+            data = self.extract_data_tuple_from_netcdf(file_path, filename)
+            import_start = time.time()
+            self.import_data_tuple_to_postgresql(data, filename)
+            import_end = time.time()
+            print(f"{filename} import time: {import_end - import_start}")
         end = time.time()
         print(f"Script end. Total time: {end - start}")
