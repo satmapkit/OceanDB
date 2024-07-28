@@ -1,0 +1,90 @@
+classdef AlongTrack < handle
+    %UNTITLED Summary of this class goes here
+    %   Detailed explanation goes here
+
+    properties
+        host
+        username
+        password
+        port
+        partitions_created = []
+
+        db_name
+    end
+
+    properties (Constant)
+        alongTrackTableName = 'along_track'
+        alongTrackMetadataTableName = 'along_track_metadata'
+        oceanBasinsTableName = 'basins'
+        oceanBasinsConnectionsTableName = 'basin_connections'
+    end
+
+    methods
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %
+        % Initialization
+        %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        function self = AlongTrack(options)
+            arguments
+                options.username
+                options.password = ''
+                options.db_name = 'along_track'
+                options.host = 'localhost'
+                options.port = 5432
+            end
+            self.username = options.username;
+            self.password = options.password;
+            self.db_name = options.db_name;
+            self.port = options.port;
+            self.host = options.host;
+        end
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %
+        % Database creation/d
+        %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        function createDatabase(self)
+            pg_conn = postgresql(self.username,self.password,Server=self.host,PortNumber=self.port);
+            query = "SELECT 1 FROM pg_database WHERE datname = '%s'";
+            results = pg_conn.fetch(sprintf(query,self.db_name),DataReturnFormat="structure");
+            
+            if isempty(results)
+                query = "CREATE DATABASE %s";
+                pg_conn.AutoCommit = "on";
+                pg_conn.execute(sprintf(query,self.db_name));
+
+                atdb_conn = self.connection();
+                atdb_conn.execute("CREATE EXTENSION IF NOT EXISTS plpgsql;");
+                atdb_conn.execute("CREATE EXTENSION IF NOT EXISTS postgis;");
+                atdb_conn.execute("CREATE EXTENSION IF NOT EXISTS btree_gist;");
+                atdb_conn.commit();
+                atdb_conn.close();
+
+                fprintf(join(["Database " self.db_name " created successfully.\n"]))
+            else
+                fprintf(join(["Database " self.db_name " already exists.\n"]))
+            end
+
+            pg_conn.close();
+        end
+
+        function dropDatabase(self)
+            pg_conn = postgresql(self.username,self.password,Server=self.host,PortNumber=self.port);
+            query = "DROP DATABASE %s WITH (FORCE)";
+            pg_conn.AutoCommit = "on";
+            pg_conn.execute(sprintf(query,self.db_name));
+            pg_conn.close();
+
+            fprintf(join(["Database " self.db_name " dropped.\n"]));
+        end
+
+        function connection = connection(self)
+            connection = postgresql(self.username,self.password,Server=self.host,DatabaseName=self.db_name,PortNumber=self.port);
+        end
+
+    end
+end

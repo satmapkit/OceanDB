@@ -1,0 +1,4 @@
+CREATE INDEX IF NOT EXISTS date_idx
+            ON public.{table_name} USING btree
+            ((date_time::date) ASC NULLS LAST)
+            WITH (deduplicate_items=True);
