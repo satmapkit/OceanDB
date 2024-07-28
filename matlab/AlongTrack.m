@@ -15,8 +15,8 @@ classdef AlongTrack < handle
     properties (Constant)
         alongTrackTableName = 'along_track'
         alongTrackMetadataTableName = 'along_track_metadata'
-        oceanBasinsTableName = 'basins'
-        oceanBasinsConnectionsTableName = 'basin_connections'
+        oceanBasinTableName = 'basins'
+        oceanBasinConnectionTableName = 'basin_connections'
     end
 
     methods
@@ -224,18 +224,64 @@ classdef AlongTrack < handle
 
         function createOceanBasinTable(self)
             tokenizedQuery = join(readlines("../sql/createOceanBasinTable.sql"));
-            queryCreateTable = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinsTableName);
+            queryCreateTable = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinTableName);
 
             tokenizedQuery = join(readlines("../sql/createOceanBasinIndexGeom.sql"));
-            queryCreateIndex = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinsTableName);
+            queryCreateIndex = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinTableName);
 
             self.executeQuery(queryCreateTable,queryCreateIndex);
 
-            fprintf(join(["Table " self.oceanBasinsTableName " added to database " self.db_name " (if it did not previously exist).\n"]));
+            fprintf(join(["Table " self.oceanBasinTableName " added to database " self.db_name " (if it did not previously exist).\n"]));
         end
 
         function dropOceanBasinTable(self)
-            self.dropTable(self.oceanBasinsTableName);
+            self.dropTable(self.oceanBasinTableName);
+        end
+
+        function insertOceanBasinDataFromCSV(self)
+            % Note that this works with so few steps because the data in
+            % the csv file has header names that exactly match the column
+            % names in the table.
+            basinData = readtable("../data/ocean_basins.csv");
+            atdb_conn = self.connection();
+            sqlwrite(atdb_conn,self.oceanBasinTableName,basinData);
+            atdb_conn.commit();
+            atdb_conn.close();
+        end
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %
+        % OceanBasinConnection table creation/destruction
+        %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        function createOceanBasinConnectionTable(self)
+            tokenizedQuery = join(readlines("../sql/createOceanBasinConnectionTable.sql"));
+            queryCreateTable = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinConnectionTableName);
+
+            tokenizedQuery = join(readlines("../sql/createOceanBasinConnectionIndexBasinID.sql"));
+            queryCreateIndex = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinConnectionTableName);
+
+            self.executeQuery(queryCreateTable,queryCreateIndex);
+
+            fprintf(join(["Table " self.oceanBasinConnectionTableName " added to database " self.db_name " (if it did not previously exist).\n"]));
+        end
+
+        function dropOceanBasinConnectionTable(self)
+            self.dropTable(self.oceanBasinConnectionTableName);
+        end
+
+        function insertOceanBasinConnectionDataFromCSV(self)
+            % Note that this works with so few steps because the data in
+            % the csv file has header names that exactly match the column
+            % names in the table.
+            basinConnection = readtable("../data/basin_connections_for_load.csv");
+            basinConnection.Properties.VariableNames(1) = "basin_id";
+            basinConnection.Properties.VariableNames(2) = "connected_id";
+            atdb_conn = self.connection();
+            sqlwrite(atdb_conn,self.oceanBasinConnectionTableName,basinConnection);
+            atdb_conn.commit();
+            atdb_conn.close();
         end
 
     end

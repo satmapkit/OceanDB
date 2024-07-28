@@ -9,7 +9,7 @@ from dateutil.relativedelta import relativedelta
 import os
 
 
-class AlongTrackDatabase:
+class AlongTrack:
     db_name: str = 'along_track'
     alongTrackTableName: str = 'along_track'
     alongTrackMetadataTableName: str = 'along_track_metadata'
@@ -67,28 +67,10 @@ class AlongTrackDatabase:
         print(f"Database '{self.db_name}' dropped.")
 
     def create_along_track_table(self):
-        query = sql.SQL("""
-        CREATE TABLE IF NOT EXISTS public.{table_name}
-        (
-            idx bigint NOT NULL GENERATED ALWAYS AS IDENTITY ( INCREMENT 1 START 1 MINVALUE 1 MAXVALUE 9223372036854775807 CACHE 1 ),
-            nme text COLLATE pg_catalog."default",
-            track smallint,
-            cycle smallint,
-            lat double precision,
-            lon double precision,
-            sla_unfiltered smallint,
-            sla_filtered smallint,
-            date_time timestamp without time zone,
-            dac smallint,
-            ocean_tide smallint,
-            internal_tide smallint,
-            lwe smallint,
-            mdt smallint,
-            tpa_correction smallint,
-            cat_point geometry(Point,4326) GENERATED ALWAYS AS (st_setsrid(st_makepoint(lon, lat), 4326)) STORED,
-            CONSTRAINT cop_along_pkey PRIMARY KEY (date_time, idx)
-        ) PARTITION BY RANGE (date_time)
-        """).format(table_name=sql.Identifier(self.alongTrackTableName))
+        filename = os.path.join(os.path.dirname(__file__), 'sql/createAlongTrackTable.sql')
+        with open(filename, 'r') as file:
+            tokenized_query = file.read()
+        query = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.alongTrackTableName))
 
         with pg.connect(self.connect_string()) as conn:
             with conn.cursor() as cur:

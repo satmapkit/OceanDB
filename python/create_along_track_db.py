@@ -1,4 +1,5 @@
-from AlongTrack import AlongTrackDatabase
+from OceanDB.AlongTrack import AlongTrack
+# import OceanDB
 import os
 
 # Database access
@@ -13,7 +14,7 @@ directory_basins = os.path.abspath(os.getcwd())  # Default to current active scr
 directory_nc = 'path/to/netcdf'
 
 # atdb = AlongTrackDatabase(host, username, password, port)
-atdb = AlongTrackDatabase(host, username, port, db_name='along_track2')
+atdb = AlongTrack(host, username, port, db_name='along_track2')
 
 # Build Database
 atdb.create_database()
