@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS cat_pt_idx

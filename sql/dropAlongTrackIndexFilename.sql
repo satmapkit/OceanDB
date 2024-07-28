@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS nme_alng_idx
