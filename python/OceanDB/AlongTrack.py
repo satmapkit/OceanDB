@@ -67,8 +67,7 @@ class AlongTrack:
         print(f"Database '{self.db_name}' dropped.")
 
     def create_along_track_table(self):
-        filename = os.path.join(os.path.dirname(__file__), 'sql/createAlongTrackTable.sql')
-        with open(filename, 'r') as file:
+        with open(os.path.join(os.path.dirname(__file__), 'sql/createAlongTrackTable.sql'), 'r') as file:
             tokenized_query = file.read()
         query = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.alongTrackTableName))
 
