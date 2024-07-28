@@ -15,8 +15,8 @@ classdef AlongTrack < handle
     properties (Constant)
         alongTrackTableName = 'along_track'
         alongTrackMetadataTableName = 'along_track_metadata'
-        oceanBasinsTableName = 'basins'
-        oceanBasinsConnectionsTableName = 'basin_connections'
+        oceanBasinTableName = 'basins'
+        oceanBasinConnectionsTableName = 'basin_connections'
     end
 
     methods
@@ -43,7 +43,7 @@ classdef AlongTrack < handle
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %
-        % Database creation/d
+        % Database creation/destruction
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -82,8 +82,168 @@ classdef AlongTrack < handle
             fprintf(join(["Database " self.db_name " dropped.\n"]));
         end
 
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %
+        % Generic database actions
+        %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
         function connection = connection(self)
             connection = postgresql(self.username,self.password,Server=self.host,DatabaseName=self.db_name,PortNumber=self.port);
+        end
+
+        function executeQuery(self,query)
+            arguments
+                self AlongTrack
+            end
+            arguments (Repeating)
+                query string
+            end
+
+            atdb_conn = self.connection();
+            for iQuery=1:length(query)
+                atdb_conn.execute(query{iQuery});
+            end
+            atdb_conn.commit();
+            atdb_conn.close();
+        end
+
+        function dropTable(self,tableName)
+            arguments
+                self AlongTrack
+                tableName string
+            end
+
+            tokenizedQuery = "DROP TABLE IF EXISTS public.{table_name}";
+            query = regexprep(tokenizedQuery,"{table_name}",tableName);
+
+            self.executeQuery(query)
+            fprintf(join(["Table " tableName " dropped from database " self.db_name ".\n"]));
+        end
+
+        function truncateTable(self,tableName)
+            arguments
+                self AlongTrack
+                tableName string
+            end
+
+            tokenizedQuery = "TRUNCATE public.{table_name}";
+            query = regexprep(tokenizedQuery,"{table_name}",tableName);
+
+            self.executeQuery(query)
+            fprintf(join(["All data removed from table " tableName " in database " self.db_name ".\n"]));
+        end
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %
+        % AlongTrack table creation/destruction
+        %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        function createAlongTrackTable(self)
+            tokenizedQuery = join(readlines("../sql/createAlongTrackTable.sql"));
+            query = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
+
+            self.executeQuery(query);
+
+            fprintf(join(["Table " self.alongTrackTableName " added to database " self.db_name " (if it did not previously exist).\n"]));
+        end
+
+        function dropAlongTrackTable(self)
+            self.dropTable(self.alongTrackTableName);
+        end
+
+        function truncateAlongTrackTable(self)
+            self.truncateTable(self.alongTrackTableName);
+        end
+
+        function createAlongTrackIndices(self)
+            tokenizedQuery = join(readlines("../sql/createAlongTrackIndexPoint.sql"));
+            queryPointIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
+
+            tokenizedQuery = join(readlines("../sql/createAlongTrackIndexDate.sql"));
+            queryDateIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
+
+            tokenizedQuery = join(readlines("../sql/createAlongTrackIndexPointDate.sql"));
+            queryPointDateIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
+
+            tokenizedQuery = join(readlines("../sql/createAlongTrackIndexFilename.sql"));
+            queryFilenameIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
+
+            self.executeQuery(queryPointIndex,queryDateIndex,queryFilenameIndex);
+
+            fprintf(join(["Indices added to table " self.alongTrackTableName " in database " self.db_name ".\n"]));
+        end
+
+        function dropAlongTrackIndices(self)
+            tokenizedQuery = join(readlines("../sql/dropAlongTrackIndexPoint.sql"));
+            queryPointIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
+
+            tokenizedQuery = join(readlines("../sql/dropAlongTrackIndexDate.sql"));
+            queryDateIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
+
+            tokenizedQuery = join(readlines("../sql/dropAlongTrackIndexPointDate.sql"));
+            queryPointDateIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
+
+            tokenizedQuery = join(readlines("../sql/dropAlongTrackIndexFilename.sql"));
+            queryFilenameIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
+
+            self.executeQuery(queryPointIndex,queryDateIndex,queryFilenameIndex);
+
+            fprintf(join(["Indices dropped from table " self.alongTrackTableName " in database " self.db_name ".\n"]));
+        end
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %
+        % AlongTrackMetadata table creation/destruction
+        %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        function createAlongTrackMetadataTable(self)
+            tokenizedQuery = join(readlines("../sql/createAlongTrackMetadataTable.sql"));
+            query = regexprep(tokenizedQuery,"{table_name}",self.alongTrackMetadataTableName);
+
+            self.executeQuery(query);
+
+            fprintf(join(["Table " self.alongTrackMetadataTableName " added to database " self.db_name " (if it did not previously exist).\n"]));
+        end
+
+        function dropAlongTrackMetadataTable(self)
+            self.dropTable(self.alongTrackMetadataTableName);
+        end
+
+        function truncateAlongTrackMetadataTable(self)
+            self.truncateTable(self.alongTrackMetadataTableName);
+        end
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %
+        % OceanBasin table creation/destruction
+        %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        function createOceanBasinTable(self)
+            tokenizedQuery = join(readlines("../sql/createOceanBasinTable.sql"));
+            queryCreateTable = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinTableName);
+
+            tokenizedQuery = join(readlines("../sql/createOceanBasinIndexGeom.sql"));
+            queryCreateIndex = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinTableName);
+
+            self.executeQuery(queryCreateTable,queryCreateIndex);
+
+            fprintf(join(["Table " self.oceanBasinTableName " added to database " self.db_name " (if it did not previously exist).\n"]));
+        end
+
+        function dropOceanBasinTable(self)
+            self.dropTable(self.oceanBasinTableName);
+        end
+
+        function insertOceanBasinDataFromCSV(self)
+            basinData = readtable("../data/ocean_basins.csv");
+            atdb_conn = self.connection();
+            sqlwrite(atdb_conn,self.oceanBasinTableName,basinData);
+            atdb_conn.commit();
+            atdb_conn.close();
         end
 
     end
