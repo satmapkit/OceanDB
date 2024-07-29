@@ -134,6 +134,17 @@ classdef AlongTrack < handle
             fprintf(join(["All data removed from table " tableName " in database " self.db_name ".\n"]));
         end
 
+        function query = sqlQueryWithName(self,name)
+            [filepath,~,~] = fileparts(mfilename('fullpath'));
+            path = fullfile(filepath,'..', 'sql',name);
+            query = join(readlines(path));
+        end
+
+        function path = dataFilePathWithName(self,name)
+            [filepath,~,~] = fileparts(mfilename('fullpath'));
+            path = fullfile(filepath,'..', 'data',name);
+        end
+
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %
         % AlongTrack table creation/destruction
@@ -141,7 +152,7 @@ classdef AlongTrack < handle
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function createAlongTrackTable(self)
-            tokenizedQuery = join(readlines("../sql/createAlongTrackTable.sql"));
+            tokenizedQuery = self.sqlQueryWithName("createAlongTrackTable.sql");
             query = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
             self.executeQuery(query);
@@ -158,16 +169,16 @@ classdef AlongTrack < handle
         end
 
         function createAlongTrackIndices(self)
-            tokenizedQuery = join(readlines("../sql/createAlongTrackIndexPoint.sql"));
+            tokenizedQuery = self.sqlQueryWithName("createAlongTrackIndexPoint.sql");
             queryPointIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
-            tokenizedQuery = join(readlines("../sql/createAlongTrackIndexDate.sql"));
+            tokenizedQuery = self.sqlQueryWithName("createAlongTrackIndexDate.sql");
             queryDateIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
-            tokenizedQuery = join(readlines("../sql/createAlongTrackIndexPointDate.sql"));
+            tokenizedQuery = self.sqlQueryWithName("createAlongTrackIndexPointDate.sql");
             queryPointDateIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
-            tokenizedQuery = join(readlines("../sql/createAlongTrackIndexFilename.sql"));
+            tokenizedQuery = self.sqlQueryWithName("createAlongTrackIndexFilename.sql");
             queryFilenameIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
             self.executeQuery(queryPointIndex,queryDateIndex,queryFilenameIndex);
@@ -176,21 +187,77 @@ classdef AlongTrack < handle
         end
 
         function dropAlongTrackIndices(self)
-            tokenizedQuery = join(readlines("../sql/dropAlongTrackIndexPoint.sql"));
+            tokenizedQuery = self.sqlQueryWithName("dropAlongTrackIndexPoint.sql");
             queryPointIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
-            tokenizedQuery = join(readlines("../sql/dropAlongTrackIndexDate.sql"));
+            tokenizedQuery = self.sqlQueryWithName("dropAlongTrackIndexDate.sql");
             queryDateIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
-            tokenizedQuery = join(readlines("../sql/dropAlongTrackIndexPointDate.sql"));
+            tokenizedQuery = self.sqlQueryWithName("dropAlongTrackIndexPointDate.sql");
             queryPointDateIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
-            tokenizedQuery = join(readlines("../sql/dropAlongTrackIndexFilename.sql"));
+            tokenizedQuery = self.sqlQueryWithName("dropAlongTrackIndexFilename.sql");
             queryFilenameIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
             self.executeQuery(queryPointIndex,queryDateIndex,queryFilenameIndex);
 
             fprintf(join(["Indices dropped from table " self.alongTrackTableName " in database " self.db_name ".\n"]));
+        end
+
+        function insertAlongTrackDataFromCopernicusNetCDF(self,file)
+           ncid = netcdf.open(file);
+
+           time = netcdf.getVar(ncid,netcdf.inqVarID(ncid,'time'));
+           lat = netcdf.getVar(ncid,netcdf.inqVarID(ncid,'latitude'));
+           lon = netcdf.getVar(ncid,netcdf.inqVarID(ncid,'longitude'));
+           cycle = netcdf.getVar(ncid,netcdf.inqVarID(ncid,'cycle'));
+           track = netcdf.getVar(ncid,netcdf.inqVarID(ncid,'track'));
+           sla_unfiltered = netcdf.getVar(ncid,netcdf.inqVarID(ncid,'sla_unfiltered'));
+           sla_filtered = netcdf.getVar(ncid,netcdf.inqVarID(ncid,'sla_filtered'));
+           dac = netcdf.getVar(ncid,netcdf.inqVarID(ncid,'dac'));
+           ocean_tide = netcdf.getVar(ncid,netcdf.inqVarID(ncid,'ocean_tide'));
+           internal_tide = netcdf.getVar(ncid,netcdf.inqVarID(ncid,'internal_tide'));
+           lwe = netcdf.getVar(ncid,netcdf.inqVarID(ncid,'lwe'));
+           mdt = netcdf.getVar(ncid,netcdf.inqVarID(ncid,'mdt'));
+           % tpa_correction = ncread(file,'tpa_correction');
+
+           netcdf.close(ncid);
+
+           date_time = datetime(1950,01,01) + days(time);
+           atData = table(date_time,lat,lon,cycle,track,sla_unfiltered,sla_filtered,dac,ocean_tide,internal_tide,lwe,mdt);
+
+           self.createAlongTrackTablePartitionsForDates(date_time);
+
+           atdb_conn = self.connection();
+           sqlwrite(atdb_conn,self.alongTrackTableName,atData);
+           atdb_conn.commit();
+           atdb_conn.close();
+        end
+
+        function createAlongTrackTablePartitionsForDates(self,dates,options)
+            arguments
+                self AlongTrack
+                dates datetime
+                options.partitionDuration char {mustBeMember(options.partitionDuration,["monthly","yearly"])} = "yearly"
+            end
+            
+            if strcmp(options.partitionDuration,"yearly")
+                for aYear = year(min(dates)):1:year(max(dates))
+                    partitionName = sprintf('%s_%d',self.alongTrackTableName,aYear);
+                    partitionMinDate = sprintf('%d-01-01',aYear);
+                    partitionMaxDate = sprintf('%d-01-01',aYear+1);
+                    tokenizedQuery = self.sqlQueryWithName("createAlongTrackTablePartition.sql");
+                    query = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
+                    query = regexprep(query,"{partition_name}",partitionName);
+                    query = regexprep(query,"{min_partition_date}",partitionMinDate);
+                    query = regexprep(query,"{max_partition_date}",partitionMaxDate);
+
+                    self.executeQuery(query);
+                end
+            else
+                error('Not yet implemented.');
+            end
+
         end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -200,7 +267,7 @@ classdef AlongTrack < handle
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function createAlongTrackMetadataTable(self)
-            tokenizedQuery = join(readlines("../sql/createAlongTrackMetadataTable.sql"));
+            tokenizedQuery = self.sqlQueryWithName("createAlongTrackMetadataTable.sql");
             query = regexprep(tokenizedQuery,"{table_name}",self.alongTrackMetadataTableName);
 
             self.executeQuery(query);
@@ -223,10 +290,10 @@ classdef AlongTrack < handle
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function createOceanBasinTable(self)
-            tokenizedQuery = join(readlines("../sql/createOceanBasinTable.sql"));
+            tokenizedQuery = self.sqlQueryWithName("createOceanBasinTable.sql");
             queryCreateTable = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinTableName);
 
-            tokenizedQuery = join(readlines("../sql/createOceanBasinIndexGeom.sql"));
+            tokenizedQuery = self.sqlQueryWithName("createOceanBasinIndexGeom.sql");
             queryCreateIndex = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinTableName);
 
             self.executeQuery(queryCreateTable,queryCreateIndex);
@@ -242,7 +309,7 @@ classdef AlongTrack < handle
             % Note that this works with so few steps because the data in
             % the csv file has header names that exactly match the column
             % names in the table.
-            basinData = readtable("../data/ocean_basins.csv");
+            basinData = readtable(self.dataFilePathWithName("ocean_basins.csv"));
             atdb_conn = self.connection();
             sqlwrite(atdb_conn,self.oceanBasinTableName,basinData);
             atdb_conn.commit();
@@ -256,10 +323,10 @@ classdef AlongTrack < handle
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function createOceanBasinConnectionTable(self)
-            tokenizedQuery = join(readlines("../sql/createOceanBasinConnectionTable.sql"));
+            tokenizedQuery = self.sqlQueryWithName("createOceanBasinConnectionTable.sql");
             queryCreateTable = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinConnectionTableName);
 
-            tokenizedQuery = join(readlines("../sql/createOceanBasinConnectionIndexBasinID.sql"));
+            tokenizedQuery = self.sqlQueryWithName("createOceanBasinConnectionIndexBasinID.sql");
             queryCreateIndex = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinConnectionTableName);
 
             self.executeQuery(queryCreateTable,queryCreateIndex);
@@ -275,7 +342,7 @@ classdef AlongTrack < handle
             % Note that this works with so few steps because the data in
             % the csv file has header names that exactly match the column
             % names in the table.
-            basinConnection = readtable("../data/basin_connections_for_load.csv");
+            basinConnection = readtable(self.dataFilePathWithName("ocean_basin_connections.csv"));
             basinConnection.Properties.VariableNames(1) = "basin_id";
             basinConnection.Properties.VariableNames(2) = "connected_id";
             atdb_conn = self.connection();

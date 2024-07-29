@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS {partition_name} PARTITION OF {table_name} FOR VALUES FROM ('{min_partition_date}') TO ('{max_partition_date}');

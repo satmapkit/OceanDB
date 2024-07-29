@@ -14,7 +14,7 @@ directory_basins = os.path.abspath(os.getcwd())  # Default to current active scr
 directory_nc = 'path/to/netcdf'
 
 # atdb = AlongTrackDatabase(host, username, password, port)
-atdb = AlongTrack(host, username, port, db_name='along_track2')
+atdb = AlongTrack(host, username, port, db_name='along_track4')
 
 # Build Database
 atdb.create_database()

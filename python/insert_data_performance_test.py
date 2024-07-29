@@ -1,4 +1,4 @@
-from AlongTrack import AlongTrackDatabase
+from OceanDB.AlongTrack import AlongTrack
 import os
 
 # Database access
@@ -8,7 +8,7 @@ username = 'postgres'
 port = 5432
 
 # atdb = AlongTrackDatabase(host, username, password, port)
-atdb = AlongTrackDatabase(host, username, port, db_name='along_track2')
+atdb = AlongTrack(host, username, port, db_name='along_track2')
 
 # atdb.drop_database()
 # atdb.drop_along_track_metadata_table()

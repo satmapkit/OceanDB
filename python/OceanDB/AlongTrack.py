@@ -33,6 +33,10 @@ class AlongTrack:
             password={self.password}'''
         return conn_str
 
+    def sql_path(self):
+        sql_path = os.path.join(os.path.dirname(__file__), '../../sql/')
+        return sql_path
+
     def create_database(self):
         with pg.connect(f'host={self.host} port={self.port} user={self.username} password={self.password}') as pg_conn:
             pg_conn.autocommit = True  # Enable autocommit to execute CREATE DATABASE command
@@ -67,7 +71,7 @@ class AlongTrack:
         print(f"Database '{self.db_name}' dropped.")
 
     def create_along_track_table(self):
-        with open(os.path.join(os.path.dirname(__file__), 'sql/createAlongTrackTable.sql'), 'r') as file:
+        with open(os.path.join(self.sql_path(), 'createAlongTrackTable.sql'), 'r') as file:
             tokenized_query = file.read()
         query = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.alongTrackTableName))
 
