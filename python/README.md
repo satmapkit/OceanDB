@@ -29,6 +29,17 @@ copernicusmarine login
 
 I now run the script `copernicus_download_netcdf_data.py` with my own paths set.
 
+## Naming conventions for the database
+
+- snake_case for all variable names
+- table names should be snake case and singular, e.g., ocean_basin, ocean_basin_connection, along_track
+- verbosity and clarity, avoid abbreviations when possible.
+- longitude, latitude, (point, boundary?), e.g., ocean_basin.boundary
+- use `date_time` for a reference date
+- index names follow the format: {table_name}_{field_name}_idx
+- primary key *generally* should follow: {table_name}_id
+
+
 ## Notes
 
 https://www.postgresql.org/docs/current/populate.html
