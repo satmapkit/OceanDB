@@ -1,4 +1,4 @@
-CREATE INDEX IF NOT EXISTS sidx_basins_geom
+CREATE INDEX IF NOT EXISTS basins_geom_idx
 ON public.{table_name} USING gist
-(geom)
+(basin_geom)
 TABLESPACE pg_default;

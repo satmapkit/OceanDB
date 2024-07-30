@@ -1,1 +1,1 @@
-DROP INDEX IF EXISTS nme_alng_idx
+DROP INDEX IF EXISTS along_track_file_name_idx

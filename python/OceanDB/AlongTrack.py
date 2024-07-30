@@ -1,4 +1,5 @@
 import netCDF4 as nc
+import pandas as pd
 import psycopg as pg
 from psycopg import sql
 import glob
@@ -198,7 +199,7 @@ class AlongTrack:
     def create_along_track_metadata_table(self):
         create_table_query = sql.SQL("""
         CREATE TABLE IF NOT EXISTS public.{table_name} (
-            nme text NOT NULL,
+            file_name text NOT NULL,
             conventions text NULL,
             metadata_conventions text NULL,
             cdm_data_type text NULL,
@@ -224,7 +225,7 @@ class AlongTrack:
             ssalto_duacs_comment text NULL,
             summary text NULL,
             title text NULL,
-            CONSTRAINT cop_meta_pkey PRIMARY KEY (nme)
+            CONSTRAINT cop_meta_pkey PRIMARY KEY (file_name)
           );
           """).format(table_name=sql.Identifier(self.along_track_metadata_table_name))
 
@@ -240,7 +241,6 @@ class AlongTrack:
                     """).format(
             table_name=sql.Identifier(self.along_track_metadata_table_name)
         )
-
         with pg.connect(self.connect_string()) as conn:
             with conn.cursor() as cur:
                 cur.execute(query_drop_table)
@@ -382,7 +382,7 @@ class AlongTrack:
         query = sql.SQL(
             "INSERT INTO {table} ({fields}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s)").format(
             fields=sql.SQL(',').join([
-                sql.Identifier('nme'),
+                sql.Identifier('file_name'),
                 sql.Identifier('conventions'),
                 sql.Identifier('metadata_conventions'),
                 sql.Identifier('cdm_data_type'),
@@ -532,10 +532,10 @@ class AlongTrack:
 
     def import_data_tuple_to_postgresql(self, data, filename):
         copy_query = sql.SQL(
-            "COPY {along_tbl_nme} ( nme, track, cycle, lat, lon, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt, tpa_correction) FROM STDIN").format(
+            "COPY {along_tbl_nme} ( file_name, track, cycle, latitude, longitude, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt, tpa_correction) FROM STDIN").format(
             along_tbl_nme=sql.Identifier(self.along_track_table_name))
         copy_query = sql.SQL(
-            "COPY {along_tbl_nme} (  nme, track, cycle, lat, lon, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt) FROM STDIN").format(
+            "COPY {along_tbl_nme} (  file_name, track, cycle, latitude, longitude, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt) FROM STDIN").format(
             along_tbl_nme=sql.Identifier(self.along_track_table_name))
 
         with pg.connect(self.connect_string()) as connection:
@@ -593,7 +593,7 @@ class AlongTrack:
                 output.seek(0)
                 # Connect to the PostgreSQL database
                 copy_query = sql.SQL(
-                    "COPY {along_tbl_nme} ( nme, track, cycle, lat, lon, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt, tpa_correction) FROM STDIN WITH (FORMAT binary);").format(
+                    "COPY {along_tbl_nme} ( file_name, track, cycle, latitude, longitude, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt, tpa_correction) FROM STDIN WITH (FORMAT binary);").format(
                     along_tbl_nme=sql.Identifier(self.along_track_table_name))
                 with cur.copy(copy_query) as copy:
                     while data := output.read(8192):

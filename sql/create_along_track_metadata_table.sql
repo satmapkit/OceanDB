@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS public.{table_name} (
-            nme text NOT NULL,
+            file_name text NOT NULL,
             conventions text NULL,
             metadata_conventions text NULL,
             cdm_data_type text NULL,

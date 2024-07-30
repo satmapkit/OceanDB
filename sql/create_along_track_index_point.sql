@@ -1,4 +1,4 @@
-CREATE INDEX IF NOT EXISTS cat_pt_idx
+CREATE INDEX IF NOT EXISTS along_track_point_idx
             ON public.{table_name} USING gist
-            (cat_point)
+            (along_track_point)
             WITH (buffering=auto);
