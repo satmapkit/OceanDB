@@ -2,6 +2,7 @@
 # https://help.marine.copernicus.eu/en/articles/8286883-copernicus-marine-toolbox-api-get-original-files#h_26674730f3
 # example metadata:
 # 	https://stac.marine.copernicus.eu/metadata/SEALEVEL_GLO_PHY_L3_MY_008_062/cmems_obs-sl_glo_phy-ssh_my_j1n-l3-duacs_PT1S_202112/dataset.stac.json
+# NOTE: the dataset version varies, depending on the dataset. The json metadata file provides this information. A correct implementation would probably parse the file and use that information.
 
 # Import modules
 import copernicusmarine
@@ -44,14 +45,14 @@ dataset_id[32]="cmems_obs-sl_glo_phy-ssh_myint_s6a-lr-l3-duacs_PT1S"
 
 # Define output storage parameters
 # output_directory = "/Users/briancurtis/Documents/Eddy/Along_files2"
-# output_directory = "/Users/jearly/Documents/Data/along-track-data"
-output_directory = "/Volumes/MoreStorage/along-track-data"
+output_directory = "/Users/jearly/Documents/Data/along-track-data"
+# output_directory = "/Volumes/MoreStorage/along-track-data"
 
 # Call the get function to save data
 get_result = copernicusmarine.get(
-	dataset_id=dataset_id[13],
+	dataset_id=dataset_id[24],
 	output_directory=output_directory,
-	filter="*200[2-3]*",
+	# filter="*200[2-3]*",
 	sync=True,
 	dataset_version="202112",
 	force_download=True
