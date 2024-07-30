@@ -1,23 +1,26 @@
 from OceanDB.AlongTrack import AlongTrack
 # import OceanDB
 import os
+import yaml
+
+with open('along_params.yaml', 'r') as param_file:
+    along_parmas = yaml.full_load(param_file)
 
 # Database access
-host = 'localhost'
-username = 'postgres'
-password = 'eJ^n$+%Ghwq3#oFW'
-port = 5432
+host = along_parmas.get('host')
+username = along_parmas.get('username')
+password = along_parmas.get('password')
+port = along_parmas.get('port')
 
 # Path to directory with Ocean basin files to be uploaded.
 directory_basins = os.path.abspath(os.getcwd())  # Default to current active script directory
 # Path to Along Track NetCDF files
-directory_nc = 'path/to/netcdf'
-# directory_nc = '/Users/briancurtis/Documents/Eddy/Along_files2'
+directory_nc = along_parmas.get('nc_files_path')
 
 # atdb = AlongTrackDatabase(host, username, password, port)
 atdb = AlongTrack(host, username, password, port, db_name='along_track4')
 
-# Build Database
+Build Database
 atdb.create_database()
 atdb.create_along_track_table()
 atdb.create_along_track_indices()
@@ -38,4 +41,3 @@ atdb.create_ocean_basin_connection_tables()
 # # Add a partition size parameter to the insert data from NetCDF function?
 # # atdb.insert_along_track_data_from_netcdf('/Users/briancurtis/Documents/Eddy/along_test_ncs')
 # atdb.insert_along_track_data_from_netcdf('/Volumes/MoreStorage/along-track-data/SEALEVEL_GLO_PHY_L3_MY_008_062/cmems_obs-sl_glo_phy-ssh_my_j1-l3-duacs_PT1S_202112/2002/05')
-atdb.insert_along_track_data_from_netcdf_with_pandas(directory_nc)
