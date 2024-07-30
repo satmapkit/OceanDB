@@ -147,12 +147,12 @@ classdef AlongTrack < handle
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %
-        % AlongTrack table creation/destruction
+        % along_track table creation/destruction
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function createAlongTrackTable(self)
-            tokenizedQuery = self.sqlQueryWithName("createAlongTrackTable.sql");
+            tokenizedQuery = self.sqlQueryWithName("create_along_track_table.sql");
             query = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
             self.executeQuery(query);
@@ -169,16 +169,16 @@ classdef AlongTrack < handle
         end
 
         function createAlongTrackIndices(self)
-            tokenizedQuery = self.sqlQueryWithName("createAlongTrackIndexPoint.sql");
+            tokenizedQuery = self.sqlQueryWithName("create_along_track_index_point.sql");
             queryPointIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
-            tokenizedQuery = self.sqlQueryWithName("createAlongTrackIndexDate.sql");
+            tokenizedQuery = self.sqlQueryWithName("create_along_track_index_date.sql");
             queryDateIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
-            tokenizedQuery = self.sqlQueryWithName("createAlongTrackIndexPointDate.sql");
+            tokenizedQuery = self.sqlQueryWithName("create_along_track_index_point_date.sql");
             queryPointDateIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
-            tokenizedQuery = self.sqlQueryWithName("createAlongTrackIndexFilename.sql");
+            tokenizedQuery = self.sqlQueryWithName("create_along_track_index_filename.sql");
             queryFilenameIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
             self.executeQuery(queryPointIndex,queryDateIndex,queryFilenameIndex);
@@ -187,16 +187,16 @@ classdef AlongTrack < handle
         end
 
         function dropAlongTrackIndices(self)
-            tokenizedQuery = self.sqlQueryWithName("dropAlongTrackIndexPoint.sql");
+            tokenizedQuery = self.sqlQueryWithName("drop_along_track_index_point.sql");
             queryPointIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
-            tokenizedQuery = self.sqlQueryWithName("dropAlongTrackIndexDate.sql");
+            tokenizedQuery = self.sqlQueryWithName("drop_along_track_index_date.sql");
             queryDateIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
-            tokenizedQuery = self.sqlQueryWithName("dropAlongTrackIndexPointDate.sql");
+            tokenizedQuery = self.sqlQueryWithName("drop_along_track_index_point_date.sql");
             queryPointDateIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
-            tokenizedQuery = self.sqlQueryWithName("dropAlongTrackIndexFilename.sql");
+            tokenizedQuery = self.sqlQueryWithName("drop_along_track_index_filename.sql");
             queryFilenameIndex = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
 
             self.executeQuery(queryPointIndex,queryDateIndex,queryFilenameIndex);
@@ -246,7 +246,7 @@ classdef AlongTrack < handle
                     partitionName = sprintf('%s_%d',self.alongTrackTableName,aYear);
                     partitionMinDate = sprintf('%d-01-01',aYear);
                     partitionMaxDate = sprintf('%d-01-01',aYear+1);
-                    tokenizedQuery = self.sqlQueryWithName("createAlongTrackTablePartition.sql");
+                    tokenizedQuery = self.sqlQueryWithName("create_along_track_table_partition.sql");
                     query = regexprep(tokenizedQuery,"{table_name}",self.alongTrackTableName);
                     query = regexprep(query,"{partition_name}",partitionName);
                     query = regexprep(query,"{min_partition_date}",partitionMinDate);
@@ -267,7 +267,7 @@ classdef AlongTrack < handle
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function createAlongTrackMetadataTable(self)
-            tokenizedQuery = self.sqlQueryWithName("createAlongTrackMetadataTable.sql");
+            tokenizedQuery = self.sqlQueryWithName("create_along_track_metadata_table.sql");
             query = regexprep(tokenizedQuery,"{table_name}",self.alongTrackMetadataTableName);
 
             self.executeQuery(query);
@@ -290,10 +290,10 @@ classdef AlongTrack < handle
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function createOceanBasinTable(self)
-            tokenizedQuery = self.sqlQueryWithName("createOceanBasinTable.sql");
+            tokenizedQuery = self.sqlQueryWithName("create_basin_table.sql");
             queryCreateTable = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinTableName);
 
-            tokenizedQuery = self.sqlQueryWithName("createOceanBasinIndexGeom.sql");
+            tokenizedQuery = self.sqlQueryWithName("create_basin_index_geom.sql");
             queryCreateIndex = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinTableName);
 
             self.executeQuery(queryCreateTable,queryCreateIndex);
@@ -323,10 +323,10 @@ classdef AlongTrack < handle
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         function createOceanBasinConnectionTable(self)
-            tokenizedQuery = self.sqlQueryWithName("createOceanBasinConnectionTable.sql");
+            tokenizedQuery = self.sqlQueryWithName("create_basin_connection_table.sql");
             queryCreateTable = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinConnectionTableName);
 
-            tokenizedQuery = self.sqlQueryWithName("createOceanBasinConnectionIndexBasinID.sql");
+            tokenizedQuery = self.sqlQueryWithName("create_basin_connection_index_basin_id.sql");
             queryCreateIndex = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinConnectionTableName);
 
             self.executeQuery(queryCreateTable,queryCreateIndex);

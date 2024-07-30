@@ -10,13 +10,19 @@ import os
 
 
 class AlongTrack:
-    db_name: str = 'along_track'
-    alongTrackTableName: str = 'along_track'
-    alongTrackMetadataTableName: str = 'along_track_metadata'
-    oceanBasinsTableName: str = 'basins'
-    oceanBasinsConnectionsTableName: str = 'basin_connections'
+    db_name: str
+    along_track_table_name: str = 'along_track'
+    along_track_metadata_table_name: str = 'along_track_metadata'
+    ocean_basin_table_name: str = 'basin'
+    ocean_basins_connections_table_name: str = 'basin_connection'
 
-    def __init__(self, host, username, password, port=5432, db_name='along_track'):
+    ######################################################
+    #
+    # Initialization
+    #
+    ######################################################
+
+    def __init__(self, host, username, password, port=5432, db_name='ocean'):
         self.host = host
         self.username = username
         self.password = password
@@ -24,18 +30,11 @@ class AlongTrack:
         self.db_name = db_name
         self.__partitions_created = []
 
-    def connect_string(self):
-        conn_str = f'''
-            host={self.host} 
-            dbname={self.db_name}
-            port={self.port} 
-            user={self.username} 
-            password={self.password}'''
-        return conn_str
-
-    def sql_path(self):
-        sql_path = os.path.join(os.path.dirname(__file__), '../../sql/')
-        return sql_path
+    ######################################################
+    #
+    # Database creation/destruction
+    #
+    ######################################################
 
     def create_database(self):
         with pg.connect(f'host={self.host} port={self.port} user={self.username} password={self.password}') as pg_conn:
@@ -63,87 +62,102 @@ class AlongTrack:
     def drop_database(self):
         with pg.connect(f'host={self.host} port={self.port} user={self.username} password={self.password}') as conn:
             conn.autocommit = True  # Enable autocommit to execute CREATE DATABASE command
-            # Create a cursor object
             with conn.cursor() as cur:
-                # Create the new database
                 cur.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(self.db_name)))
 
         print(f"Database '{self.db_name}' dropped.")
 
-    def create_along_track_table(self):
-        with open(os.path.join(self.sql_path(), 'createAlongTrackTable.sql'), 'r') as file:
+    ######################################################
+    #
+    # Generic database actions
+    #
+    ######################################################
+
+    def connect_string(self):
+        conn_str = f'''
+            host={self.host} 
+            dbname={self.db_name}
+            port={self.port} 
+            user={self.username} 
+            password={self.password}'''
+        return conn_str
+
+    def drop_table(self, name):
+        query_drop_table = sql.SQL("""DROP TABLE IF EXISTS public.{table_name}""").format(
+            table_name=sql.Identifier(name)
+        )
+
+        with pg.connect(self.connect_string()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query_drop_table)
+                conn.commit()
+
+        print(f"Table '{name} dropped from database.'{self.db_name}'.")
+
+    def truncate_table(self, name):
+        query_truncate_table = sql.SQL("""TRUNCATE public.{table_name}""").format(
+            table_name=sql.Identifier(name)
+        )
+
+        with pg.connect(self.connect_string()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query_truncate_table)
+                conn.commit()
+
+        print(f"All data removed from table '{name} in database.'{self.db_name}'.")
+
+    def sql_query_with_name(self, name):
+        sql_folder_path = os.path.join(os.path.dirname(__file__), '../../sql/')
+        with open(os.path.join(sql_folder_path, name), 'r') as file:
             tokenized_query = file.read()
-        query = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.alongTrackTableName))
+        return tokenized_query
+
+    def data_file_path_with_name(self, name):
+        sql_folder_path = os.path.join(os.path.dirname(__file__), '../../data/')
+        path = os.path.join(sql_folder_path, name)
+        return path
+
+    ######################################################
+    #
+    # along_track table creation/destruction
+    #
+    ######################################################
+
+    def create_along_track_table(self):
+        tokenized_query = self.sql_query_with_name('create_along_track_table.sql')
+        query = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
         with pg.connect(self.connect_string()) as conn:
             with conn.cursor() as cur:
                 cur.execute(query)
                 conn.commit()
-        print(f"Table '{self.alongTrackTableName} added to database (if it did not previously exist) '{self.db_name}'.")
+        print(f"Table '{self.along_track_table_name} added to database (if it did not previously exist) '{self.db_name}'.")
 
     def drop_along_track_table(self):
-        query_drop_table = sql.SQL("""
-                    DROP TABLE IF EXISTS public.{table_name}
-                    """).format(
-            table_name=sql.Identifier(self.alongTrackTableName)
-        )
-
-        with pg.connect(self.connect_string()) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query_drop_table)
-                conn.commit()
-
-        print(f"Table '{self.alongTrackTableName} dropped from database.'{self.db_name}'.")
+        self.drop_table(self.along_track_table_name)
 
     def truncate_along_track_table(self):
-        query_drop_table = sql.SQL("""
-                    TRUNCATE public.{table_name}
-                    """).format(
-            table_name=sql.Identifier(self.alongTrackTableName)
-        )
-
-        with pg.connect(self.connect_string()) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query_drop_table)
-                conn.commit()
-
-        print(f"All data removed from table '{self.alongTrackTableName} in database.'{self.db_name}'.")
+        self.truncate_table(self.along_track_table_name)
 
     def create_along_track_indices(self):
-        query_create_point_index = sql.SQL("""
-            CREATE INDEX IF NOT EXISTS cat_pt_idx
-            ON public.{table_name} USING gist
-            (cat_point)
-            WITH (buffering=auto);
-            """).format(
-            table_name=sql.Identifier(self.alongTrackTableName)
+        tokenized_query = self.sql_query_with_name('create_along_track_index_point.sql')
+        query_create_point_index = sql.SQL(tokenized_query).format(
+            table_name=sql.Identifier(self.along_track_table_name)
         )
 
-        query_create_date_index = sql.SQL("""
-            CREATE INDEX IF NOT EXISTS date_idx
-            ON public.{table_name} USING btree
-            ((date_time::date) ASC NULLS LAST)
-            WITH (deduplicate_items=True);
-        """).format(
-            table_name=sql.Identifier(self.alongTrackTableName)
+        tokenized_query = self.sql_query_with_name('create_along_track_index_date.sql')
+        query_create_date_index = sql.SQL(tokenized_query).format(
+            table_name=sql.Identifier(self.along_track_table_name)
         )
 
-        query_create_filename_index = sql.SQL("""
-            CREATE INDEX IF NOT EXISTS nme_alng_idx
-            ON public.{table_name} USING btree
-            (nme COLLATE pg_catalog."default" ASC NULLS LAST)
-            WITH (deduplicate_items=True);
-        """).format(
-            table_name=sql.Identifier(self.alongTrackTableName)
+        tokenized_query = self.sql_query_with_name('create_along_track_index_filename.sql')
+        query_create_filename_index = sql.SQL(tokenized_query).format(
+            table_name=sql.Identifier(self.along_track_table_name)
         )
 
-        query_create_combined_point_date_index = sql.SQL("""
-            CREATE INDEX IF NOT EXISTS cat_pt_date_idx
-            ON public.{table_name} USING gist
-            (cat_point, (date_time::date))
-            WITH (buffering=auto);
-            """).format(
-            table_name=sql.Identifier(self.alongTrackTableName)
+        tokenized_query = self.sql_query_with_name('create_along_track_index_point_date.sql')
+        query_create_combined_point_date_index = sql.SQL(tokenized_query).format(
+            table_name=sql.Identifier(self.along_track_table_name)
         )
 
         with pg.connect(self.connect_string()) as conn:
@@ -158,28 +172,28 @@ class AlongTrack:
             DROP INDEX IF EXISTS cat_pt_idx
             ON public.{table_name}
             """).format(
-            table_name=sql.Identifier(self.alongTrackTableName)
+            table_name=sql.Identifier(self.along_track_table_name)
         )
 
         query_drop_date_index = sql.SQL("""
             DROP INDEX IF EXISTS date_idx
             ON public.{table_name}
         """).format(
-            table_name=sql.Identifier(self.alongTrackTableName)
+            table_name=sql.Identifier(self.along_track_table_name)
         )
 
         query_drop_filename_index = sql.SQL("""
             DROP INDEX IF EXISTS nme_alng_idx
             ON public.{table_name}
         """).format(
-            table_name=sql.Identifier(self.alongTrackTableName)
+            table_name=sql.Identifier(self.along_track_table_name)
         )
 
         query_drop_combined_point_date_index = sql.SQL("""
             DROP INDEX IF EXISTS cat_pt_date_idx
             ON public.{table_name}
             """).format(
-            table_name=sql.Identifier(self.alongTrackTableName)
+            table_name=sql.Identifier(self.along_track_table_name)
         )
 
         with pg.connect(self.connect_string()) as conn:
@@ -220,19 +234,19 @@ class AlongTrack:
             title text NULL,
             CONSTRAINT cop_meta_pkey PRIMARY KEY (nme)
           );
-          """).format(table_name=sql.Identifier(self.alongTrackMetadataTableName))
+          """).format(table_name=sql.Identifier(self.along_track_metadata_table_name))
 
         with pg.connect(self.connect_string()) as conn:
             with conn.cursor() as cur:
                 cur.execute(create_table_query)
                 conn.commit()
-        print(f"Table {self.alongTrackMetadataTableName} added to database {self.db_name} (if it did not previously exist).")
+        print(f"Table {self.along_track_metadata_table_name} added to database {self.db_name} (if it did not previously exist).")
 
     def drop_along_track_metadata_table(self):
         query_drop_table = sql.SQL("""
                     DROP TABLE IF EXISTS public.{table_name}
                     """).format(
-            table_name=sql.Identifier(self.alongTrackMetadataTableName)
+            table_name=sql.Identifier(self.along_track_metadata_table_name)
         )
 
         with pg.connect(self.connect_string()) as conn:
@@ -240,13 +254,13 @@ class AlongTrack:
                 cur.execute(query_drop_table)
                 conn.commit()
 
-        print(f"Table {self.alongTrackMetadataTableName} dropped from database {self.db_name}.")
+        print(f"Table {self.along_track_metadata_table_name} dropped from database {self.db_name}.")
 
     def truncate_along_track_metadata_table(self):
         query_drop_table = sql.SQL("""
                     TRUNCATE public.{table_name}
                     """).format(
-            table_name=sql.Identifier(self.alongTrackMetadataTableName)
+            table_name=sql.Identifier(self.along_track_metadata_table_name)
         )
 
         with pg.connect(self.connect_string()) as conn:
@@ -254,7 +268,7 @@ class AlongTrack:
                 cur.execute(query_drop_table)
                 conn.commit()
 
-        print(f"All data removed from table '{self.alongTrackMetadataTableName} in database.'{self.db_name}'.")
+        print(f"All data removed from table '{self.along_track_metadata_table_name} in database.'{self.db_name}'.")
 
     def create_ocean_basin_tables(self):
         query_create_ocean_basins_table = sql.SQL("""
@@ -270,7 +284,7 @@ class AlongTrack:
             CONSTRAINT basins_pkey PRIMARY KEY (id)
         )"""
                                                   ).format(
-            table_name=sql.Identifier(self.oceanBasinsTableName)
+            table_name=sql.Identifier(self.ocean_basin_table_name)
         )
 
         query_create_ocean_basins_index = sql.SQL("""
@@ -279,7 +293,7 @@ class AlongTrack:
             (geom)
             TABLESPACE pg_default;
         """).format(
-            table_name=sql.Identifier(self.oceanBasinsTableName)
+            table_name=sql.Identifier(self.ocean_basin_table_name)
         )
 
         with pg.connect(self.connect_string()) as conn:
@@ -288,7 +302,7 @@ class AlongTrack:
                 cur.execute(query_create_ocean_basins_index)
                 conn.commit()
 
-        print(f"Table '{self.oceanBasinsTableName}' added to database (if they did not previously exist) '{self.db_name}'.")
+        print(f"Table '{self.ocean_basin_table_name}' added to database (if they did not previously exist) '{self.db_name}'.")
 
     def create_ocean_basin_connection_tables(self):
         query_create_ocean_basins_connections_table = sql.SQL("""
@@ -300,7 +314,7 @@ class AlongTrack:
             CONSTRAINT basin_connections_pkey PRIMARY KEY (pid)
         )"""
                                                               ).format(
-            table_name=sql.Identifier(self.oceanBasinsConnectionsTableName)
+            table_name=sql.Identifier(self.ocean_basins_connections_table_name)
         )
 
         query_create_ocean_basins_connections_index = sql.SQL("""
@@ -310,7 +324,7 @@ class AlongTrack:
             WITH (deduplicate_items=True)
             TABLESPACE pg_default;
         """).format(
-            table_name=sql.Identifier(self.oceanBasinsConnectionsTableName)
+            table_name=sql.Identifier(self.ocean_basins_connections_table_name)
         )
 
         with pg.connect(self.connect_string()) as conn:
@@ -319,7 +333,7 @@ class AlongTrack:
                 cur.execute(query_create_ocean_basins_connections_index)
                 conn.commit()
 
-        print(f"Table '{self.oceanBasinsConnectionsTableName}' added to database '{self.db_name}'.")
+        print(f"Table '{self.ocean_basins_connections_table_name}' added to database '{self.db_name}'.")
 
     def insert_ocean_basins_from_csv(self, directory):
         with pg.connect(self.connect_string()) as conn:
@@ -333,7 +347,7 @@ class AlongTrack:
                     sql.Identifier('ne_id'),
                     sql.Identifier('area'),
                 ]),
-                table=sql.Identifier(self.oceanBasinsTableName),
+                table=sql.Identifier(self.ocean_basin_table_name),
             )
             try:
                 for filename in glob.glob(f'{directory}/ocean_basins.csv'):
@@ -357,7 +371,7 @@ class AlongTrack:
                     sql.Identifier('basin_id'),
                     sql.Identifier('connected_id'),
                 ]),
-                table=sql.Identifier(self.oceanBasinsConnectionsTableName),
+                table=sql.Identifier(self.ocean_basins_connections_table_name),
             )
             try:
                 for filename in glob.glob(f'{directory}/basin_connections_for_load.csv'):
@@ -403,7 +417,7 @@ class AlongTrack:
                 sql.Identifier('summary'),
                 sql.Identifier('title'),
             ]),
-            table=sql.Identifier(self.alongTrackMetadataTableName),
+            table=sql.Identifier(self.along_track_metadata_table_name),
         )
         with pg.connect(self.connect_string()) as conn:
             with conn.cursor() as cur:
@@ -527,10 +541,10 @@ class AlongTrack:
     def import_data_tuple_to_postgresql(self, data, filename):
         copy_query = sql.SQL(
             "COPY {along_tbl_nme} ( nme, track, cycle, lat, lon, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt, tpa_correction) FROM STDIN").format(
-            along_tbl_nme=sql.Identifier(self.alongTrackTableName))
+            along_tbl_nme=sql.Identifier(self.along_track_table_name))
         copy_query = sql.SQL(
             "COPY {along_tbl_nme} (  nme, track, cycle, lat, lon, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt) FROM STDIN").format(
-            along_tbl_nme=sql.Identifier(self.alongTrackTableName))
+            along_tbl_nme=sql.Identifier(self.along_track_table_name))
 
         with pg.connect(self.connect_string()) as connection:
             with connection.cursor() as cursor:
@@ -588,7 +602,7 @@ class AlongTrack:
                 # Connect to the PostgreSQL database
                 copy_query = sql.SQL(
                     "COPY {along_tbl_nme} ( nme, track, cycle, lat, lon, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt, tpa_correction) FROM STDIN WITH (FORMAT binary);").format(
-                    along_tbl_nme=sql.Identifier(self.alongTrackTableName))
+                    along_tbl_nme=sql.Identifier(self.along_track_table_name))
                 with cur.copy(copy_query) as copy:
                     while data := output.read(8192):
                         copy.write(data)
@@ -625,13 +639,13 @@ class AlongTrack:
                         to_partition = next_month
                         min_partition = this_month
 
-                    partition_name = f"{self.alongTrackTableName}_{str(year)}{month_partition_str}"  # Monthly partions are named after the table name eg: along_track_YYYYMM and yearly are named along_track_YYYY
+                    partition_name = f"{self.along_track_table_name}_{str(year)}{month_partition_str}"  # Monthly partions are named after the table name eg: along_track_YYYYMM and yearly are named along_track_YYYY
                     min_partition_date = f"{min_partition}"
                     to_partition_date = f"{to_partition}"
 
                     query = sql.SQL(
                         "CREATE TABLE IF NOT EXISTS {partition_nm} PARTITION OF {table_name} FOR VALUES FROM ('{min_partition_date}') TO ('{to_partition}');").format(
-                        table_name=sql.Identifier(self.alongTrackTableName),
+                        table_name=sql.Identifier(self.along_track_table_name),
                         partition_nm=sql.Identifier(partition_name),
                         min_partition_date=sql.Identifier(min_partition_date),
                         to_partition=sql.Identifier(to_partition_date),
