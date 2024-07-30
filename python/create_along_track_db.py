@@ -4,13 +4,13 @@ import os
 import yaml
 
 with open('along_params.yaml', 'r') as param_file:
-    along_parmas = yaml.full_load(param_file)
+    along_params = yaml.full_load(param_file)
 
 # Database access
-host = along_parmas.get('host')
-username = along_parmas.get('username')
-password = along_parmas.get('password')
-port = along_parmas.get('port')
+host = along_params.get('host')
+username = along_params.get('username')
+password = along_params.get('password')
+port = along_params.get('port')
 
 # Path to directory with Ocean basin files to be uploaded.
 directory_basins = os.path.abspath(os.getcwd())  # Default to current active script directory
