@@ -15,8 +15,8 @@ classdef AlongTrack < handle
     properties (Constant)
         alongTrackTableName = 'along_track'
         alongTrackMetadataTableName = 'along_track_metadata'
-        oceanBasinTableName = 'basins'
-        oceanBasinConnectionTableName = 'basin_connections'
+        oceanBasinTableName = 'basin'
+        oceanBasinConnectionTableName = 'basin_connection'
     end
 
     methods
@@ -30,7 +30,7 @@ classdef AlongTrack < handle
             arguments
                 options.username
                 options.password = ''
-                options.db_name = 'along_track'
+                options.db_name = 'ocean'
                 options.host = 'localhost'
                 options.port = 5432
             end
