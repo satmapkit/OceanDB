@@ -1,1 +1,1 @@
-DROP INDEX IF EXISTS cat_pt_date_idx
+DROP INDEX IF EXISTS along_track_point_date_idx
