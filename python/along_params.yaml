@@ -1,5 +1,8 @@
 ---
-  'nc_files_path': '/Users/briancurtis/Documents/Eddy/Along_files2'
+  'copernicus_marine':
+    'username': 'bcurtis'
+    'password': '????'
+    'nc_files_path': '/Users/briancurtis/Documents/Eddy/Along_files2'
   'db_connect':
     'host': 'localhost'
     'username': 'postgres'

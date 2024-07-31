@@ -7,6 +7,10 @@
 # Import modules
 import copernicusmarine
 from pprint import pprint
+import yaml
+
+with open('../along_params_jje.yaml', 'r') as param_file:
+    along_params = yaml.full_load(param_file)
 
 dataset_id = ['']*33
 dataset_id[0]="cmems_obs-sl_glo_phy-ssh_my_al-l3-duacs_PT1S"
@@ -45,13 +49,15 @@ dataset_id[32]="cmems_obs-sl_glo_phy-ssh_myint_s6a-lr-l3-duacs_PT1S"
 
 # Define output storage parameters
 # output_directory = "/Users/briancurtis/Documents/Eddy/Along_files2"
-output_directory = "/Users/jearly/Documents/Data/along-track-data"
+# output_directory = "/Users/jearly/Documents/Data/along-track-data"
 # output_directory = "/Volumes/MoreStorage/along-track-data"
+
+copernicusmarine.login(username=along_params['copernicus_marine']['username'], password=along_params['copernicus_marine']['password'], skip_if_user_logged_in=True)
 
 # Call the get function to save data
 get_result = copernicusmarine.get(
-	dataset_id=dataset_id[24],
-	output_directory=output_directory,
+	dataset_id=dataset_id[13],
+	output_directory=along_params['copernicus_marine']['nc_files_path'],
 	# filter="*200[2-3]*",
 	sync=True,
 	dataset_version="202112",

@@ -7,20 +7,20 @@ with open('along_params.yaml', 'r') as param_file:
     along_params = yaml.full_load(param_file)
 
 # Database access
-host = along_params.get('host')
-username = along_params.get('username')
-password = along_params.get('password')
-port = along_params.get('port')
+host = along_params['db_connect']['host']
+username = along_params['db_connect']['username']
+password = along_params['db_connect']['password']
+port = along_params['db_connect']['port']
 
 # Path to directory with Ocean basin files to be uploaded.
 directory_basins = os.path.abspath(os.getcwd())  # Default to current active script directory
 # Path to Along Track NetCDF files
-directory_nc = along_parmas.get('nc_files_path')
+directory_nc = along_params.get('nc_files_path')
 
 # atdb = AlongTrackDatabase(host, username, password, port)
-atdb = AlongTrack(host, username, password, port, db_name='along_track4')
+atdb = AlongTrack(host, username, password, port, db_name='along_track5')
 
-Build Database
+# Build Database
 atdb.create_database()
 atdb.create_along_track_table()
 atdb.create_along_track_indices()
