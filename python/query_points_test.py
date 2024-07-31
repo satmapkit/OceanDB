@@ -11,8 +11,8 @@ password = along_params['db_connect']['password']
 port = along_params['db_connect']['port']
 
 # atdb = AlongTrackDatabase(host, username, password, port)
-atdb = AlongTrack(host, username, password, port, db_name='ocean')
+atdb = AlongTrack(host, username, password, port, db_name='along_track')
 
-data = atdb.geographic_points_in_spatialtemporal_window(11.375, -79.17, 100000, '2002-08-01', '2002-09-01')
+data = atdb.geographic_points_in_spatialtemporal_window(-65.934361, 24.987159, 100000, '2002-08-01', '2004-09-01')
 
 print(data)
