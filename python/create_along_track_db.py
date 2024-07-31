@@ -3,7 +3,7 @@ from OceanDB.AlongTrack import AlongTrack
 import os
 import yaml
 
-with open('along_params.yaml', 'r') as param_file:
+with open('along_params_jje.yaml', 'r') as param_file:
     along_params = yaml.full_load(param_file)
 
 # Database access

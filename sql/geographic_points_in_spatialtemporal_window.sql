@@ -1,6 +1,6 @@
 SELECT
-	 latitude,
 	 longitude,
+     latitude,
 	 sla_filtered,
 	 date_time,
 	 ST_DistanceSphere(ST_SetSRID(ST_MakePoint({longitude}, {latitude}),4326),along_track_point) as dist
