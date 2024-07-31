@@ -1,0 +1,10 @@
+---
+  'copernicus_marine':
+    'username': 'jearly'
+    'password': 'Pnx.XgBe8Lp9PH'
+    'nc_files_path': '/Volumes/MoreStorage/along-track-data'
+  'db_connect':
+    'host': 'localhost'
+    'username': 'postgres'
+    'password': ''
+    'port': 5432
