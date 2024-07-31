@@ -161,33 +161,17 @@ class AlongTrack:
                 conn.commit()
 
     def drop_along_track_indices(self):
-        query_drop_point_index = sql.SQL("""
-            DROP INDEX IF EXISTS cat_pt_idx
-            ON public.{table_name}
-            """).format(
-            table_name=sql.Identifier(self.along_track_table_name)
-        )
+        tokenized_query = self.sql_query_with_name('drop_along_track_index_point.sql')
+        query_drop_point_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
-        query_drop_date_index = sql.SQL("""
-            DROP INDEX IF EXISTS date_idx
-            ON public.{table_name}
-        """).format(
-            table_name=sql.Identifier(self.along_track_table_name)
-        )
+        tokenized_query = self.sql_query_with_name('drop_along_track_index_date.sql')
+        query_drop_date_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
-        query_drop_filename_index = sql.SQL("""
-            DROP INDEX IF EXISTS nme_alng_idx
-            ON public.{table_name}
-        """).format(
-            table_name=sql.Identifier(self.along_track_table_name)
-        )
+        tokenized_query = self.sql_query_with_name('drop_along_track_index_filename.sql')
+        query_drop_filename_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
-        query_drop_combined_point_date_index = sql.SQL("""
-            DROP INDEX IF EXISTS cat_pt_date_idx
-            ON public.{table_name}
-            """).format(
-            table_name=sql.Identifier(self.along_track_table_name)
-        )
+        tokenized_query = self.sql_query_with_name('drop_along_track_index_point_date.sql')
+        query_drop_combined_point_date_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
         with pg.connect(self.connect_string()) as conn:
             with conn.cursor() as cur:
@@ -196,38 +180,15 @@ class AlongTrack:
                 cur.execute(query_drop_filename_index)
                 conn.commit()
 
+    ######################################################
+    #
+    # along_track_metadata table creation/destruction
+    #
+    ######################################################
+
     def create_along_track_metadata_table(self):
-        create_table_query = sql.SQL("""
-        CREATE TABLE IF NOT EXISTS public.{table_name} (
-            file_name text NOT NULL,
-            conventions text NULL,
-            metadata_conventions text NULL,
-            cdm_data_type text NULL,
-            comment text NULL,
-            contact text NULL,
-            creator_email text NULL,
-            creator_name text NULL,
-            creator_url text NULL,
-            date_created timestamp with time zone NULL,
-            date_issued timestamp with time zone NULL,
-            date_modified timestamp with time zone NULL,
-            history text NULL,
-            institution text NULL,
-            keywords text NULL,
-            license text NULL,
-            platform text NULL,
-            processing_level text NULL,
-            product_version text NULL,
-            project text NULL,
-            "references" text NULL,
-            software_version text NULL,
-            source text NULL,
-            ssalto_duacs_comment text NULL,
-            summary text NULL,
-            title text NULL,
-            CONSTRAINT cop_meta_pkey PRIMARY KEY (file_name)
-          );
-          """).format(table_name=sql.Identifier(self.along_track_metadata_table_name))
+        tokenized_query = self.sql_query_with_name('create_along_track_metadata_table.sql')
+        create_table_query = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_metadata_table_name))
 
         with pg.connect(self.connect_string()) as conn:
             with conn.cursor() as cur:
@@ -236,55 +197,25 @@ class AlongTrack:
         print(f"Table {self.along_track_metadata_table_name} added to database {self.db_name} (if it did not previously exist).")
 
     def drop_along_track_metadata_table(self):
-        query_drop_table = sql.SQL("""
-                    DROP TABLE IF EXISTS public.{table_name}
-                    """).format(
-            table_name=sql.Identifier(self.along_track_metadata_table_name)
-        )
-        with pg.connect(self.connect_string()) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query_drop_table)
-                conn.commit()
-
-        print(f"Table {self.along_track_metadata_table_name} dropped from database {self.db_name}.")
+        self.drop_table(self.along_track_metadata_table_name)
 
     def truncate_along_track_metadata_table(self):
-        query_drop_table = sql.SQL("""
-                    TRUNCATE public.{table_name}
-                    """).format(
-            table_name=sql.Identifier(self.along_track_metadata_table_name)
-        )
+        self.truncate_table(self.along_track_metadata_table_name)
 
-        with pg.connect(self.connect_string()) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query_drop_table)
-                conn.commit()
+    ######################################################
+    #
+    # basin table creation/destruction
+    #
+    ######################################################
 
-        print(f"All data removed from table '{self.along_track_metadata_table_name} in database.'{self.db_name}'.")
-
-    def create_ocean_basin_tables(self):
-        query_create_ocean_basins_table = sql.SQL("""
-        CREATE TABLE IF NOT EXISTS public.{table_name}
-        (
-            id SERIAL,
-            geom geometry(MultiPolygon,4326),
-            feature_id integer,
-            name character varying(28) COLLATE pg_catalog."default",
-            wikidataid character varying(8) COLLATE pg_catalog."default",
-            ne_id bigint,
-            area double precision,
-            CONSTRAINT basins_pkey PRIMARY KEY (id)
-        )"""
-                                                  ).format(
+    def create_basin_table(self):
+        tokenized_query = self.sql_query_with_name('create_basin_table.sql')
+        query_create_ocean_basins_table = sql.SQL(tokenized_query).format(
             table_name=sql.Identifier(self.ocean_basin_table_name)
         )
 
-        query_create_ocean_basins_index = sql.SQL("""
-            CREATE INDEX IF NOT EXISTS sidx_basins_geom
-            ON public.{table_name} USING gist
-            (geom)
-            TABLESPACE pg_default;
-        """).format(
+        tokenized_query = self.sql_query_with_name('create_basin_index_geom.sql')
+        query_create_ocean_basins_index = sql.SQL(tokenized_query).format(
             table_name=sql.Identifier(self.ocean_basin_table_name)
         )
 
@@ -294,28 +225,52 @@ class AlongTrack:
                 cur.execute(query_create_ocean_basins_index)
                 conn.commit()
 
-        print(f"Table '{self.ocean_basin_table_name}' added to database (if they did not previously exist) '{self.db_name}'.")
+        print(f"Table '{self.ocean_basin_table_name}' added to database (if it did not previously exist) '{self.db_name}'.")
 
-    def create_ocean_basin_connection_tables(self):
-        query_create_ocean_basins_connections_table = sql.SQL("""
-        CREATE TABLE IF NOT EXISTS public.{table_name}
-        (
-            pid smallint NOT NULL GENERATED ALWAYS AS IDENTITY ( INCREMENT 1 START 1 MINVALUE 1 MAXVALUE 32767 CACHE 1 ),
-            connected_id smallint NOT NULL,
-            basin_id smallint NOT NULL,
-            CONSTRAINT basin_connections_pkey PRIMARY KEY (pid)
-        )"""
-                                                              ).format(
+    def drop_basin_table(self):
+        self.drop_table(self.ocean_basin_table_name)
+
+    def insert_basin_from_csv(self):
+        query = sql.SQL("COPY {table} ({fields}) FROM STDIN WITH (FORMAT CSV, HEADER)").format(
+            fields=sql.SQL(',').join([
+                sql.Identifier('id'),
+                sql.Identifier('basin_geom'),
+                sql.Identifier('feature_id'),
+                sql.Identifier('name'),
+                sql.Identifier('wikidataid'),
+                sql.Identifier('ne_id'),
+                sql.Identifier('area'),
+            ]),
+            table=sql.Identifier(self.ocean_basin_table_name),
+        )
+
+        try:
+            with open(self.data_file_path_with_name('ocean_basins.csv'), 'r') as f:
+                with pg.connect(self.connect_string()) as conn:
+                    with conn.cursor() as cursor:
+                        with cursor.copy(query) as copy:
+                            copy.write(f.read())
+                        conn.commit()
+        except FileNotFoundError:
+            print("File 'ocean_basins.csv' not found")
+        else:
+            print('Ocean basins loaded')
+
+
+    ######################################################
+    #
+    # basin_connection table creation/destruction
+    #
+    ######################################################
+
+    def create_basin_connection_table(self):
+        tokenized_query = self.sql_query_with_name('create_basin_connection_table.sql')
+        query_create_ocean_basins_connections_table = sql.SQL(tokenized_query).format(
             table_name=sql.Identifier(self.ocean_basins_connections_table_name)
         )
 
-        query_create_ocean_basins_connections_index = sql.SQL("""
-            CREATE INDEX IF NOT EXISTS basin_id_idx
-            ON public.{table_name} USING btree
-            (basin_id ASC NULLS LAST, connected_id ASC NULLS LAST)
-            WITH (deduplicate_items=True)
-            TABLESPACE pg_default;
-        """).format(
+        tokenized_query = self.sql_query_with_name('create_basin_connection_index_basin_id.sql')
+        query_create_ocean_basins_connections_index = sql.SQL(tokenized_query).format(
             table_name=sql.Identifier(self.ocean_basins_connections_table_name)
         )
 
@@ -327,56 +282,30 @@ class AlongTrack:
 
         print(f"Table '{self.ocean_basins_connections_table_name}' added to database '{self.db_name}'.")
 
-    def insert_ocean_basins_from_csv(self, directory):
-        with pg.connect(self.connect_string()) as conn:
-            query = sql.SQL("COPY {table} ({fields}) FROM STDIN WITH (FORMAT CSV, HEADER)").format(
-                fields=sql.SQL(',').join([
-                    sql.Identifier('id'),
-                    sql.Identifier('geom'),
-                    sql.Identifier('feature_id'),
-                    sql.Identifier('name'),
-                    sql.Identifier('wikidataid'),
-                    sql.Identifier('ne_id'),
-                    sql.Identifier('area'),
-                ]),
-                table=sql.Identifier(self.ocean_basin_table_name),
-            )
-            try:
-                for filename in glob.glob(f'{directory}/ocean_basins.csv'):
-                    # for filename in glob.glob(loadfile):
-                    with conn.cursor() as cur:
-                        with open(filename, 'r') as f:
-                            # f = f.read()
-                            with cur.copy(query) as copy:
-                                while data := f.read(100):
-                                    copy.write(data)
-                        conn.commit()
-            except FileNotFoundError:
-                print("File 'ocean_basins.csv' not found")
-            else:
-                print('Ocean basins loaded')
+    def drop_basin_connection_table(self):
+        self.drop_table(self.ocean_basins_connections_table_name)
 
-    def insert_ocean_basin_connections_from_csv(self, directory):
-        with pg.connect(self.connect_string()) as conn:
-            query = sql.SQL("COPY {table} ({fields}) FROM STDIN WITH (FORMAT CSV, HEADER)").format(
-                fields=sql.SQL(',').join([
-                    sql.Identifier('basin_id'),
-                    sql.Identifier('connected_id'),
-                ]),
-                table=sql.Identifier(self.ocean_basins_connections_table_name),
-            )
-            try:
-                for filename in glob.glob(f'{directory}/basin_connections_for_load.csv'):
-                    with conn.cursor() as cur:
-                        with open(filename, 'r') as f:
-                            with cur.copy(query) as copy:
-                                while data := f.read(100):
-                                    copy.write(data)
-                        conn.commit()
-            except FileNotFoundError:
-                print("File 'basin_connections_for_load.csv' not found")
-            else:
-                print('Ocean basin connections loaded')
+    def insert_basin_connection_from_csv(self):
+        query = sql.SQL("COPY {table} ({fields}) FROM STDIN WITH (FORMAT CSV, HEADER)").format(
+            fields=sql.SQL(',').join([
+                sql.Identifier('basin_id'),
+                sql.Identifier('connected_id'),
+            ]),
+            table=sql.Identifier(self.ocean_basins_connections_table_name),
+        )
+
+        try:
+            with open(self.data_file_path_with_name('ocean_basin_connections.csv'), 'r') as filename:
+                with pg.connect(self.connect_string()) as conn:
+                    with conn.cursor() as cursor:
+                        with cursor.copy(query) as copy:
+                            while data := filename.read(100):
+                                copy.write(data)
+                    conn.commit()
+        except FileNotFoundError:
+            print("File 'basin_connections_for_load.csv' not found")
+        else:
+            print('Ocean basin connections loaded')
 
     def import_metadata_to_psql(self, ds, fname):
         query = sql.SQL(
@@ -635,12 +564,12 @@ class AlongTrack:
                     min_partition_date = f"{min_partition}"
                     to_partition_date = f"{to_partition}"
 
-                    query = sql.SQL(
-                        "CREATE TABLE IF NOT EXISTS {partition_nm} PARTITION OF {table_name} FOR VALUES FROM ('{min_partition_date}') TO ('{to_partition}');").format(
+                    tokenized_query = self.sql_query_with_name('create_along_track_table_partition.sql')
+                    query = sql.SQL(tokenized_query).format(
                         table_name=sql.Identifier(self.along_track_table_name),
-                        partition_nm=sql.Identifier(partition_name),
+                        partition_name=sql.Identifier(partition_name),
                         min_partition_date=sql.Identifier(min_partition_date),
-                        to_partition=sql.Identifier(to_partition_date),
+                        max_partition_date=sql.Identifier(to_partition_date),
                     )
                     # 		print(query)
                     if partition_name not in self.__partitions_created:
@@ -670,7 +599,7 @@ class AlongTrack:
 
     def insert_along_track_data_from_netcdf_with_tuples(self, directory):
         start = time.time()
-        for file_path in glob.glob(directory + '/*.nc'):
+        for file_path in glob.glob(directory + '/**/*.nc'):
             names = [os.path.basename(x) for x in glob.glob(file_path)]
             filename = names[0]  # filename will be used to link data to metadata
             data = self.extract_data_tuple_from_netcdf(file_path, filename)
@@ -680,3 +609,26 @@ class AlongTrack:
             print(f"{filename} import time: {import_end - import_start}")
         end = time.time()
         print(f"Script end. Total time: {end - start}")
+
+        ######################################################
+        #
+        # simple queries
+        #
+        ######################################################
+
+    def geographic_points_in_spatialtemporal_window(self, latitude, longitude, distance, min_date, max_date):
+        tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window.sql')
+        query_points = sql.SQL(tokenized_query).format(
+            latitude=latitude,
+            longitude=longitude,
+            distance=distance,
+            min_date=min_date,
+            max_date=max_date
+        )
+
+        with pg.connect(self.connect_string()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query_points)
+                data = cursor.fetchall()
+
+        return data

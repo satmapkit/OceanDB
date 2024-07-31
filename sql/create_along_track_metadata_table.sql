@@ -25,5 +25,5 @@ CREATE TABLE IF NOT EXISTS public.{table_name} (
             ssalto_duacs_comment text NULL,
             summary text NULL,
             title text NULL,
-            CONSTRAINT cop_meta_pkey PRIMARY KEY (nme)
+            CONSTRAINT cop_meta_pkey PRIMARY KEY (file_name)
           );

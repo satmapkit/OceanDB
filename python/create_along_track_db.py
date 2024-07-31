@@ -18,15 +18,22 @@ directory_basins = os.path.abspath(os.getcwd())  # Default to current active scr
 directory_nc = along_params.get('nc_files_path')
 
 # atdb = AlongTrackDatabase(host, username, password, port)
-atdb = AlongTrack(host, username, password, port, db_name='along_track5')
+atdb = AlongTrack(host, username, password, port, db_name='ocean')
+
+# atdb.drop_database()
 
 # Build Database
 atdb.create_database()
+
 atdb.create_along_track_table()
 atdb.create_along_track_indices()
 atdb.create_along_track_metadata_table()
-atdb.create_ocean_basin_tables()
-atdb.create_ocean_basin_connection_tables()
+
+atdb.create_basin_table()
+atdb.insert_basin_from_csv()
+
+atdb.create_basin_connection_table()
+atdb.insert_basin_connection_from_csv()
 
 # Database build complete. Now load data
 #

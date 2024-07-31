@@ -262,7 +262,7 @@ classdef AlongTrack < handle
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %
-        % AlongTrackMetadata table creation/destruction
+        % along_track_metadata table creation/destruction
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -289,7 +289,7 @@ classdef AlongTrack < handle
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        function createOceanBasinTable(self)
+        function createBasinTable(self)
             tokenizedQuery = self.sqlQueryWithName("create_basin_table.sql");
             queryCreateTable = regexprep(tokenizedQuery,"{table_name}",self.oceanBasinTableName);
 
@@ -301,11 +301,11 @@ classdef AlongTrack < handle
             fprintf(join(["Table " self.oceanBasinTableName " added to database " self.db_name " (if it did not previously exist).\n"]));
         end
 
-        function dropOceanBasinTable(self)
+        function dropBasinTable(self)
             self.dropTable(self.oceanBasinTableName);
         end
 
-        function insertOceanBasinDataFromCSV(self)
+        function insertBasinDataFromCSV(self)
             % Note that this works with so few steps because the data in
             % the csv file has header names that exactly match the column
             % names in the table.
