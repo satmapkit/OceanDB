@@ -234,7 +234,7 @@ class AlongTrack:
         query = sql.SQL("COPY {table} ({fields}) FROM STDIN WITH (FORMAT CSV, HEADER)").format(
             fields=sql.SQL(',').join([
                 sql.Identifier('id'),
-                sql.Identifier('basin_geom'),
+                sql.Identifier('basin_geog'),
                 sql.Identifier('feature_id'),
                 sql.Identifier('name'),
                 sql.Identifier('wikidataid'),
