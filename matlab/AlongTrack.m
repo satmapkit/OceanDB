@@ -387,7 +387,7 @@ classdef AlongTrack < handle
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        function results = geographic_points_in_spatialtemporal_window(self,latitude,longitude,distance,min_date,max_date,should_basin_mask)
+        function results = geographicPointsInSpatialtemporalWindow(self,latitude,longitude,distance,min_date,max_date,should_basin_mask)
             arguments
                 self 
                 latitude 
@@ -403,14 +403,14 @@ classdef AlongTrack < handle
                 tokenizedQuery = self.sqlQueryWithName("geographic_points_in_spatialtemporal_window_nomask.sql");
             end
 
-            query = regexprep(tokenizedQuery,"{latitude}",latitude);
-            query = regexprep(query,"{longitude}",longitude);
-            query = regexprep(query,"{distance}",distance);
-            query = regexprep(query,"{min_date}",min_date);
-            query = regexprep(query,"{max_date}",max_date);
+            query = regexprep(tokenizedQuery,"{latitude}",string(latitude));
+            query = regexprep(query,"{longitude}",string(longitude));
+            query = regexprep(query,"{distance}",string(distance));
+            query = regexprep(query,"{min_date}",sprintf("'%s'",min_date));
+            query = regexprep(query,"{max_date}",sprintf("'%s'",max_date));
 
             atdb_conn = self.connection();
-            results = fetch(conn,query);
+            results = fetch(atdb_conn,query);
             atdb_conn.close();
         end
     end
