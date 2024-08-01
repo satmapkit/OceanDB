@@ -8,6 +8,7 @@ from io import BytesIO
 import time
 from dateutil.relativedelta import relativedelta
 import os
+import yaml
 
 
 class AlongTrack:
@@ -23,12 +24,33 @@ class AlongTrack:
     #
     ######################################################
 
-    def __init__(self, host, username, password, port=5432, db_name='ocean'):
-        self.host = host
-        self.username = username
-        self.password = password
-        self.port = port
-        self.db_name = db_name
+    def __init__(self, host="", username="", password="", port=5432, db_name='ocean'):
+        with open('config.yaml', 'r') as param_file:
+            along_params = yaml.full_load(param_file)
+            if 'db_connect' in along_params:
+                if 'host' in along_params['db_connect']:
+                    self.host = along_params['db_connect']['host']
+                if 'username' in along_params['db_connect']:
+                    self.username = along_params['db_connect']['username']
+                if 'password' in along_params['db_connect']:
+                    self.password = along_params['db_connect']['password']
+                if 'port' in along_params['db_connect']:
+                    self.port = along_params['db_connect']['port']
+                if 'db_name' in along_params['db_connect']:
+                    self.db_name = along_params['db_connect']['db_name']
+
+        # locally defined variable override the settings in the config file
+        if host:
+            self.host = host
+        if username:
+            self.username = username
+        if password:
+            self.password = password
+        if port:
+            self.port = port
+        if db_name:
+            self.db_name = db_name
+
         self.__partitions_created = []
 
     ######################################################
@@ -453,6 +475,8 @@ class AlongTrack:
                 'tpa_correction': ds.variables['tpa_correction'][:]
             }
 
+            data['longitude'][:] = (data['longitude'][:] + 180) % 360 - 180
+
             ds.close()
 
             return data
@@ -599,7 +623,7 @@ class AlongTrack:
 
     def insert_along_track_data_from_netcdf_with_tuples(self, directory):
         start = time.time()
-        for file_path in glob.glob(directory + '/**/*.nc'):
+        for file_path in glob.glob(directory + '/*.nc'):
             names = [os.path.basename(x) for x in glob.glob(file_path)]
             filename = names[0]  # filename will be used to link data to metadata
             data = self.extract_data_tuple_from_netcdf(file_path, filename)
@@ -616,8 +640,12 @@ class AlongTrack:
         #
         ######################################################
 
-    def geographic_points_in_spatialtemporal_window(self, latitude, longitude, distance, min_date, max_date):
-        tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window.sql')
+    def geographic_points_in_spatialtemporal_window(self, latitude, longitude, distance, min_date, max_date, should_basin_mask=1):
+        if should_basin_mask == 1:
+            tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window.sql')
+        else:
+            tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window_nomask.sql')
+
         query_points = sql.SQL(tokenized_query).format(
             latitude=latitude,
             longitude=longitude,
