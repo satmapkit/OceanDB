@@ -634,11 +634,15 @@ class AlongTrack:
         end = time.time()
         print(f"Script end. Total time: {end - start}")
 
-        ######################################################
-        #
-        # simple queries
-        #
-        ######################################################
+    ######################################################
+    #
+    # simple queries
+    #
+    ######################################################
+
+    def geographic_points_in_spatialtemporal_window(self, latitude, longitude, date, distance=500000, time_window=relativedelta(seconds=856710), should_basin_mask=1):
+        min_date = date - relativedelta/2
+        max_date = date + relativedelta/2
 
     def geographic_points_in_spatialtemporal_window(self, latitude, longitude, distance, min_date, max_date, should_basin_mask=1):
         if should_basin_mask == 1:
