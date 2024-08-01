@@ -1,21 +1,10 @@
 from OceanDB.AlongTrack import AlongTrack
-import  matplotlib.pyplot as plt
-import yaml
+import matplotlib.pyplot as plt
 
-with open('along_params.yaml', 'r') as param_file:
-    along_params = yaml.full_load(param_file)
-
-# Database access
-host = along_params['db_connect']['host']
-username = along_params['db_connect']['username']
-password = along_params['db_connect']['password']
-port = along_params['db_connect']['port']
-
-# atdb = AlongTrackDatabase(host, username, password, port)
-atdb = AlongTrack(host, username, password, port, db_name='along_track')
+atdb = AlongTrack(db_name='ocean')
 
 # data = atdb.geographic_points_in_spatialtemporal_window(11.375, -79.17, 500000, '2002-08-01', '2002-09-01')
-data = atdb.geographic_points_in_spatialtemporal_window(-65.93, 24.987, 100000, '2002-04-01', '2003-01-01')
+data = atdb.geographic_points_in_spatialtemporal_window(11., -80, 800000, '2002-05-15', '2003-05-25', should_basin_mask=1)
 
 x = [data_i[0] for data_i in data]
 y = [data_i[1] for data_i in data]
