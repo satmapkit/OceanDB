@@ -14,4 +14,12 @@ plt.figure()
 plt.scatter(x, y, c=sla)
 plt.show()
 
+import numpy as np
+
+x = np.array(x)
+y = np.array(y)
+sla = np.array(sla)
+
+np.stack((x, y), axis=1)
+
 # print(data)
