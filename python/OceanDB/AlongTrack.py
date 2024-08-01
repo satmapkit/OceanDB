@@ -25,7 +25,7 @@ class AlongTrack:
     ######################################################
 
     def __init__(self, host="", username="", password="", port=5432, db_name='ocean'):
-        with open('config.yaml', 'r') as param_file:
+        with open(os.path.abspath(os.getcwd())+'/config.yaml', 'r') as param_file:
             along_params = yaml.full_load(param_file)
             if 'db_connect' in along_params:
                 if 'host' in along_params['db_connect']:
