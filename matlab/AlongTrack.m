@@ -3,13 +3,12 @@ classdef AlongTrack < handle
     %   Detailed explanation goes here
 
     properties
-        host
-        username
-        password
-        port
+        host = 'localhost'
+        username = 'postgres'
+        password = ''
+        port = 5432
+        db_name = 'ocean'
         partitions_created = []
-
-        db_name
     end
 
     properties (Constant)
@@ -29,16 +28,47 @@ classdef AlongTrack < handle
         function self = AlongTrack(options)
             arguments
                 options.username
-                options.password = ''
-                options.db_name = 'ocean'
-                options.host = 'localhost'
-                options.port = 5432
+                options.password
+                options.db_name
+                options.host
+                options.port
             end
-            self.username = options.username;
-            self.password = options.password;
-            self.db_name = options.db_name;
-            self.port = options.port;
-            self.host = options.host;
+            if exist('config.yaml','file')
+                config = yamlread('config.yaml');
+                if isfield(config,'db_connect')
+                    db_connect = config.db_connect;
+                    if isfield(db_connect,'host')
+                        self.host = db_connect.host;
+                    end
+                    if isfield(db_connect,'password')
+                        self.password = db_connect.password;
+                    end
+                    if isfield(db_connect,'db_name')
+                        self.db_name = db_connect.db_name;
+                    end
+                    if isfield(db_connect,'host')
+                        self.host = db_connect.host;
+                    end
+                    if isfield(db_connect,'port')
+                        self.port = db_connect.port;
+                    end
+                end
+            end
+            if isfield(options,'host')
+                self.host = options.host;
+            end
+            if isfield(options,'password')
+                self.password = options.password;
+            end
+            if isfield(options,'db_name')
+                self.db_name = options.db_name;
+            end
+            if isfield(options,'host')
+                self.host = options.host;
+            end
+            if isfield(options,'port')
+                self.port = options.port;
+            end
         end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -351,5 +381,37 @@ classdef AlongTrack < handle
             atdb_conn.close();
         end
 
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %
+        % simple queries
+        %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        function results = geographic_points_in_spatialtemporal_window(self,latitude,longitude,distance,min_date,max_date,should_basin_mask)
+            arguments
+                self 
+                latitude 
+                longitude 
+                distance 
+                min_date 
+                max_date 
+                should_basin_mask = 1
+            end
+            if should_basin_mask == 1
+                tokenizedQuery = self.sqlQueryWithName("geographic_points_in_spatialtemporal_window.sql");
+            else
+                tokenizedQuery = self.sqlQueryWithName("geographic_points_in_spatialtemporal_window_nomask.sql");
+            end
+
+            query = regexprep(tokenizedQuery,"{latitude}",latitude);
+            query = regexprep(query,"{longitude}",longitude);
+            query = regexprep(query,"{distance}",distance);
+            query = regexprep(query,"{min_date}",min_date);
+            query = regexprep(query,"{max_date}",max_date);
+
+            atdb_conn = self.connection();
+            results = fetch(conn,query);
+            atdb_conn.close();
+        end
     end
 end
