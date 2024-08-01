@@ -6,7 +6,7 @@ SELECT
 	 ST_Distance(ST_GeogFromText('POINT({longitude} {latitude})'),along_track_point) as dist
 FROM along_track alt
 LEFT JOIN basin on ST_Intersects(basin.basin_geog, alt.along_track_point)
-WHERE ST_DWithin(ST_GeogFromText('POINT({longitude} {latitude})'),along_track_point, 100000)
+WHERE ST_DWithin(ST_GeogFromText('POINT({longitude} {latitude})'),along_track_point, {distance})
 	AND date_time::date BETWEEN {min_date} AND {max_date}
 	AND basin.id IN (
 	 	 SELECT DISTINCT
