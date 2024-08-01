@@ -1,24 +1,16 @@
 from OceanDB.AlongTrack import AlongTrack
 # import OceanDB
-import os
-import yaml
-
-with open('along_params_jje.yaml', 'r') as param_file:
-    along_params = yaml.full_load(param_file)
-
-# Database access
-host = along_params['db_connect']['host']
-username = along_params['db_connect']['username']
-password = along_params['db_connect']['password']
-port = along_params['db_connect']['port']
-
-# Path to directory with Ocean basin files to be uploaded.
-directory_basins = os.path.abspath(os.getcwd())  # Default to current active script directory
-# Path to Along Track NetCDF files
-directory_nc = along_params.get('nc_files_path')
+# import os
+#
+#
+#
+# # Path to directory with Ocean basin files to be uploaded.
+# directory_basins = os.path.abspath(os.getcwd())  # Default to current active script directory
+# # Path to Along Track NetCDF files
+# directory_nc = along_params.get('nc_files_path')
 
 # atdb = AlongTrackDatabase(host, username, password, port)
-atdb = AlongTrack(host, username, password, port, db_name='ocean')
+atdb = AlongTrack(db_name='ocean')
 
 # atdb.drop_database()
 
