@@ -12,57 +12,63 @@ import yaml
 with open('../config.yaml', 'r') as param_file:
     along_params = yaml.full_load(param_file)
 
-dataset_id = ['']*33
-dataset_id[0]="cmems_obs-sl_glo_phy-ssh_my_al-l3-duacs_PT1S"
-dataset_id[1]="cmems_obs-sl_glo_phy-ssh_my_alg-l3-duacs_PT1S"
-dataset_id[2]="cmems_obs-sl_glo_phy-ssh_my_c2-l3-duacs_PT1S"
-dataset_id[3]="cmems_obs-sl_glo_phy-ssh_my_c2n-l3-duacs_PT1S"
-dataset_id[4]="cmems_obs-sl_glo_phy-ssh_my_e1-l3-duacs_PT1S"
-dataset_id[5]="cmems_obs-sl_glo_phy-ssh_my_e1g-l3-duacs_PT1S"
-dataset_id[6]="cmems_obs-sl_glo_phy-ssh_my_e2-l3-duacs_PT1S"
-dataset_id[7]="cmems_obs-sl_glo_phy-ssh_my_en-l3-duacs_PT1S"
-dataset_id[8]="cmems_obs-sl_glo_phy-ssh_my_enn-l3-duacs_PT1S"
-dataset_id[9]="cmems_obs-sl_glo_phy-ssh_my_g2-l3-duacs_PT1S"
-dataset_id[10]="cmems_obs-sl_glo_phy-ssh_my_h2a-l3-duacs_PT1S"
-dataset_id[11]="cmems_obs-sl_glo_phy-ssh_my_h2ag-l3-duacs_PT1S"
-dataset_id[12]="cmems_obs-sl_glo_phy-ssh_my_h2b-l3-duacs_PT1S"
-dataset_id[13]="cmems_obs-sl_glo_phy-ssh_my_j1-l3-duacs_PT1S"
-dataset_id[14]="cmems_obs-sl_glo_phy-ssh_my_j1g-l3-duacs_PT1S"
-dataset_id[15]="cmems_obs-sl_glo_phy-ssh_my_j1n-l3-duacs_PT1S"
-dataset_id[16]="cmems_obs-sl_glo_phy-ssh_my_j2-l3-duacs_PT1S"
-dataset_id[17]="cmems_obs-sl_glo_phy-ssh_my_j2g-l3-duacs_PT1S"
-dataset_id[18]="cmems_obs-sl_glo_phy-ssh_my_j2n-l3-duacs_PT1S"
-dataset_id[19]="cmems_obs-sl_glo_phy-ssh_my_j3-l3-duacs_PT1S"
-dataset_id[20]="cmems_obs-sl_glo_phy-ssh_my_j3n-l3-duacs_PT1S"
-dataset_id[21]="cmems_obs-sl_glo_phy-ssh_my_s3a-l3-duacs_PT1S"
-dataset_id[22]="cmems_obs-sl_glo_phy-ssh_my_s3b-l3-duacs_PT1S"
-dataset_id[23]="cmems_obs-sl_glo_phy-ssh_my_s6a-lr-l3-duacs_PT1S"
-dataset_id[24]="cmems_obs-sl_glo_phy-ssh_my_tp-l3-duacs_PT1S"
-dataset_id[25]="cmems_obs-sl_glo_phy-ssh_my_tpn-l3-duacs_PT1S"
-dataset_id[26]="cmems_obs-sl_glo_phy-ssh_myint_alg-l3-duacs_PT1S"
-dataset_id[27]="cmems_obs-sl_glo_phy-ssh_myint_c2n-l3-duacs_PT1S"
-dataset_id[28]="cmems_obs-sl_glo_phy-ssh_myint_h2b-l3-duacs_PT1S"
-dataset_id[29]="cmems_obs-sl_glo_phy-ssh_myint_j3n-l3-duacs_PT1S"
-dataset_id[30]="cmems_obs-sl_glo_phy-ssh_myint_s3a-l3-duacs_PT1S"
-dataset_id[31]="cmems_obs-sl_glo_phy-ssh_myint_s3b-l3-duacs_PT1S"
-dataset_id[32]="cmems_obs-sl_glo_phy-ssh_myint_s6a-lr-l3-duacs_PT1S"
+missions = ['j1','j1n']
 
-# Define output storage parameters
-# output_directory = "/Users/briancurtis/Documents/Eddy/Along_files2"
-# output_directory = "/Users/jearly/Documents/Data/along-track-data"
-# output_directory = "/Volumes/MoreStorage/along-track-data"
+my = {'al': '202112',
+      'alg': '202112',
+	   'c2': '202112',
+	   'c2n': '202112',
+	   'e1g': '202112',
+	   'e1': '202112',
+	   'e2': '202112',
+	   'en': '202112',
+	   'enn': '202112',
+	   'g2': '202112',
+	   'h2a': '202112',
+	   'h2b': '202112',
+	   'j1g': '202112',
+	   'j1': '202112',
+	   'j1n': '202112',
+	   'j2g': '202112',
+	   'j2': '202112',
+	   'j2n': '202112',
+	   'j3': '202112',
+	   'j3n': '202207',
+	   's3a': '202112',
+	   's3b': '202112',
+	   's6a': '202207',
+	   'tp': '202112',
+	   'tpn': '202112'}
 
-copernicusmarine.login(username=along_params['copernicus_marine']['username'], password=along_params['copernicus_marine']['password'], skip_if_user_logged_in=True)
+myint = {'alg': '202311',
+         'c2n': '202311',
+	     'h2b': '202311',
+	     'j3n': '202311',
+	     's3a': '202311',
+	     's3b': '202311',
+	     's6a': '202311'}
+
+dataset_id = []
+dataset_version = []
+for mission in missions:
+	if mission in my:
+		dataset_id.append("cmems_obs-sl_glo_phy-ssh_my_" + mission + "-l3-duacs_PT1S")
+		dataset_version.append(my[mission])
+	if mission in myint:
+		dataset_id.append("cmems_obs-sl_glo_phy-ssh_myint_" + mission + "-l3-duacs_PT1S")
+		dataset_version.append(myint[mission])
+
+copernicusmarine.login(username=along_params['copernicus_marine']['username'],
+                       password=along_params['copernicus_marine']['password'], skip_if_user_logged_in=True)
 
 # Call the get function to save data
-get_result = copernicusmarine.get(
-	dataset_id=dataset_id[13],
-	output_directory=along_params['copernicus_marine']['nc_files_path'],
-	# filter="*200[2-3]*",
-	sync=True,
-	dataset_version="202112",
-	force_download=True
-	# no_directories=True
-)
+for i in range(len(dataset_id)):
+	get_result = copernicusmarine.get(
+		dataset_id=dataset_id[i],
+		output_directory=along_params['copernicus_marine']['nc_files_path'],
+		sync=True,
+		dataset_version=dataset_version[i],
+		force_download=True
+	)
 
-pprint(f"List of saved files: {get_result}")
+# pprint(f"List of saved files: {get_result}")
