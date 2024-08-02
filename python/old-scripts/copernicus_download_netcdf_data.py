@@ -9,7 +9,7 @@ import copernicusmarine
 from pprint import pprint
 import yaml
 
-with open('../along_params_jje.yaml', 'r') as param_file:
+with open('../config.yaml', 'r') as param_file:
     along_params = yaml.full_load(param_file)
 
 dataset_id = ['']*33
