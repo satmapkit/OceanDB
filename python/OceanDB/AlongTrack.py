@@ -7,6 +7,7 @@ import struct
 from io import BytesIO
 import time
 from dateutil.relativedelta import relativedelta
+from datetime import timedelta
 import os
 import yaml
 
@@ -648,27 +649,38 @@ class AlongTrack:
     #
     ######################################################
 
-    def geographic_points_in_spatialtemporal_window(self, latitude, longitude, date, distance=500000, time_window=relativedelta(seconds=856710), should_basin_mask=1):
-        min_date = date - relativedelta/2
-        max_date = date + relativedelta/2
-
-    def geographic_points_in_spatialtemporal_window(self, latitude, longitude, distance, min_date, max_date, should_basin_mask=1):
-        if should_basin_mask == 1:
-            tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window.sql')
-        else:
-            tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window_nomask.sql')
-
-        query_points = sql.SQL(tokenized_query).format(
-            latitude=latitude,
-            longitude=longitude,
-            distance=distance,
-            min_date=min_date,
-            max_date=max_date
-        )
+    def geographic_points_in_spatialtemporal_window(self, latitude, longitude, date, distance=500000, time_window=timedelta(seconds=856710), should_basin_mask=1):
+        tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window.sql')
+        values = {"longitude": longitude,
+                  "latitude": latitude,
+                  "central_date_time": date,
+                  "distance": distance,
+                  "time_delta": time_window/2}
 
         with pg.connect(self.connect_string()) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query_points)
+                cursor.execute(tokenized_query,values)
                 data = cursor.fetchall()
 
         return data
+
+    # def geographic_points_in_spatialtemporal_window(self, latitude, longitude, distance, min_date, max_date, should_basin_mask=1):
+    #     if should_basin_mask == 1:
+    #         tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window.sql')
+    #     else:
+    #         tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window_nomask.sql')
+    #
+    #     query_points = sql.SQL(tokenized_query).format(
+    #         latitude=latitude,
+    #         longitude=longitude,
+    #         distance=distance,
+    #         min_date=min_date,
+    #         max_date=max_date
+    #     )
+    #
+    #     with pg.connect(self.connect_string()) as connection:
+    #         with connection.cursor() as cursor:
+    #             cursor.execute(query_points)
+    #             data = cursor.fetchall()
+    #
+    #     return data
