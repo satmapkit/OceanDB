@@ -167,33 +167,44 @@ class AlongTrack:
         tokenized_query = self.sql_query_with_name('create_along_track_index_point.sql')
         query_create_point_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
+        tokenized_query = self.sql_query_with_name('create_along_track_index_point_geom.sql')
+        query_create_point_geom_index = sql.SQL(tokenized_query).format(
+            table_name=sql.Identifier(self.along_track_table_name))
+
         tokenized_query = self.sql_query_with_name('create_along_track_index_date.sql')
         query_create_date_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
         tokenized_query = self.sql_query_with_name('create_along_track_index_filename.sql')
         query_create_filename_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
-        tokenized_query = self.sql_query_with_name('create_along_track_index_point_date.sql')
-        query_create_combined_point_date_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
-
         tokenized_query = self.sql_query_with_name('create_along_track_index_time.sql')
-        query_create_combined_point_date_index = sql.SQL(tokenized_query).format(
+        create_along_track_index_time = sql.SQL(tokenized_query).format(
             table_name=sql.Identifier(self.along_track_table_name))
 
         tokenized_query = self.sql_query_with_name('create_along_track_index_mission.sql')
-        query_create_combined_point_date_index = sql.SQL(tokenized_query).format(
+        create_along_track_index_mission = sql.SQL(tokenized_query).format(
             table_name=sql.Identifier(self.along_track_table_name))
+
+        tokenized_query = self.sql_query_with_name('create_along_track_index_point_date.sql')
+        query_create_combined_point_date_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
+
 
         with pg.connect(self.connect_string()) as conn:
             with conn.cursor() as cur:
                 cur.execute(query_create_point_index)
+                cur.execute(query_create_point_geom_index)
                 cur.execute(query_create_date_index)
                 cur.execute(query_create_filename_index)
+                cur.execute(create_along_track_index_time)
+                cur.execute(create_along_track_index_mission)
                 conn.commit()
 
     def drop_along_track_indices(self):
         tokenized_query = self.sql_query_with_name('drop_along_track_index_point.sql')
         query_drop_point_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
+
+        tokenized_query = self.sql_query_with_name('drop_along_track_index_point_geom.sql')
+        query_drop_point_geom_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
         tokenized_query = self.sql_query_with_name('drop_along_track_index_date.sql')
         query_drop_date_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
@@ -201,14 +212,25 @@ class AlongTrack:
         tokenized_query = self.sql_query_with_name('drop_along_track_index_filename.sql')
         query_drop_filename_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
+        tokenized_query = self.sql_query_with_name('drop_along_track_index_time.sql')
+        drop_along_track_index_time = sql.SQL(tokenized_query).format(
+            table_name=sql.Identifier(self.along_track_table_name))
+
+        tokenized_query = self.sql_query_with_name('drop_along_track_index_mission.sql')
+        drop_along_track_index_mission = sql.SQL(tokenized_query).format(
+            table_name=sql.Identifier(self.along_track_table_name))
+
         tokenized_query = self.sql_query_with_name('drop_along_track_index_point_date.sql')
         query_drop_combined_point_date_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
         with pg.connect(self.connect_string()) as conn:
             with conn.cursor() as cur:
                 cur.execute(query_drop_point_index)
+                cur.execute(query_drop_point_geom_index)
                 cur.execute(query_drop_date_index)
                 cur.execute(query_drop_filename_index)
+                cur.execute(drop_along_track_index_time)
+                cur.execute(drop_along_track_index_mission)
                 conn.commit()
 
     ######################################################

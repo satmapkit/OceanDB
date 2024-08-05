@@ -387,31 +387,143 @@ classdef AlongTrack < handle
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        function results = geographicPointsInSpatialtemporalWindow(self,latitude,longitude,distance,min_date,max_date,should_basin_mask)
+        function results = geographicPointsInSpatialtemporalWindow(self,latitude,longitude,date,options)
             arguments
                 self 
                 latitude 
-                longitude 
-                distance 
-                min_date 
-                max_date 
-                should_basin_mask = 1
+                longitude
+                date
+                options.distance = 500000
+                options.time_window = 856710
+                options.should_basin_mask = 1
             end
-            if should_basin_mask == 1
+            if options.should_basin_mask == 1
                 tokenizedQuery = self.sqlQueryWithName("geographic_points_in_spatialtemporal_window.sql");
             else
                 tokenizedQuery = self.sqlQueryWithName("geographic_points_in_spatialtemporal_window_nomask.sql");
             end
 
-            query = regexprep(tokenizedQuery,"{latitude}",string(latitude));
-            query = regexprep(query,"{longitude}",string(longitude));
-            query = regexprep(query,"{distance}",string(distance));
-            query = regexprep(query,"{min_date}",sprintf("'%s'",min_date));
-            query = regexprep(query,"{max_date}",sprintf("'%s'",max_date));
+            query = regexprep(tokenizedQuery,"%\(latitude\)s",string(latitude));
+            query = regexprep(query,"%\(longitude\)s",string(longitude));
+            query = regexprep(query,"%\(distance\)s",string(options.distance));
+            query = regexprep(query,"%\(central_date_time\)s",sprintf("TIMESTAMP '%s'",string(date,"yyyy-MM-dd HH:mm:ss")));
+            query = regexprep(query,"%\(time_delta\)s",sprintf("INTERVAL '%d seconds'",options.time_window/2));
 
             atdb_conn = self.connection();
             results = fetch(atdb_conn,query);
             atdb_conn.close();
+        end
+
+        function results = projectedPointsInSpatialtemporalWindow(self,latitude,longitude,date,options)
+            arguments
+                self
+                latitude
+                longitude
+                date
+                options.Lx = 1000e3
+                options.Ly = 500e3
+                options.time_window = 856710
+                options.should_basin_mask = 1
+            end
+            
+            % Create six points---the four corners of the box, and the
+            % upper and lower middle of the box. This is sufficient to find
+            % the lat/lon bounds in both hemispheres.
+            Lx = options.Lx;
+            Ly = options.Ly;
+            lat0 = latitude;
+            lon0 = longitude;
+            [x0,y0] = LatitudeLongitudeToTransverseMercator(lat0,lon0,lon0=lon0);
+            x = zeros(4,1);
+            y = zeros(4,1);
+
+            x(1) = x0 - Lx/2;
+            y(1) = y0 - Ly/2;
+
+            x(2) = x0 - Lx/2;
+            y(2) = y0 + Ly/2;
+
+            x(3) = x0;
+            y(3) = y0 + Ly/2;
+
+            x(4) = x0;
+            y(4) = y0 - Ly/2;
+
+            x(5) = x0 + Lx/2;
+            y(5) = y0 - Ly/2;
+
+            x(6) = x0 + Lx/2;
+            y(6) = y0 + Ly/2;
+
+            [lats,lons] = TransverseMercatorToLatitudeLongitude(x,y,lon0=lon0);
+
+
+            if options.should_basin_mask == 1
+                tokenizedQuery = self.sqlQueryWithName("geographic_points_in_spatialtemporal_projected_window.sql");
+            else
+                tokenizedQuery = self.sqlQueryWithName("geographic_points_in_spatialtemporal_window_nomask.sql");
+            end
+
+            query = regexprep(tokenizedQuery,"%\(latitude\)s",string(latitude));
+            query = regexprep(query,"%\(longitude\)s",string(longitude));
+            query = regexprep(query,"%\(xmin\)s",string(min(lons)));
+            query = regexprep(query,"%\(ymin\)s",string(min(lats)));
+            query = regexprep(query,"%\(xmax\)s",string(max(lons)));
+            query = regexprep(query,"%\(ymax\)s",string(max(lats)));
+            query = regexprep(query,"%\(central_date_time\)s",sprintf("TIMESTAMP '%s'",string(date,"yyyy-MM-dd HH:mm:ss")));
+            query = regexprep(query,"%\(time_delta\)s",sprintf("INTERVAL '%d seconds'",options.time_window/2));
+
+            atdb_conn = self.connection();
+            results = fetch(atdb_conn,query);
+            atdb_conn.close();
+
+            [results.x,results.y] = LatitudeLongitudeToTransverseMercator(results.latitude,results.longitude,lon0=lon0);
+            outOfBounds = results.x < x0-Lx/2 | results.x > x0+Lx/2 | results.y < y0-Ly/2 | results.y > y0+Ly/2;
+            results(outOfBounds,:) = [];
+            results.x = results.x - (x0-Lx/2);
+            results.y = results.y - (y0-Ly/2);
+
+        end
+    end
+
+    methods (Static)
+        % These are SPHERICAL version of the transverse mercator
+        % projection. In my tests, at 1000km x 1000km, they produces
+        % distances errors of O(1500m) compared to O(500m) with the
+        % elliptical geometry. Playing around, I think it is pretty clear
+        % that this approximation is perfectly fine. In 2000 km boxes, the
+        % error gets worse at the equator, but only 2x more.
+        % d = sqrt((results.x-Lx/2).^2 + (results.y-Ly/2).^2);
+        % figure, scatter(results.distance,results.distance-d,'filled')
+        function [x,y] = LatitudeLongitudeToTransverseMercator(lat, lon, options)
+            arguments
+                lat (:,1) double {mustBeNumeric,mustBeReal}
+                lon (:,1) double {mustBeNumeric,mustBeReal}
+                options.lon0 (1,1) double {mustBeNumeric,mustBeReal}
+            end
+            k0 = 0.9996;
+            WGS84a=6378137;
+            R = k0*WGS84a;
+
+            phi = lat*pi/180;
+            deltaLambda = (lon - options.lon0)*pi/180;
+            sinLambdaCosPhi = sin(deltaLambda).*cos(phi);
+            x = (R/2)*log((1+sinLambdaCosPhi)./(1-sinLambdaCosPhi));
+            y = R*atan(tan(phi)./cos(deltaLambda));
+        end
+
+        function [lat,lon] = TransverseMercatorToLatitudeLongitude(x, y, options)
+            arguments
+                x (:,1) double {mustBeNumeric,mustBeReal}
+                y (:,1) double {mustBeNumeric,mustBeReal}
+                options.lon0 (1,1) double {mustBeNumeric,mustBeReal}
+            end
+            k0 = 0.9996;
+            WGS84a=6378137;
+            R = k0*WGS84a;
+
+            lon = (180/pi)*atan(sinh(x/R).*sec(y/R)) + options.lon0;
+            lat = (180/pi)*asin(sech(x/R).*sin(y/R));
         end
     end
 end

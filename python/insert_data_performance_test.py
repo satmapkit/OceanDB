@@ -1,5 +1,5 @@
+# import sys; sys.path.extend(['/Users/jearly/Documents/ProjectRepositories/OceanDB/python'])
 from OceanDB.AlongTrack import AlongTrack
-import yaml
 
 atdb = AlongTrack(db_name='ocean')
 
