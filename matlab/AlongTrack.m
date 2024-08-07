@@ -165,6 +165,10 @@ classdef AlongTrack < handle
         end
 
         function query = sqlQueryWithName(self,name)
+            arguments
+                self 
+                name 
+            end
             [filepath,~,~] = fileparts(mfilename('fullpath'));
             path = fullfile(filepath,'..', 'sql',name);
             query = join(readlines(path));
@@ -173,6 +177,23 @@ classdef AlongTrack < handle
         function path = dataFilePathWithName(self,name)
             [filepath,~,~] = fileparts(mfilename('fullpath'));
             path = fullfile(filepath,'..', 'data',name);
+        end
+
+        function query = queryWithParameters(self,tokenizedQuery,parameters)
+            query = tokenizedQuery;
+            for k = keys(parameters)
+                token = join(["%\(" k{1} "\)s"],"");
+                value = parameters(k{1});
+                if isa(value,'double')
+                    query = regexprep(query,token,string(value));
+                elseif isa(value,'duration')
+                    query = regexprep(query,token,sprintf("interval '%d seconds'",seconds(value)));
+                elseif isa(value,'datetime')
+                    query = regexprep(query,token,sprintf("TIMESTAMP '%s'",string(value,"yyyy-MM-dd HH:mm:ss")));
+                else
+                    error('Type not recognized.')
+                end
+            end
         end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -390,11 +411,11 @@ classdef AlongTrack < handle
         function results = geographicPointsInSpatialtemporalWindow(self,latitude,longitude,date,options)
             arguments
                 self 
-                latitude 
-                longitude
-                date
-                options.distance = 500000
-                options.time_window = 856710
+                latitude double
+                longitude double
+                date datetime
+                options.distance double = 500000
+                options.time_window duration = seconds(856710)
                 options.should_basin_mask = 1
             end
             if options.should_basin_mask == 1
@@ -407,7 +428,7 @@ classdef AlongTrack < handle
             query = regexprep(query,"%\(longitude\)s",string(longitude));
             query = regexprep(query,"%\(distance\)s",string(options.distance));
             query = regexprep(query,"%\(central_date_time\)s",sprintf("TIMESTAMP '%s'",string(date,"yyyy-MM-dd HH:mm:ss")));
-            query = regexprep(query,"%\(time_delta\)s",sprintf("INTERVAL '%d seconds'",options.time_window/2));
+            query = regexprep(query,"%\(time_delta\)s",sprintf("INTERVAL '%d seconds'",seconds(options.time_window/2)));
 
             atdb_conn = self.connection();
             results = fetch(atdb_conn,query);
@@ -417,23 +438,57 @@ classdef AlongTrack < handle
         function results = projectedPointsInSpatialtemporalWindow(self,latitude,longitude,date,options)
             arguments
                 self
-                latitude
-                longitude
-                date
-                options.Lx = 1000e3
-                options.Ly = 500e3
-                options.time_window = 856710
+                latitude double
+                longitude double
+                date datetime
+                options.Lx double = 1000e3
+                options.Ly double = 500e3
+                options.time_window = seconds(856710)
                 options.should_basin_mask = 1
             end
             
-            % Create six points---the four corners of the box, and the
-            % upper and lower middle of the box. This is sufficient to find
-            % the lat/lon bounds in both hemispheres.
-            Lx = options.Lx;
-            Ly = options.Ly;
+            [x0,y0, minLat,minLon,maxLat,maxLon] = AlongTrack.latLonBoundsForTransverseMercatorBox(latitude,longitude,options.Lx,options.Ly);
+
+            if options.should_basin_mask == 1
+                tokenizedQuery = self.sqlQueryWithName("geographic_points_in_spatialtemporal_projected_window.sql");
+            else
+                tokenizedQuery = self.sqlQueryWithName("geographic_points_in_spatialtemporal_projected_window_nomask.sql");
+            end
+            params = containers.Map();
+            params('latitude') = latitude;
+            params('longitude') = longitude;
+            params('xmin') = minLon;
+            params('ymin') = minLat;
+            params('xmax') = maxLon;
+            params('ymax') = maxLat;
+            params('ymax') = maxLat;
+            params('central_date_time') = date;
+            params('time_delta') = options.time_window/2;
+
+            query = self.queryWithParameters(tokenizedQuery,params);
+
+            atdb_conn = self.connection();
+            results = fetch(atdb_conn,query);
+            if minLon < -180 || maxLon > 180
+                
+            end
+            atdb_conn.close();
+
+            [results.x,results.y] = AlongTrack.LatitudeLongitudeToTransverseMercator(results.latitude,results.longitude,lon0=longitude);
+            outOfBounds = results.x < x0-options.Lx/2 | results.x > x0+options.Lx/2 | results.y < y0-options.Ly/2 | results.y > y0+options.Ly/2;
+            results(outOfBounds,:) = [];
+            results.x = results.x - (x0-options.Lx/2);
+            results.y = results.y - (y0-options.Ly/2);
+
+
+        end
+    end
+
+    methods (Static)
+        function [x0, y0, minLat,minLon,maxLat,maxLon] = latLonBoundsForTransverseMercatorBox(latitude, longitude, Lx, Ly)
             lat0 = latitude;
             lon0 = longitude;
-            [x0,y0] = LatitudeLongitudeToTransverseMercator(lat0,lon0,lon0=lon0);
+            [x0,y0] = AlongTrack.LatitudeLongitudeToTransverseMercator(lat0,lon0,lon0=lon0);
             x = zeros(4,1);
             y = zeros(4,1);
 
@@ -455,38 +510,13 @@ classdef AlongTrack < handle
             x(6) = x0 + Lx/2;
             y(6) = y0 + Ly/2;
 
-            [lats,lons] = TransverseMercatorToLatitudeLongitude(x,y,lon0=lon0);
-
-
-            if options.should_basin_mask == 1
-                tokenizedQuery = self.sqlQueryWithName("geographic_points_in_spatialtemporal_projected_window.sql");
-            else
-                tokenizedQuery = self.sqlQueryWithName("geographic_points_in_spatialtemporal_window_nomask.sql");
-            end
-
-            query = regexprep(tokenizedQuery,"%\(latitude\)s",string(latitude));
-            query = regexprep(query,"%\(longitude\)s",string(longitude));
-            query = regexprep(query,"%\(xmin\)s",string(min(lons)));
-            query = regexprep(query,"%\(ymin\)s",string(min(lats)));
-            query = regexprep(query,"%\(xmax\)s",string(max(lons)));
-            query = regexprep(query,"%\(ymax\)s",string(max(lats)));
-            query = regexprep(query,"%\(central_date_time\)s",sprintf("TIMESTAMP '%s'",string(date,"yyyy-MM-dd HH:mm:ss")));
-            query = regexprep(query,"%\(time_delta\)s",sprintf("INTERVAL '%d seconds'",options.time_window/2));
-
-            atdb_conn = self.connection();
-            results = fetch(atdb_conn,query);
-            atdb_conn.close();
-
-            [results.x,results.y] = LatitudeLongitudeToTransverseMercator(results.latitude,results.longitude,lon0=lon0);
-            outOfBounds = results.x < x0-Lx/2 | results.x > x0+Lx/2 | results.y < y0-Ly/2 | results.y > y0+Ly/2;
-            results(outOfBounds,:) = [];
-            results.x = results.x - (x0-Lx/2);
-            results.y = results.y - (y0-Ly/2);
-
+            [lats,lons] = AlongTrack.TransverseMercatorToLatitudeLongitude(x,y,lon0=lon0);
+            minLat = min(lats);
+            maxLat = max(lats);
+            minLon = min(lons);
+            maxLon = max(lons);
         end
-    end
 
-    methods (Static)
         % These are SPHERICAL version of the transverse mercator
         % projection. In my tests, at 1000km x 1000km, they produces
         % distances errors of O(1500m) compared to O(500m) with the
