@@ -10,6 +10,7 @@ from dateutil.relativedelta import relativedelta
 from datetime import timedelta
 import os
 import yaml
+import numpy as np
 
 
 class AlongTrack:
@@ -706,3 +707,26 @@ class AlongTrack:
     #             data = cursor.fetchall()
     #
     #     return data
+
+    @staticmethod
+    def latitude_longitude_to_spherical_transverse_mercator(lat, lon, lon0):
+        k0 = 0.9996
+        WGS84a = 6378137.
+        R = k0 * WGS84a
+
+        phi = lat * np.pi / 180
+        deltaLambda = (lon - lon0) * np.pi / 180
+        sinLambdaCosPhi = np.sin(deltaLambda) * np.cos(phi)
+        x = (R / 2) * np.log((1 + sinLambdaCosPhi) / (1 - sinLambdaCosPhi))
+        y = R * np.atan(np.tan(phi) / np.cos(deltaLambda))
+
+        return x,y
+
+    @staticmethod
+    def spherical_transverse_mercator_to_latitude_longitude(x, y, lon0):
+        k0 = 0.9996
+        WGS84a = 6378137
+        R = k0 * WGS84a
+
+        lon = (180 / np.pi) * np.atan(np.sinh(x / R) * np.sec(y / R)) + lon0
+        lat = (180 / np.pi) * np.asin(np.sech(x / R) * np.sin(y / R))
