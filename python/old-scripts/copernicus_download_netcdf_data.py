@@ -12,7 +12,8 @@ import yaml
 with open('../config.yaml', 'r') as param_file:
     along_params = yaml.full_load(param_file)
 
-missions = ['tp', 'j1', 'j2', 'j3', 's3a', 's3b', 's6a']
+# missions = ['tp', 'j1', 'j2', 'j3', 's3a', 's3b', 's6a-lr']
+missions = ['s6a-lr']
 
 my = {'al': '202112',
       'alg': '202112',
@@ -36,7 +37,7 @@ my = {'al': '202112',
        'j3n': '202207',
        's3a': '202112',
        's3b': '202112',
-       's6a': '202207',
+       's6a-lr': '202207',
        'tp': '202112',
        'tpn': '202112'}
 
@@ -46,7 +47,7 @@ myint = {'alg': '202311',
          'j3n': '202311',
          's3a': '202311',
          's3b': '202311',
-         's6a': '202311'}
+         's6a-lr': '202311'}
 
 dataset_id = []
 dataset_version = []
