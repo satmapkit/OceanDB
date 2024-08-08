@@ -12,8 +12,7 @@ import yaml
 with open('../config.yaml', 'r') as param_file:
     along_params = yaml.full_load(param_file)
 
-# missions = ['tp', 'j1', 'j2', 'j3', 's3a', 's3b', 's6a-lr']
-missions = ['s6a-lr']
+missions = ['tp', 'j1', 'j2', 'j3', 's3a', 's3b', 's6a-lr']
 
 my = {'al': '202112',
       'alg': '202112',
