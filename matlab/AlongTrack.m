@@ -461,7 +461,6 @@ classdef AlongTrack < handle
             params('ymin') = minLat;
             params('xmax') = maxLon;
             params('ymax') = maxLat;
-            params('ymax') = maxLat;
             params('central_date_time') = date;
             params('time_delta') = options.time_window/2;
 

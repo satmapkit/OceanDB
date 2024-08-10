@@ -687,46 +687,96 @@ class AlongTrack:
 
         return data
 
-    # def geographic_points_in_spatialtemporal_window(self, latitude, longitude, distance, min_date, max_date, should_basin_mask=1):
-    #     if should_basin_mask == 1:
-    #         tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window.sql')
-    #     else:
-    #         tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window_nomask.sql')
-    #
-    #     query_points = sql.SQL(tokenized_query).format(
-    #         latitude=latitude,
-    #         longitude=longitude,
-    #         distance=distance,
-    #         min_date=min_date,
-    #         max_date=max_date
-    #     )
-    #
-    #     with pg.connect(self.connect_string()) as connection:
-    #         with connection.cursor() as cursor:
-    #             cursor.execute(query_points)
-    #             data = cursor.fetchall()
-    #
-    #     return data
+    def projected_points_in_spatialtemporal_window(self, latitude: float, longitude: float, date, Lx: float = 500000., Ly: float = 500000., time_window=timedelta(seconds=856710), should_basin_mask=1):
+        if should_basin_mask == 1:
+            tokenized_query = self.sql_query_with_name("geographic_points_in_spatialtemporal_projected_window.sql")
+        else:
+            tokenized_query = self.sql_query_with_name("geographic_points_in_spatialtemporal_projected_window_nomask.sql")
+
+        [x0, y0, minLat, minLon, maxLat, maxLon] = AlongTrack.latitude_longitude_bounds_for_transverse_mercator_box(latitude, longitude, Lx, Ly)
+
+        values = {"longitude": longitude,
+                  "latitude": latitude,
+                  "xmin": minLon,
+                  "ymin": minLat,
+                  "xmax": maxLon,
+                  "ymax": maxLat,
+                  "central_date_time": date,
+                  "time_delta": time_window / 2}
+
+        with pg.connect(self.connect_string()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(tokenized_query, values)
+                data = cursor.fetchall()
+
+        lon = np.array([data_i[0] for data_i in data])
+        lat = np.array([data_i[1] for data_i in data])
+        sla = np.array([data_i[2] for data_i in data])
+
+        [x, y] = AlongTrack.latitude_longitude_to_spherical_transverse_mercator(lat, lon, longitude)
+        out_of_bounds = (x < x0 - Lx / 2) | (x > x0 + Lx / 2) | (y < y0 - Ly / 2) | (y > y0 + Ly / 2)
+        x = x[~out_of_bounds]
+        y = y[~out_of_bounds]
+        sla = sla[~out_of_bounds]
+
+        x = x - (x0 - Lx / 2)
+        y = y - (y0 - Ly / 2)
+
+        return x, y, sla
 
     @staticmethod
-    def latitude_longitude_to_spherical_transverse_mercator(lat, lon, lon0):
+    def latitude_longitude_bounds_for_transverse_mercator_box(lat0: float, lon0: float, Lx: float, Ly: float):
+        [x0, y0] = AlongTrack.latitude_longitude_to_spherical_transverse_mercator(lat0, lon0, lon0=lon0)
+        x = np.zeros(6)
+        y = np.zeros(6)
+
+        x[1] = x0 - Lx / 2
+        y[1] = y0 - Ly / 2
+
+        x[2] = x0 - Lx / 2
+        y[2] = y0 + Ly / 2
+
+        x[3] = x0
+        y[3] = y0 + Ly / 2
+
+        x[4] = x0
+        y[4] = y0 - Ly / 2
+
+        x[5] = x0 + Lx / 2
+        y[5] = y0 - Ly / 2
+
+        x[0] = x0 + Lx / 2
+        y[0] = y0 + Ly / 2
+
+        [lats, lons] = AlongTrack.spherical_transverse_mercator_to_latitude_longitude(x, y, lon0)
+        minLat = min(lats)
+        maxLat = max(lats)
+        minLon = min(lons)
+        maxLon = max(lons)
+
+        return x0, y0, minLat, minLon, maxLat, maxLon
+
+    @staticmethod
+    def latitude_longitude_to_spherical_transverse_mercator(lat: float, lon: float, lon0: float):
         k0 = 0.9996
         WGS84a = 6378137.
         R = k0 * WGS84a
 
-        phi = lat * np.pi / 180
-        deltaLambda = (lon - lon0) * np.pi / 180
+        phi = np.array(lat) * np.pi / 180
+        deltaLambda = (np.array(lon) - np.array(lon0)) * np.pi / 180
         sinLambdaCosPhi = np.sin(deltaLambda) * np.cos(phi)
         x = (R / 2) * np.log((1 + sinLambdaCosPhi) / (1 - sinLambdaCosPhi))
         y = R * np.atan(np.tan(phi) / np.cos(deltaLambda))
 
-        return x,y
+        return x, y
 
     @staticmethod
-    def spherical_transverse_mercator_to_latitude_longitude(x, y, lon0):
+    def spherical_transverse_mercator_to_latitude_longitude(x: float, y: float, lon0: float):
         k0 = 0.9996
         WGS84a = 6378137
         R = k0 * WGS84a
 
-        lon = (180 / np.pi) * np.atan(np.sinh(x / R) * np.sec(y / R)) + lon0
-        lat = (180 / np.pi) * np.asin(np.sech(x / R) * np.sin(y / R))
+        lon = (180 / np.pi) * np.atan(np.sinh(x / R) / np.cos(y / R)) + lon0
+        lat = (180 / np.pi) * np.asin(np.sin(y / R) / np.cosh(x / R))
+
+        return lat, lon

@@ -22,11 +22,16 @@ sla = [data_i[2] for data_i in data]
 plt.figure()
 plt.scatter(x, y, c=sla)
 plt.show()
+#
+# x = np.array(x)
+# y = np.array(y)
+# sla = np.array(sla)
+#
+# np.stack((x, y), axis=1)
 
-x = np.array(x)
-y = np.array(y)
-sla = np.array(sla)
-
-np.stack((x, y), axis=1)
+[x, y, sla] = atdb.projected_points_in_spatialtemporal_window(11, 150, datetime.datetime(2002,5,15))
+plt.figure()
+plt.scatter(x, y, c=sla)
+plt.show()
 
 # print(data)
