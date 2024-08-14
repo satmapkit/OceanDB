@@ -12,7 +12,9 @@ import yaml
 with open('../config.yaml', 'r') as param_file:
     along_params = yaml.full_load(param_file)
 
-missions = ['tp', 'j1', 'j2', 'j3', 's3a', 's3b', 's6a-lr']
+missions = ['tp', 'j1', 'j2', 'j3', 's3a', 's3b', 's6a-lr'] # small set for testing
+# missions = ['al', 'alg', 'c2', 'c2n', 'e1g', 'e1', 'e2', 'en', 'enn', 'g2', 'h2a', 'h2b', 'j1g', 'j1n', 'j2g', 'j2n', 'j3n', 'tpn'] # the rest
+# missions = ['al', 'alg', 'c2', 'c2n', 'e1g', 'e1', 'e2', 'en', 'enn', 'g2', 'h2a', 'h2b', 'j1g', 'j1', 'j1n', 'j2g', 'j2', 'j2n', 'j3', 'j3n', 's3a', 's3b', 's6a-lr', 'tp', 'tpn'] # full set
 
 my = {'al': '202112',
       'alg': '202112',
