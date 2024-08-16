@@ -718,7 +718,7 @@ class AlongTrack:
         else:
             tokenized_query = self.sql_query_with_name("geographic_points_in_spatialtemporal_projected_window_nomask.sql")
 
-        [x0, y0, minLat, minLon, maxLat, maxLon] = AlongTrack.latitude_longitude_bounds_for_transverse_mercator_box(latitude, longitude, Lx, Ly)
+        [x0, y0, minLat, minLon, maxLat, maxLon] = AlongTrack.latitude_longitude_bounds_for_transverse_mercator_box(latitude, longitude, 2*Lx, 2*Ly)
 
         values = {"longitude": longitude,
                   "latitude": latitude,
@@ -737,17 +737,19 @@ class AlongTrack:
         lon = np.array([data_i[0] for data_i in data])
         lat = np.array([data_i[1] for data_i in data])
         sla = np.array([data_i[2] for data_i in data])
+        t = np.array([data_i[3] for data_i in data])
 
         [x, y] = AlongTrack.latitude_longitude_to_spherical_transverse_mercator(lat, lon, longitude)
-        out_of_bounds = (x < x0 - Lx / 2) | (x > x0 + Lx / 2) | (y < y0 - Ly / 2) | (y > y0 + Ly / 2)
+        out_of_bounds = (x < x0 - Lx) | (x > x0 + Lx) | (y < y0 - Ly) | (y > y0 + Ly)
         x = x[~out_of_bounds]
         y = y[~out_of_bounds]
         sla = sla[~out_of_bounds]
+        t = t[~out_of_bounds]
 
-        x = x - (x0 - Lx / 2)
-        y = y - (y0 - Ly / 2)
+        x = x - x0
+        y = y - y0
 
-        return x, y, sla
+        return x, y, sla, t
 
     @staticmethod
     def latitude_longitude_bounds_for_transverse_mercator_box(lat0: float, lon0: float, Lx: float, Ly: float):
