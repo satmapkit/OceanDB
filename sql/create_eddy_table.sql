@@ -1,7 +1,6 @@
 CREATE TABLE IF NOT EXISTS public.{table_name}
 (
     id bigint NOT NULL GENERATED ALWAYS AS IDENTITY ( INCREMENT 1 START 1 MINVALUE 1 MAXVALUE 9223372036854775807 CACHE 1 ),
-    file_name text COLLATE pg_catalog."default",
     amplitude double precision,
     cost_association real,
     effective_area real,
@@ -30,5 +29,5 @@ CREATE TABLE IF NOT EXISTS public.{table_name}
     track int,
     cyclonic_type smallint,
     eddy_point geography(Point,4326) GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography) STORED,
-    CONSTRAINT eddy_pkey PRIMARY KEY (observation_number, track, cyclonic_type)
+    CONSTRAINT eddy_pkey PRIMARY KEY (track, observation_number, cyclonic_type)
 )
