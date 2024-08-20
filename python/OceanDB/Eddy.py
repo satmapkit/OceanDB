@@ -335,6 +335,7 @@ class Eddy:
                     cyclonic_type = -1
                 import_start = time.time()
                 self.import_data_tuple_to_postgresql(data, filenames[0], cyclonic_type)
+                del data
                 import_end = time.time()
                 print(f"{filenames[0]} import time: {import_end - import_start}")
         end = time.time()
