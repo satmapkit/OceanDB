@@ -347,6 +347,18 @@ class Eddy:
     #
     ######################################################
 
+    def along_points_near_eddy(self, eddy_track, cyclonic_type):
+        tokenized_query = self.sql_query_with_name('along_near_eddy.sql')
+        values = {"track": eddy_track,
+                  "cyclonic_type": cyclonic_type,}
+
+        with pg.connect(self.connect_string()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(tokenized_query, values)
+                data = cursor.fetchall()
+
+        return data
+
     def eddy_speed_radii_json(self, track, cyclonic_type):
         geojson_query = '''SELECT
         		ST_AsGeoJSON(CASE
@@ -356,7 +368,11 @@ class Eddy:
         				ST_ShiftLongitude(ST_Collect(cast(ST_Buffer(eddy.eddy_point, eddy.speed_radius) as geometry)))
         			ELSE
         				ST_Collect(ST_Buffer(eddy.eddy_point, eddy.speed_radius)::geometry)
-        			END, 6) AS speed_radius_buffer
+        			END, 6) AS speed_radius_buffer,
+        			max(eddy.longitude) as max_longitude,
+                    min(eddy.longitude) as min_longitude,
+                    max(eddy.latitude) as max_latitude,
+                    min(eddy.latitude) as min_latitude
         	FROM eddy
         	WHERE eddy.track = %(track)s AND cyclonic_type = %(cyclonic_type)s
         	GROUP BY track, cyclonic_type'''

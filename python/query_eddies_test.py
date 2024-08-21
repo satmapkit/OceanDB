@@ -14,6 +14,10 @@ eddy_track = 41
 cyclonic_type = -1
 
 speed_radii = eddy_db.eddy_speed_radii_json(eddy_track, cyclonic_type)
+print(speed_radii[0][1])
+print(speed_radii[0][2])
+print(speed_radii[0][3])
+print(speed_radii[0][4])
 
 map = folium.Map(
 width="%100",
