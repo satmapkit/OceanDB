@@ -4,6 +4,7 @@ from OceanDB.AlongTrack import AlongTrack
 # list of missions to add to database
 missions = ['tp', 'j1', 'j2', 'j3', 's3a', 's3b', 's6a-lr']
 # missions = ['s6a-lr']
+missions = ['tp']
 
 atdb = AlongTrack(db_name='ocean')
 

@@ -413,6 +413,28 @@ class AlongTrack:
                 cur.execute(query, data)
                 conn.commit()
 
+    def remove_previously_imported_files(self, file_paths):
+        query = sql.SQL("SELECT EXISTS(SELECT 1 FROM {table} WHERE file_name=%s)").format(table=sql.Identifier(self.along_track_metadata_table_name))
+        filenames = [[os.path.basename(x)] for x in file_paths]
+        pruned_file_paths = []
+        with pg.connect(self.connect_string()) as connection:
+            with connection.cursor() as cursor:
+                # for i in range(len(filenames)):
+                #     cursor.execute(query, filenames[i])
+                #     if not cursor.fetchone()[0]:
+                #         pruned_file_paths.append(file_paths[i])
+                cursor.executemany(query, filenames, returning=True)
+                i=0
+                while True:
+                    if not cursor.fetchone()[0]:
+                        pruned_file_paths.append(file_paths[i])
+                    i=i+1
+                    if not cursor.nextset():
+                        break
+
+        return pruned_file_paths
+
+
     def extract_data_from_netcdf(self, file_path, fname):
         # Open the NetCDF file
         try:
@@ -659,28 +681,15 @@ class AlongTrack:
         end = time.time()
         print(f"Script end. Total time: {end - start}")
 
-    # Jeffrey's version... specify specific mission directory.
-    # def insert_along_track_data_from_netcdf_with_tuples(self, directory):
-    #     start = time.time()
-    #     for file_path in glob.glob(directory + '/*.nc'):
-    #         names = [os.path.basename(x) for x in glob.glob(file_path)]
-    #         filename = names[0]  # filename will be used to link data to metadata
-    #         data = self.extract_data_tuple_from_netcdf(file_path, filename)
-    #         import_start = time.time()
-    #         self.import_data_tuple_to_postgresql(data, filename)
-    #         import_end = time.time()
-    #         print(f"{filename} import time: {import_end - import_start}")
-    #     end = time.time()
-    #     print(f"Script end. Total time: {end - start}")
-
     # Cim's version... specify missions get directory from config.yaml
     def insert_along_track_data_from_netcdf_with_tuples(self, missions):
         start = time.time()
         directory = self.nc_files_path
         # copied code from satmapkit_utilities/open_cmems_local to get list of filenamess.
         file_paths = [fn for fn in glob.glob(os.path.join(directory,'**/*.nc'),recursive=True) if any('_'+m+'-l3' in fn for m in missions)]
-        print(f"Preparing to import %d files to database." % len(file_paths))
-        # loop over filesnames.
+        print(f"Found %d files." % len(file_paths))
+        file_paths = self.remove_previously_imported_files(file_paths)
+        print(f"Pruning files already imported. Will import %d files into the database." % len(file_paths))
         for file_path in file_paths:
             filename = [os.path.basename(x) for x in glob.glob(file_path)]
             data = self.extract_data_tuple_from_netcdf(file_path, filename)
