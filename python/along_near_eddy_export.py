@@ -2,8 +2,8 @@ from OceanDB.Eddy import Eddy
 import os.path
 import pandas as pd
 
-eddy_track = 41
-cyclonic_type = -1
+eddy_track = 527413
+cyclonic_type = 1
 
 eddy_db = Eddy(db_name='ocean')
 
@@ -45,4 +45,4 @@ try:
 except Exception as err:
 	print(err)
 
-print(filename + ' was downladed to the Documents folder')
+print(filename + ' was downloaded to the Documents folder')

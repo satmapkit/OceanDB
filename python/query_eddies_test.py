@@ -10,8 +10,16 @@ from psycopg import sql
 
 eddy_db = Eddy(db_name='ocean')
 
-eddy_track = 41
-cyclonic_type = -1
+# select count(*) as count_days,
+# track,
+# cyclonic_type
+# from eddy
+# where date_time::date > '2011-01-01' and date_time::date < '2015-01-01' and latitude < -20 and latitude > -40 and longitude < 10 and longitude > -40
+# group by track, cyclonic_type
+# having count(*) > 300;
+
+eddy_track = 527413
+cyclonic_type = 1
 
 speed_radii = eddy_db.eddy_speed_radii_json(eddy_track, cyclonic_type)
 max_latitude = speed_radii[0][1]

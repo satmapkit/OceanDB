@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS eddy_point_idx
