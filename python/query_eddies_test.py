@@ -22,8 +22,8 @@ sw_corner = [min_longitude, min_latitude-360]
 ne_corner = [max_longitude, max_latitude-360]
 
 map = folium.Map(
-    width="%100",
-    height="%100",
+    width="100%",
+    height="100%",
     max_bounds=True,
     no_wrap = True,
 )

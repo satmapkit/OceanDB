@@ -692,7 +692,7 @@ class AlongTrack:
         print(f"Pruning files already imported. Will import %d files into the database." % len(file_paths))
         for file_path in file_paths:
             filename = [os.path.basename(x) for x in glob.glob(file_path)]
-            data = self.extract_data_tuple_from_netcdf(file_path, filename)
+            data = self.extract_data_tuple_from_netcdf(file_path, filename[0])
             import_start = time.time()
             self.import_data_tuple_to_postgresql(data, filename)
             import_end = time.time()
