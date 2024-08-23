@@ -5,12 +5,16 @@ import pandas as pd
 eddy_track = 527413
 cyclonic_type = 1
 
+eddy_track = 41
+cyclonic_type = -1
+
 eddy_db = Eddy(db_name='ocean')
 
 try:
     path = eddy_db.export_file_path
 except Exception:
-    path = '/Users/briancurtis/Documents/Eddy/along_nc_out/'
+	path = '/Users/jearly/Downloads/'
+    # path = '/Users/briancurtis/Documents/Eddy/along_nc_out/'
 
 header_array = ['along_file_name', 'track', 'cycle', 'latitude', 'longitude', 'sla_unfiltered', 'sla_filtered', 'time', 'dac', 'ocean_tide', 'internal_tide', 'lwe', 'mdt', 'tpa_correction']
 

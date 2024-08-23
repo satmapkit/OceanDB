@@ -18,6 +18,9 @@ eddy_db = Eddy(db_name='ocean')
 # group by track, cyclonic_type
 # having count(*) > 300;
 
+eddy_track = 41
+cyclonic_type = -1
+
 eddy_track = 527413
 cyclonic_type = 1
 

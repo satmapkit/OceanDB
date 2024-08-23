@@ -2,6 +2,7 @@ import psycopg as pg
 from psycopg import sql
 import os
 import yaml
+import pandas as pd
 
 
 class OceanDB:
@@ -126,3 +127,37 @@ class OceanDB:
         sql_folder_path = os.path.join(os.path.dirname(__file__), '../../data/')
         path = os.path.join(sql_folder_path, name)
         return path
+
+    ######################################################
+    #
+    # Convert to xarray
+    #
+    ######################################################
+    def data_as_xarray(self, data, header_array, row_metadata):
+        meta = dict()
+        encodings = dict()
+
+        try:
+            df = pd.DataFrame(data, columns=header_array)
+        except Exception as err:
+            print(err)
+
+        encoding_keys = ['dtype', 'scale_factor', 'add_offset', '_FillValue']
+
+        xrdata = df.to_xarray()
+        for record in row_metadata:
+            if record['var_name'] in header_array:
+                # Remove empty items from dictionary. Xarray will throw an error is an item is None
+                if record['var_name'] == 'time':
+                    xrdata[record['var_name']].attrs = {k: v for k, v in record.items() if
+                                                        v is not None and k not in encoding_keys and k != 'units' and k != 'calendar'}
+                    if 'units' in record:
+                        xrdata.time.encoding['units'] = record['units']
+                else:
+                    xrdata[record['var_name']].attrs = {k: v for k, v in record.items() if
+                                                  v is not None and k not in encoding_keys}
+                    encodings[record['var_name']] = {k: v for k, v in record.items() if
+                                                  v is not None and k in encoding_keys}
+
+
+        return xrdata, encodings
