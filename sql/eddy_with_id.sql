@@ -8,5 +8,5 @@ SELECT
 	speed_radius,
 	amplitude
 FROM eddy
-WHERE eddy.track=%(track)s AND eddy.cyclonic_type=%(cyclonic_type)s
+WHERE eddy.track * eddy.cyclonic_type=%(track_cyclonic_type)s
 ORDER BY observation_number;

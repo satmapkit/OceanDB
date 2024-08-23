@@ -14,5 +14,6 @@ SELECT
     atk.mdt,
     atk.tpa_correction
 FROM eddy
-INNER JOIN along_track atk ON atk.date_time::date = eddy.date_time::date AND st_dwithin(atk.along_track_point, eddy.eddy_point, (eddy.speed_radius * 2.0)::double precision)
-where eddy.track=%(track)s AND eddy.cyclonic_type=%(cyclonic_type)s;
+INNER JOIN along_track atk ON atk.date_time BETWEEN eddy.date_time AND (eddy.date_time + interval '1 day')
+	AND st_dwithin(atk.along_track_point, eddy.eddy_point, (eddy.speed_radius * {speed_radius_scale_factor} * 2.0)::double precision)
+WHERE eddy.track * eddy.cyclonic_type=%(eddy_id)s;

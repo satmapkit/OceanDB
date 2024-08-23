@@ -8,21 +8,18 @@ import os.path
 import pandas as pd
 import xarray as xr
 
-track = 41
-cyclonic_type = -1
+eddy_id = -41
+eddy_id = 527413
 
-# track = 527413
-# cyclonic_type = 1
-
-if cyclonic_type == 1:
-    filename = f"eddy_+{track}.nc"
+if eddy_id > 0:
+    filename = f"eddy_+{abs(eddy_id)}.nc"
 else:
-    filename = f"eddy_-{track}.nc"
+    filename = f"eddy_-{abs(eddy_id)}.nc"
 
 eddy_db = Eddy(db_name='ocean')
 
-[eddy, eddy_encoding] = eddy_db.eddy_with_id_as_xarray(track, cyclonic_type)
-[along_track, along_encoding] = eddy_db.along_track_points_near_eddy_as_xarray(track, cyclonic_type)
+[eddy, eddy_encoding] = eddy_db.eddy_with_id_as_xarray(eddy_id)
+[along_track, along_encoding] = eddy_db.along_track_points_near_eddy_as_xarray(eddy_id)
 
 eddy.to_netcdf(filename, "w", group="eddy", encoding=eddy_encoding, format="NETCDF4")
 along_track.to_netcdf(filename, "a", group="alongtrack", encoding=along_encoding, format="NETCDF4")

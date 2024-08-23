@@ -18,13 +18,10 @@ eddy_db = Eddy(db_name='ocean')
 # group by track, cyclonic_type
 # having count(*) > 300;
 
-eddy_track = 41
-cyclonic_type = -1
+eddy_id = -41
+eddy_id = 527413
 
-eddy_track = 527413
-cyclonic_type = 1
-
-speed_radii = eddy_db.eddy_speed_radii_json(eddy_track, cyclonic_type)
+speed_radii = eddy_db.eddy_speed_radii_json(eddy_id)
 max_latitude = speed_radii[0][1]
 min_latitude = speed_radii[0][2]
 max_longitude = speed_radii[0][3]

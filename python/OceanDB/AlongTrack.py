@@ -18,6 +18,8 @@ class AlongTrack(OceanDB):
     along_track_metadata_table_name: str = 'along_track_metadata'
     ocean_basin_table_name: str = 'basin'
     ocean_basins_connections_table_name: str = 'basin_connection'
+    variable_scale_factor: dict = dict()
+    variable_add_offset: dict = dict()
 
     ######################################################
     #
@@ -38,6 +40,88 @@ class AlongTrack(OceanDB):
             self.nc_files_path = nc_files_path
 
         self.__partitions_created = []
+
+        for metadata in AlongTrack.along_track_variable_metadata:
+            if 'scale_factor' in metadata:
+                self.variable_scale_factor[metadata['var_name']] = metadata['scale_factor']
+            if 'add_offset' in metadata:
+                self.variable_add_offset[metadata['var_name']] = metadata['add_offset']
+
+    @staticmethod
+    def along_track_variable_metadata():
+        along_track_variable_metadata = [
+            {'var_name': 'sla_unfiltered',
+             'comment': 'The sea level anomaly is the sea surface height above mean sea surface height; the uncorrected sla can be computed as follows: [uncorrected sla]=[sla from product]+[dac]+[ocean_tide]+[internal_tide]-[lwe]; see the product user manual for details',
+             'long_name': 'Sea level anomaly not-filtered not-subsampled with dac, ocean_tide and lwe correction applied',
+             'scale_factor': 0.001,
+             'standard_name': 'sea_surface_height_above_sea_level',
+             'units': 'm',
+             'dtype': 'int16'},
+            {'var_name': 'sla_filtered',
+             'comment': 'The sea level anomaly is the sea surface height above mean sea surface height; the uncorrected sla can be computed as follows: [uncorrected sla]=[sla from product]+[dac]+[ocean_tide]+[internal_tide]-[lwe]; see the product user manual for details',
+             'long_name': 'Sea level anomaly filtered not-subsampled with dac, ocean_tide and lwe correction applied',
+             'scale_factor': 0.001,
+             'add_offset': 0.,
+             '_FillValue': 32767,
+             'standard_name': 'sea_surface_height_above_sea_level',
+             'units': 'm',
+             'dtype': 'int16'},
+            {'var_name': 'dac',
+             'comment': 'The sla in this file is already corrected for the dac; the uncorrected sla can be computed as follows: [uncorrected sla]=[sla from product]+[dac]; see the product user manual for details',
+             'long_name': 'Dynamic Atmospheric Correction', 'scale_factor': 0.001, 'standard_name': None,
+             'units': 'm',
+             'dtype': 'int16'},
+            {'var_name': 'time',
+             'comment': '',
+             'long_name': 'Time of measurement',
+             'scale_factor': None,
+             'standard_name': 'time',
+             'units': 'days since 1950-01-01 00:00:00',
+             'calendar': 'gregorian',
+             'dtype': 'float64'},
+            {'var_name': 'track',
+             'comment': '',
+             'long_name': 'Track in cycle the measurement belongs to',
+             'scale_factor': None,
+             'standard_name': None,
+             'units': '1\n',
+             'dtype': 'int16'},
+            {'var_name': 'cycle',
+             'comment': '',
+             'long_name': 'Cycle the measurement belongs to',
+             'scale_factor': None,
+             'standard_name': None,
+             'units': '1',
+             'dtype': 'int16'},
+            {'var_name': 'ocean_tide',
+              'comment': 'The sla in this file is already corrected for the ocean_tide; the uncorrected sla can be computed as follows: [uncorrected sla]=[sla from product]+[ocean_tide]; see the product user manual for details',
+              'long_name': 'Ocean tide model',
+              'scale_factor': 0.001,
+              'standard_name': None,
+              'units': 'm',
+             'dtype': 'int16'},
+            {'var_name': 'internal_tide',
+             'comment': 'The sla in this file is already corrected for the internal_tide; the uncorrected sla can be computed as follows: [uncorrected sla]=[sla from product]+[internal_tide]; see the product user manual for details',
+             'long_name': 'Internal tide correction',
+             'scale_factor': 0.001,
+             'standard_name': None,
+             'units': 'm',
+             'dtype': 'int16'},
+            {'var_name': 'lwe',
+             'comment': 'The sla in this file is already corrected for the lwe; the uncorrected sla can be computed as follows: [uncorrected sla]=[sla from product]-[lwe]; see the product user manual for details',
+             'long_name': 'Long wavelength error',
+             'scale_factor': 0.001,
+             'standard_name': None,
+             'units': 'm',
+             'dtype': 'int16'},
+            {'var_name': 'mdt',
+             'comment': 'The mean dynamic topography is the sea surface height above geoid; it is used to compute the absolute dynamic tyopography adt=sla+mdt',
+             'long_name': 'Mean dynamic topography',
+             'scale_factor': 0.001,
+             'standard_name': 'sea_surface_height_above_geoid',
+             'units': 'm',
+             'dtype': 'int16'}]
+        return along_track_variable_metadata
 
     ######################################################
     #

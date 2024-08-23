@@ -1,5 +1,5 @@
-filename = 'eddy_+527413.nc';
-filename = 'eddy_-41.nc';
+filename = '../python/eddy_+527413.nc';
+% filename = 'eddy_-41.nc';
 
 eddy_lat = ncread(filename,'eddy/latitude');
 eddy_lon = ncread(filename,'eddy/longitude');
