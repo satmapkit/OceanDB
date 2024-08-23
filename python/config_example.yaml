@@ -3,6 +3,7 @@
     'username': 'jearly'
     'password': 'Pnx.XgBe8Lp9PH'
     'nc_files_path': '/Volumes/MoreStorage/along-track-data'
+    'eddies_file_path': '/Users/jearly/Documents/Data/eddy'
   'db_connect':
     'host': 'localhost'
     'username': 'postgres'
