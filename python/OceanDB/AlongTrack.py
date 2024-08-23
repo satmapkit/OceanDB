@@ -178,6 +178,7 @@ class AlongTrack(OceanDB):
                 cur.execute(query_create_filename_index)
                 cur.execute(create_along_track_index_time)
                 cur.execute(create_along_track_index_mission)
+                cur.execute(query_create_combined_point_date_index)
                 conn.commit()
 
     def drop_along_track_indices(self):
@@ -212,6 +213,7 @@ class AlongTrack(OceanDB):
                 cur.execute(query_drop_filename_index)
                 cur.execute(drop_along_track_index_time)
                 cur.execute(drop_along_track_index_mission)
+                cur.execute(query_drop_combined_point_date_index)
                 conn.commit()
 
     ######################################################
