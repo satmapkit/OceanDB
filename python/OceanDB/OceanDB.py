@@ -142,22 +142,28 @@ class OceanDB:
         except Exception as err:
             print(err)
 
-        encoding_keys = ['dtype', 'scale_factor', 'add_offset', '_FillValue']
+        # We need to either assign the metadata to the 'attrs' of the variable, or the encoding. If we do the encoding,
+        # then xarray will actively transform the data. For the moment, I am only transforming the datatype.
+        # The other notable piece is time. Time data already has some default encoding associated with it, so we just
+        # need to override it.
+
+        # encoding_keys = ['dtype', 'scale_factor', 'add_offset', '_FillValue']
+        encoding_keys = ['dtype']
 
         xrdata = df.to_xarray()
         for record in row_metadata:
             if record['var_name'] in header_array:
+                encodings[record['var_name']] = {k: v for k, v in record.items() if
+                                                 v is not None and k in encoding_keys}
                 # Remove empty items from dictionary. Xarray will throw an error is an item is None
                 if record['var_name'] == 'time':
                     xrdata[record['var_name']].attrs = {k: v for k, v in record.items() if
                                                         v is not None and k not in encoding_keys and k != 'units' and k != 'calendar'}
                     if 'units' in record:
                         xrdata.time.encoding['units'] = record['units']
+                    if 'calendar' in record:
+                        xrdata.time.encoding['calendar'] = record['calendar']
                 else:
                     xrdata[record['var_name']].attrs = {k: v for k, v in record.items() if
                                                   v is not None and k not in encoding_keys}
-                    encodings[record['var_name']] = {k: v for k, v in record.items() if
-                                                  v is not None and k in encoding_keys}
-
-
         return xrdata, encodings
