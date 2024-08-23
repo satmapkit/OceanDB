@@ -41,7 +41,8 @@ class AlongTrack(OceanDB):
 
         self.__partitions_created = []
 
-        for metadata in AlongTrack.along_track_variable_metadata:
+        aList = AlongTrack.along_track_variable_metadata()
+        for metadata in aList:
             if 'scale_factor' in metadata:
                 self.variable_scale_factor[metadata['var_name']] = metadata['scale_factor']
             if 'add_offset' in metadata:
@@ -77,8 +78,7 @@ class AlongTrack(OceanDB):
              'scale_factor': None,
              'standard_name': 'time',
              'units': 'days since 1950-01-01 00:00:00',
-             'calendar': 'gregorian',
-             'dtype': 'float64'},
+             'calendar': 'gregorian'},
             {'var_name': 'track',
              'comment': '',
              'long_name': 'Track in cycle the measurement belongs to',

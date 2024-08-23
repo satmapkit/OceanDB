@@ -149,21 +149,21 @@ class OceanDB:
 
         # encoding_keys = ['dtype', 'scale_factor', 'add_offset', '_FillValue']
         encoding_keys = ['dtype']
+        disallowed_time_keys = ['dtype', 'units', 'calendar', 'scale_factor', 'add_offset']
 
         xrdata = df.to_xarray()
         for record in row_metadata:
             if record['var_name'] in header_array:
-                encodings[record['var_name']] = {k: v for k, v in record.items() if
-                                                 v is not None and k in encoding_keys}
                 # Remove empty items from dictionary. Xarray will throw an error is an item is None
                 if record['var_name'] == 'time':
                     xrdata[record['var_name']].attrs = {k: v for k, v in record.items() if
-                                                        v is not None and k not in encoding_keys and k != 'units' and k != 'calendar'}
-                    if 'units' in record:
-                        xrdata.time.encoding['units'] = record['units']
-                    if 'calendar' in record:
-                        xrdata.time.encoding['calendar'] = record['calendar']
+                                                        v is not None and k not in disallowed_time_keys}
+                    xrdata.time.encoding['dtype'] = 'float64'
+                    xrdata.time.encoding['units'] = 'days since 1950-01-01 00:00:00'
+                    xrdata.time.encoding['calendar'] = 'gregorian'
                 else:
                     xrdata[record['var_name']].attrs = {k: v for k, v in record.items() if
                                                   v is not None and k not in encoding_keys}
+                    encodings[record['var_name']] = {k: v for k, v in record.items() if
+                                                     v is not None and k in encoding_keys}
         return xrdata, encodings

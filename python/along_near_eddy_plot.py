@@ -21,6 +21,8 @@ eddy_db = Eddy(db_name='ocean')
 [eddy, eddy_encoding] = eddy_db.eddy_with_id_as_xarray(eddy_id)
 [along_track, along_encoding] = eddy_db.along_track_points_near_eddy_as_xarray(eddy_id)
 
+# Helpful discussion here
+#https://github.com/pydata/xarray/issues/3739
 eddy.to_netcdf(filename, "w", group="eddy", encoding=eddy_encoding, format="NETCDF4")
 along_track.to_netcdf(filename, "a", group="alongtrack", encoding=along_encoding, format="NETCDF4")
 
