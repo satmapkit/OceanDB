@@ -736,6 +736,60 @@ class AlongTrack(OceanDB):
 
         return x, y, sla, t
 
+    def map_points_in_spatialtemporal_window(self, latitudes, longitudes, date, distance=500000, time_window=timedelta(seconds=856710), should_basin_mask=1):
+        tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window_minimum.sql')
+        query = sql.SQL(tokenized_query).format(central_date_time=date,
+                                                distance=distance,
+                                                time_delta=time_window/2)
+
+        latlons = [{"latitude": latitudes, "longitude": longitudes} for latitudes, longitudes in zip(latitudes, longitudes)]
+
+        with pg.connect(self.connect_string()) as connection:
+            # query_string = query.as_string(connection)
+            # pg.autocommit = True
+            query_string = """
+                SELECT longitude, latitude, sla_filtered, EXTRACT(EPOCH FROM ('2021-05-15 03:00:00'::timestamp - date_time)) AS time_difference_secs
+                FROM along_track alt
+                LEFT JOIN basin on ST_Intersects(basin.basin_geog, alt.along_track_point)
+                WHERE ST_DWithin(ST_MakePoint(%(longitude)s, %(latitude)s),along_track_point, 500000)
+                AND date_time BETWEEN '2021-05-15 03:00:00'::timestamp - '4 days 22:59:15'::interval
+                AND '2021-05-15 03:00:00'::timestamp + '4 days 22:59:15'::interval
+                AND basin.id IN (
+                    SELECT UNNEST(ARRAY[pbc.connected_id, basin_id])
+                    FROM basin pb
+                    LEFT JOIN basin_connection pbc on basin_id = pb.id
+                    WHERE ST_Intersects(pb.basin_geog, ST_MakePoint(%(longitude)s, %(latitude)s))
+                )"""
+            query_string = """
+                SELECT longitude, latitude, sla_filtered, EXTRACT(EPOCH FROM ('2021-05-15 03:00:00'::timestamp - date_time)) AS time_difference_secs
+                FROM along_track alt
+                WHERE ST_DWithin(ST_MakePoint(%(longitude)s, %(latitude)s),along_track_point, 500000)
+                AND date_time BETWEEN '2021-05-15 03:00:00'::timestamp - '4 days 22:59:15'::interval
+                AND '2021-05-15 03:00:00'::timestamp + '4 days 22:59:15'::interval
+                """
+            with connection.cursor() as cursor:
+                cursor.executemany(query_string, latlons, returning=True)
+                i = 0
+                while True:
+                    data = cursor.fetchall()
+                    longitude = np.array([data_i[0] for data_i in data])
+                    latitude = np.array([data_i[1] for data_i in data])
+                    sla = np.array([data_i[2] for data_i in data])
+                    delta_t = np.array([data_i[3] for data_i in data])
+
+                    [x0, y0] = AlongTrack.latitude_longitude_to_spherical_transverse_mercator(latlons[i]["latitude"], latlons[i]["longitude"], latlons[i]["longitude"])
+                    [x, y] = AlongTrack.latitude_longitude_to_spherical_transverse_mercator(latitude, longitude, latlons[i]["longitude"])
+
+                    delta_x = x - x0
+                    delta_y = y - y0
+
+                    i = i + 1
+                    if not cursor.nextset():
+                        break
+
+
+
+
     @staticmethod
     def latitude_longitude_bounds_for_transverse_mercator_box(lat0: float, lon0: float, Lx: float, Ly: float):
         [x0, y0] = AlongTrack.latitude_longitude_to_spherical_transverse_mercator(lat0, lon0, lon0=lon0)
