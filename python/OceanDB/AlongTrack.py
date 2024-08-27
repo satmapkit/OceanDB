@@ -12,6 +12,7 @@ import os
 import yaml
 import numpy as np
 from OceanDB import OceanDB
+from functools import cached_property
 
 class AlongTrack(OceanDB):
     along_track_table_name: str = 'along_track'
@@ -122,6 +123,48 @@ class AlongTrack(OceanDB):
              'units': 'm',
              'dtype': 'int16'}]
         return along_track_variable_metadata
+
+    @cached_property
+    def basin_mask_data(self):
+        ds = nc.Dataset(self.data_file_path_with_name('basin_masks/new_basin_mask.nc'), 'r')
+        ds.set_auto_mask(False)
+        basin_mask = ds.variables['basinmask'][:]
+        return basin_mask
+
+    def basin_mask(self, latitude, longitude):
+        onesixth = 1 / 6
+        i = np.floor((latitude + 90) / onesixth).astype(int)
+        j = np.floor((longitude % 360) / onesixth).astype(int)
+        mask_data = self.basin_mask_data
+        basin_mask = mask_data[i, j]
+        return basin_mask
+
+    @cached_property
+    def basin_connection_map(self):
+        with pg.connect(self.connect_string()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("""SELECT DISTINCT basin_id FROM basin_connection ORDER BY basin_id""")
+                unique_ids = cursor.fetchall()
+        uid = [data_i[0] for data_i in unique_ids]
+        basin_id_dict = [{"basin_id": basin_id} for basin_id in uid]
+
+        query = """SELECT array_agg(connected_id) as connected_basin_id
+        		FROM basin_connection
+        		WHERE basin_id = %(basin_id)s
+        		GROUP BY basin_id"""
+
+        basin_id_connection_dict = {}
+        with pg.connect(self.connect_string()) as connection:
+            with connection.cursor() as cursor:
+                cursor.executemany(query, basin_id_dict, returning=True)
+                i = 0
+                while True:
+                    data = cursor.fetchall()
+                    basin_id_connection_dict[uid[i]] = data[0][0]
+                    i = i + 1
+                    if not cursor.nextset():
+                        break
+        return basin_id_connection_dict
 
     ######################################################
     #
