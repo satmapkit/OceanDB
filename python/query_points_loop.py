@@ -10,12 +10,14 @@ from datetime import timedelta
 
 atdb = AlongTrack(db_name='ocean')
 
+# gen = atdb.map_points_in_spatialtemporal_window([140], [20], datetime.datetime(year=2021, month=5, day=15, hour=3), should_basin_mask=0)
+
 lon = np.arange(320.-180., 340.-180., 1.)
 lat = np.arange(20., 40., 1.)
 lons, lats = np.meshgrid(lon, lat)
 
 start = time.time()
-for delta_x, delta_y, delta_t, sla in atdb.map_points_in_spatialtemporal_window(lats.reshape(-1),lons.reshape(-1),datetime.datetime(year=2021,month=5,day=15,hour=3),should_basin_mask=0):
+for delta_x, delta_y, delta_t, sla in atdb.map_points_in_spatialtemporal_window(lats.reshape(-1), lons.reshape(-1), datetime.datetime(year=2021, month=5, day=15, hour=3), should_basin_mask=0):
     a = delta_x+delta_y
 end = time.time()
 print(f"Script end. Total time: {end - start}")
@@ -51,7 +53,7 @@ print(f"Script end. Total time: {end - start}")
 # start = time.time()
 # with pg.connect(atdb.connect_string()) as connection:
 #     with connection.cursor() as cursor:
-#         cursor.executemany(query_string_a, latlons, returning=True)
+#         cursor.executemany(query_string_b, latlons, returning=True)
 #         # cursor.executemany("select (%(latitude)s,%(longitude)s)", latlons, returning=True)
 #         while True:
 #             data = cursor.fetchall()

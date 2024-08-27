@@ -741,9 +741,12 @@ class AlongTrack(OceanDB):
             tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window_minimum.sql')
         else:
             tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window_minimum_nomask.sql')
+        missions = ['tp', 'j1', 'j2', 'j3', 's3a', 's3b', 's6a-lr']
+        missions = ['s3b','s6a-lr']
         query = sql.SQL(tokenized_query).format(central_date_time=date,
                                                 distance=distance,
-                                                time_delta=time_window/2)
+                                                time_delta=time_window/2,
+                                                missions=sql.SQL(',').join(missions))
 
         latlons = [{"latitude": latitudes, "longitude": longitudes} for latitudes, longitudes in zip(latitudes, longitudes)]
 
@@ -753,6 +756,7 @@ class AlongTrack(OceanDB):
                 i = 0
                 while True:
                     data = cursor.fetchall()
+                    # yield [0], [0], [0], [0]
                     longitude = np.array([data_i[0] for data_i in data])
                     latitude = np.array([data_i[1] for data_i in data])
                     sla = 0.001*np.array([data_i[2] for data_i in data])
