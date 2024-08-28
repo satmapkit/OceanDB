@@ -426,6 +426,28 @@ class Eddy(OceanDB):
 
         return data
 
+    def along_track_points_near_eddy_test(self, eddy_id):
+        eddy_query = """SELECT MIN(date_time), MAX(date_time) 
+                        FROM eddy WHERE eddy.track * eddy.cyclonic_type=%(eddy_id)s GROUP BY track, cyclonic_type;"""
+        along_query = """SELECT atk.file_name, atk.track, atk.cycle, atk.latitude, atk.longitude, atk.sla_unfiltered, atk.sla_filtered, atk.date_time as time, atk.dac, atk.ocean_tide, atk.internal_tide, atk.lwe, atk.mdt, atk.tpa_correction
+                   FROM eddy
+                   INNER JOIN along_track atk ON atk.date_time BETWEEN eddy.date_time AND (eddy.date_time + interval '1 day')
+	               AND st_dwithin(atk.along_track_point, eddy.eddy_point, (eddy.speed_radius * {speed_radius_scale_factor} * 2.0)::double precision)
+                   WHERE eddy.track * eddy.cyclonic_type=%(eddy_id)s
+                   AND atk.date_time BETWEEN {min_date} AND {max_date};"""
+        values = {"eddy_id": eddy_id}
+
+        with pg.connect(self.connect_string()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(eddy_query, values)
+                data = cursor.fetchall()
+                values["min_date"] = data[0][0]
+                values["max_date"] = data[0][1]
+                along_query = along_query.format(speed_radius_scale_factor=self.variable_scale_factor["speed_radius"],min_date=data[0][0],max_date=data[0][1])
+                data = cursor.fetchall()
+
+        return data
+
     def along_track_points_near_eddy_as_xarray(self, eddy_id):
         data = self.along_track_points_near_eddy(eddy_id)
         header_array = ['along_file_name', 'track', 'cycle', 'latitude', 'longitude', 'sla_unfiltered', 'sla_filtered',

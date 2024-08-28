@@ -1,5 +1,6 @@
 from OceanDB.Eddy import Eddy
 import matplotlib.pyplot as plt
+import time
 import numpy as np
 import psycopg as pg
 from sqlalchemy import create_engine
@@ -10,6 +11,7 @@ import xarray as xr
 
 eddy_id = -41
 eddy_id = 527413
+eddy_id = 700000
 
 if eddy_id > 0:
     filename = f"eddy_+{abs(eddy_id)}.nc"
@@ -18,13 +20,25 @@ else:
 
 eddy_db = Eddy(db_name='ocean')
 
+start = time.time()
+eddy_db.along_track_points_near_eddy_test(eddy_id)
+end = time.time()
+print(f"Finished. Total time: {end - start}")
+
+start = time.time()
+eddy_db.along_track_points_near_eddy(eddy_id)
+end = time.time()
+print(f"Finished. Total time: {end - start}")
+
 [eddy, eddy_encoding] = eddy_db.eddy_with_id_as_xarray(eddy_id)
 [along_track, along_encoding] = eddy_db.along_track_points_near_eddy_as_xarray(eddy_id)
 
+
+
 # Helpful discussion here
 #https://github.com/pydata/xarray/issues/3739
-eddy.to_netcdf(filename, "w", group="eddy", encoding=eddy_encoding, format="NETCDF4")
-along_track.to_netcdf(filename, "a", group="alongtrack", encoding=along_encoding, format="NETCDF4")
+# eddy.to_netcdf(filename, "w", group="eddy", encoding=eddy_encoding, format="NETCDF4")
+# along_track.to_netcdf(filename, "a", group="alongtrack", encoding=along_encoding, format="NETCDF4")
 
 plt.figure()
 plt.scatter(eddy["longitude"], eddy["latitude"], c=eddy["amplitude"])

@@ -22,7 +22,7 @@ class AlongTrack(OceanDB):
     variable_scale_factor: dict = dict()
     variable_add_offset: dict = dict()
     missions = ['al', 'alg', 'c2', 'c2n', 'e1g', 'e1', 'e2', 'en', 'enn', 'g2', 'h2a', 'h2b', 'j1g', 'j1', 'j1n', 'j2g',
-                'j2', 'j2n', 'j3', 'j3n', 's3a', 's3b', 's6a-lr', 'tp', 'tpn']
+                'j2', 'j2n', 'j3', 'j3n', 's3a', 's3b', 's6a', 'tp', 'tpn']
 
     ######################################################
     #
@@ -259,16 +259,16 @@ class AlongTrack(OceanDB):
         end = time.time()
         print(f"Finished. Total time: {end - start}")
 
-        tokenized_query = self.sql_query_with_name('create_along_track_index_point_date_mission.sql')
-        query_create_point_date_mission_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
-
-        print(f"Building along_track (point, time, mission) index")
-        start = time.time()
-        with pg.connect(self.connect_string()) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query_create_point_date_mission_index)
-        end = time.time()
-        print(f"Finished. Total time: {end - start}")
+        # tokenized_query = self.sql_query_with_name('create_along_track_index_point_date_mission.sql')
+        # query_create_point_date_mission_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
+        #
+        # print(f"Building along_track (point, time, mission) index")
+        # start = time.time()
+        # with pg.connect(self.connect_string()) as conn:
+        #     with conn.cursor() as cur:
+        #         cur.execute(query_create_point_date_mission_index)
+        # end = time.time()
+        # print(f"Finished. Total time: {end - start}")
 
         print(f"Building along_track (point, time, mission, basin) index")
         tokenized_query = self.sql_query_with_name('create_along_track_index_point_date_mission_basin.sql')
@@ -785,18 +785,31 @@ class AlongTrack(OceanDB):
     #
     ######################################################
 
-    def geographic_points_in_spatialtemporal_window(self, latitude, longitude, date, distance=500000, time_window=timedelta(seconds=856710), should_basin_mask=1):
+    def geographic_points_in_spatialtemporal_window(self, latitude, longitude, date, distance=500000, time_window=timedelta(seconds=856710), missions=None):
+        if missions is None:
+            missions = self.missions
+
         tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window.sql')
+        query = sql.SQL(tokenized_query).format(central_date_time=date,
+                                                distance=distance,
+                                                time_delta=time_window / 2,
+                                                missions=sql.SQL(',').join(missions))
+
+        basin_id = self.basin_mask(latitude, longitude)
+        connected_basin_id = self.basin_connection_map[basin_id]
         values = {"longitude": longitude,
                   "latitude": latitude,
-                  "central_date_time": date,
-                  "distance": distance,
-                  "time_delta": time_window/2}
+                  "basin_id": basin_id,
+                  "connected_basin_ids": connected_basin_id}
 
         with pg.connect(self.connect_string()) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(tokenized_query,values)
-                data = cursor.fetchall()
+                cursor.execute(query,values)
+                row = cursor.fetchall()
+                data = {"longitude": np.array([data_i[0] for data_i in row]),
+                        "latitude": np.array([data_i[1] for data_i in row]),
+                        "sla_filtered": self.variable_scale_factor["sla_filtered"] * np.array([data_i[2] for data_i in row]),
+                        "delta_t": np.array(np.array([data_i[3] for data_i in row]), dtype=np.float64)}
 
         return data
 
@@ -849,11 +862,8 @@ class AlongTrack(OceanDB):
             i = i + 1
             yield delta_x, delta_y, delta_t, sla
 
-    def geographic_points_in_spatialtemporal_windows(self, latitudes, longitudes, date, distance=500000, time_window=timedelta(seconds=856710), should_basin_mask=1, missions=None):
-        if should_basin_mask == 1:
-            tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window_minimum.sql')
-        else:
-            tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window_minimum_nomask.sql')
+    def geographic_points_in_spatialtemporal_windows(self, latitudes, longitudes, date, distance=500000, time_window=timedelta(seconds=856710), missions=None):
+        tokenized_query = self.sql_query_with_name('geographic_points_in_spatialtemporal_window.sql')
 
         if missions is None:
             missions = self.missions
@@ -862,6 +872,7 @@ class AlongTrack(OceanDB):
                                                 distance=distance,
                                                 time_delta=time_window/2,
                                                 missions=sql.SQL(',').join(missions))
+
         basin_ids = self.basin_mask(latitudes, longitudes)
         connected_basin_ids = list( map(self.basin_connection_map.get, basin_ids) )
         params = [{"latitude": latitudes, "longitude": longitudes, "basin_id": basin_ids, "connected_basin_ids": connected_basin_ids} for latitudes, longitudes, basin_ids, connected_basin_ids in zip(latitudes, longitudes, basin_ids, connected_basin_ids)]

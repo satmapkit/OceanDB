@@ -12,15 +12,8 @@ atdb = AlongTrack(db_name='ocean')
 
 data = atdb.geographic_points_in_spatialtemporal_window(11, 150, datetime.datetime(2022,5,15))
 
-aa = np.array(data)
-
-x = np.array([data_i[0] for data_i in data])
-y = np.array([data_i[1] for data_i in data])
-sla = np.array([data_i[2] for data_i in data])
-t = np.array([data_i[3] for data_i in data])
-
 plt.figure()
-plt.scatter(x, y, c=sla)
+plt.scatter(data["longitude"], data["latitude"], c=data["sla_filtered"])
 plt.show()
 
 
