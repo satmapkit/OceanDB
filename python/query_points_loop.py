@@ -19,7 +19,7 @@ lons, lats = np.meshgrid(lon, lat)
 missions = ['s3b','s6a-lr']
 
 start = time.time()
-for delta_x, delta_y, delta_t, sla in atdb.projected_geographic_points_in_spatialtemporal_windows(lats.reshape(-1), lons.reshape(-1), date, should_basin_mask=0, missions=missions):
+for delta_x, delta_y, delta_t, sla in atdb.projected_geographic_points_in_spatialtemporal_windows(lats.reshape(-1), lons.reshape(-1), date, should_basin_mask=1, missions=missions):
     a = delta_x+delta_y
 end = time.time()
 print(f"Script end. Total time: {end - start}")

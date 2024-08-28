@@ -270,6 +270,15 @@ class AlongTrack(OceanDB):
         end = time.time()
         print(f"Finished. Total time: {end - start}")
 
+        print(f"Building along_track (point, time, mission, basin) index")
+        tokenized_query = self.sql_query_with_name('create_along_track_index_point_date_mission_basin.sql')
+        start = time.time()
+        with pg.connect(self.connect_string()) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name)))
+        end = time.time()
+        print(f"Finished. Total time: {end - start}")
+
     def drop_along_track_indices(self):
         tokenized_query = self.sql_query_with_name('drop_along_track_index_point.sql')
         query_drop_point_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
