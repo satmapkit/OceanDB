@@ -10,7 +10,7 @@ atdb = AlongTrack(db_name='ocean')
 # lon: -90 to -67.5 takes 55 sec, -67.5 to -45 takes 14
 # lat: 0 to 70, lon -90 to -67.5 takes 18 sec, but -70 to 0 only takes 0.9
 date = datetime.datetime(year=2021, month=5, day=15, hour=3)
-lon = np.arange(-90., -67.5, 1.)
+lon = np.arange(-180., 179, 1.)
 # lon = np.arange(-67.5, -45., 1.)
 lat = np.arange(-70., 70., 1.)
 lons, lats = np.meshgrid(lon, lat)

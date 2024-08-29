@@ -14,8 +14,8 @@ missions = None #['s3b','s6a']
 latitude = 78
 longitude = -1.5
 
-latitude = 60
-longitude = -85
+# latitude = 60
+# longitude = -85
 
 data = atdb.geographic_nearest_neighbor(latitude, longitude, datetime.datetime(year=2021, month=5, day=15, hour=3), missions=missions)
 

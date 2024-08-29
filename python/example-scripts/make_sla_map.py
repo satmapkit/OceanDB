@@ -42,9 +42,9 @@ lon_ocean = lon_world[ocean_indices]
 
 
 
-missions = None #['s3b','s6a']
+missions = None
+# missions = ['s3b','s6a']
 
-# 243s no indices
 print(f"Building nearest-neighbor map with resolution {resolution}...")
 sla_world_nn = np.empty_like(lon_world)
 sla_world_nn[:] = np.nan
@@ -60,14 +60,14 @@ sla_world_nn[ocean_indices] = sla_ocean
 sla_world_nn = sla_world_nn.reshape(lon_grid.shape)
 sla_map_nn = xr.DataArray(sla_world_nn, coords={'latitude': lat_dim, 'longitude': lon_dim},
                                   dims=["latitude", "longitude"])
-quit()
 
 print(f"Building gaussian kernel map with resolution {resolution}...")
 sla_world_gk = np.empty_like(lon_world)
 sla_world_gk[:] = np.nan
 sla_ocean = sla_world_gk[ocean_indices]
 L = (50e3 + 250e3 * (900 / (lat_ocean ** 2 + 900))) / 3.34
-radius = L * np.sqrt(-np.log(0.001))
+# search radius may be too small and leave white stripes
+radius = L * np.sqrt(-np.log(0.0001))
 start = time.time()
 i = 0
 for data in atdb.projected_geographic_points_in_spatialtemporal_windows(lat_ocean, lon_ocean, date, distance=radius, missions=missions):
