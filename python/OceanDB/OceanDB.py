@@ -3,6 +3,7 @@ from psycopg import sql
 import os
 import yaml
 import pandas as pd
+import time
 
 
 class OceanDB:
@@ -127,6 +128,16 @@ class OceanDB:
         sql_folder_path = os.path.join(os.path.dirname(__file__), '../../data/')
         path = os.path.join(sql_folder_path, name)
         return path
+
+    def vacuum_analyze(self):
+        print(f"Starting VACUUM ANALYZE...")
+        start = time.time()
+        with pg.connect(self.connect_string()) as conn:
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute("VACUUM ANALYZE")
+        end = time.time()
+        print(f"Finished. Total time: {end - start}")
 
     ######################################################
     #
