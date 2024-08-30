@@ -304,6 +304,8 @@ class AlongTrack(OceanDB):
         end = time.time()
         print(f"Finished. Total time: {end - start}")
 
+        self.vacuum_analyze()
+
     def drop_along_track_indices(self):
         tokenized_query = self.sql_query_with_name('drop_along_track_index_point.sql')
         query_drop_point_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
@@ -807,7 +809,7 @@ class AlongTrack(OceanDB):
             import_end = time.time()
             print(f"{filename} import time: {import_end - import_start}")
         end = time.time()
-        print(f"Script end. Total time: {end - start}")    
+        print(f"Batch import ended. Total time: {end - start}")
 
     ######################################################
     #

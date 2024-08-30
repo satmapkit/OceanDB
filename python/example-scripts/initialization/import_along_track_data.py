@@ -25,6 +25,6 @@ atdb = AlongTrack(db_name="ocean")
 
 # atdb.truncate_along_track_table()
 # atdb.truncate_along_track_metadata_table()
-# atdb.drop_along_track_indices()
+atdb.drop_along_track_indices()
 atdb.insert_along_track_data_from_netcdf_with_tuples(missions)
 atdb.create_along_track_indices()
