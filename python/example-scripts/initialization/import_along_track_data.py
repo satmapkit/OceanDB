@@ -6,6 +6,7 @@ missions = ['tp', 'j1', 'j2', 'j3', 's3a', 's3b', 's6a-lr']
 missions = ['j3', 's3a', 's3b', 's6a-lr']
 # missions = ['s6a-lr']
 missions = ['j2g']
+missions = ['al', 'alg', 'c2', 'c2n', 'e1g', 'e1', 'e2', 'en', 'enn', 'g2', 'h2a', 'h2b', 'j1g', 'j1', 'j1n', 'j2g', 'j2', 'j2n', 'j3', 'j3n', 's3a', 's3b', 's6a-lr', 'tp', 'tpn'] # full set
 
 atdb = AlongTrack(db_name="ocean")
 

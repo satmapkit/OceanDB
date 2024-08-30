@@ -334,8 +334,8 @@ class AlongTrack(OceanDB):
         tokenized_query = self.sql_query_with_name('drop_along_track_index_point_date.sql')
         query_drop_combined_point_date_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
-        tokenized_query = self.sql_query_with_name('drop_along_track_index_point_date_mission.sql')
-        query_drop_point_date_mission_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
+        tokenized_query = self.sql_query_with_name('drop_along_track_index_point_date_mission_basin.sql')
+        query_drop_point_date_mission_basin_index = sql.SQL(tokenized_query).format(table_name=sql.Identifier(self.along_track_table_name))
 
         with pg.connect(self.connect_string()) as conn:
             with conn.cursor() as cur:
@@ -347,7 +347,7 @@ class AlongTrack(OceanDB):
                 cur.execute(drop_along_track_index_mission)
                 cur.execute(drop_along_track_index_basin)
                 cur.execute(query_drop_combined_point_date_index)
-                cur.execute(query_drop_point_date_mission_index)
+                cur.execute(query_drop_point_date_mission_basin_index)
                 conn.commit()
 
     ######################################################
