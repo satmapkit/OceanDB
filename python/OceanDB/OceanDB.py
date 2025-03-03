@@ -166,12 +166,12 @@ class OceanDB:
         for record in row_metadata:
             if record['var_name'] in header_array:
                 # Remove empty items from dictionary. Xarray will throw an error is an item is None
-                if record['var_name'] == 'time':
+                if 'time' in record['var_name']:
                     xrdata[record['var_name']].attrs = {k: v for k, v in record.items() if
                                                         v is not None and k not in disallowed_time_keys}
-                    xrdata.time.encoding['dtype'] = 'float64'
-                    xrdata.time.encoding['units'] = 'days since 1950-01-01 00:00:00'
-                    xrdata.time.encoding['calendar'] = 'gregorian'
+                    xrdata[record['var_name']].encoding['dtype'] = 'float64'
+                    xrdata[record['var_name']].encoding['units'] = 'days since 1950-01-01 00:00:00'
+                    xrdata[record['var_name']].encoding['calendar'] = 'gregorian'
                 else:
                     xrdata[record['var_name']].attrs = {k: v for k, v in record.items() if
                                                   v is not None and k not in encoding_keys}

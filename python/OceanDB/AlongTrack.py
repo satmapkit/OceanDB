@@ -815,6 +815,70 @@ class AlongTrack(OceanDB):
 
     ######################################################
     #
+    # Cycle extraction
+    #
+    ######################################################
+
+    def write_orbital_path_and_cycles_for_missions(self,path,missions):
+        if os.path.exists(path):
+            raise FileExistsError(f"File '{path}' already exists!")
+
+        comp = {'zlib': True, 'complevel': 9}
+        comp_vars = {"latitude": comp, "longitude": comp}
+        for mission in missions:
+            [cycle, cycle_encoding] = self.orbital_cycles_for_mission_as_xarray(mission)
+            cycle = cycle.rename({'index': 'cycle_index'})
+            cycle.to_netcdf(path, "a", group=mission, encoding=cycle_encoding, format="NETCDF4")
+
+            first_full_cycle = cycle['cycle'].min().item() + 1
+            [along_track, along_encoding] = self.orbital_path_for_mission_as_xarray(mission, first_full_cycle)
+            along_track = along_track.rename({'index': 'along_track_index'})
+            along_track.to_netcdf(path, "a", group=mission, encoding=comp_vars, format="NETCDF4")
+
+    def orbital_cycles_for_mission(self, mission):
+        tokenized_query = self.sql_query_with_name("orbit_cycles_for_mission.sql")
+        values = {"mission": mission}
+
+        with pg.connect(self.connect_string()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(tokenized_query, values)
+                data = cursor.fetchall()
+
+        return data
+
+    def orbital_cycles_for_mission_as_xarray(self, mission):
+        data = self.orbital_cycles_for_mission(mission)
+        header_array = ['cycle', 'start_time', 'end_time']
+        metadata = self.along_track_variable_metadata();
+        time_dict = [d for d in metadata if d["var_name"] == "time"]
+        start_time_dict = dict(time_dict[0])
+        start_time_dict["var_name"] = "start_time"
+        end_time_dict = dict(time_dict[0])
+        end_time_dict["var_name"] = "end_time"
+        metadata.append(start_time_dict)
+        metadata.append(end_time_dict)
+        [xrdata, encoding] = self.data_as_xarray(data, header_array, metadata)
+        return xrdata, encoding
+
+    def orbital_path_for_mission(self, mission, cycle):
+        tokenized_query = self.sql_query_with_name("orbit_path_for_mission.sql")
+        values = {"mission": mission,"cycle": cycle}
+
+        with pg.connect(self.connect_string()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(tokenized_query, values)
+                data = cursor.fetchall()
+
+        return data
+
+    def orbital_path_for_mission_as_xarray(self, mission, cycle):
+        data = self.orbital_path_for_mission(mission, cycle)
+        header_array = ['time', 'latitude', 'longitude']
+        [xrdata, encoding] = self.data_as_xarray(data, header_array, self.along_track_variable_metadata())
+        return xrdata, encoding
+
+    ######################################################
+    #
     # simple queries
     #
     ######################################################
