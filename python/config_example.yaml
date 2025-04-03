@@ -1,7 +1,7 @@
 ---
   'copernicus_marine':
-    'username': 'jearly'
-    'password': 'Pnx.XgBe8Lp9PH'
+    'username': 'myusername'
+    'password': 'mypassword'
     'nc_files_path': '/Volumes/MoreStorage/along-track-data'
     'eddies_file_path': '/Users/jearly/Documents/Data/eddy'
   'db_connect':
