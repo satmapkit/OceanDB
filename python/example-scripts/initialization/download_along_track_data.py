@@ -12,43 +12,82 @@ import yaml
 with open('../../config.yaml', 'r') as param_file:
     along_params = yaml.full_load(param_file)
 
-missions = ['s6a-lr'] # small set for testing
+missions = [
+    'al', 'alg', 'c2', 'c2n', 'e1g', 'e1', 'e2', 'en', 'enn',
+    'g2', 'h2a', 'h2ag', 'h2b', 'j1g', 'j1', 'j1n', 'j2g', 'j2', 'j2n',
+    'j3', 'j3n', 's3a', 's3b', 's6a-lr', 'tp', 'tpn', 'swon', 'swonc'
+]
+
+# missions = ['s6a-lr'] # small set for testing
 # missions = ['al', 'alg', 'c2', 'c2n', 'e1g', 'e1', 'e2', 'en', 'enn', 'g2', 'h2a', 'h2b', 'j1g', 'j1n', 'j2g', 'j2n', 'j3n', 'tpn'] # the rest
 # missions = ['al', 'alg', 'c2', 'c2n', 'e1g', 'e1', 'e2', 'en', 'enn', 'g2', 'h2a', 'h2b', 'j1g', 'j1', 'j1n', 'j2g', 'j2', 'j2n', 'j3', 'j3n', 's3a', 's3b', 's6a-lr', 'tp', 'tpn'] # full set
 
-my = {'al': '202112',
-      'alg': '202112',
-       'c2': '202112',
-       'c2n': '202112',
-       'e1g': '202112',
-       'e1': '202112',
-       'e2': '202112',
-       'en': '202112',
-       'enn': '202112',
-       'g2': '202112',
-       'h2a': '202112',
-       'h2b': '202112',
-       'j1g': '202112',
-       'j1': '202112',
-       'j1n': '202112',
-       'j2g': '202112',
-       'j2': '202112',
-       'j2n': '202112',
-       'j3': '202112',
-       'j3n': '202207',
-       's3a': '202112',
-       's3b': '202112',
-       's6a-lr': '202207',
-       'tp': '202112',
-       'tpn': '202112'}
+my = {
+    'al':     '202411',
+    'alg':    '202411',
+    'c2':     '202411',
+    'c2n':    '202411',
+    'e1g':    '202411',
+    'e1':     '202411',
+    'e2':     '202411',
+    'en':     '202411',
+    'enn':    '202411',
+    'g2':     '202411',
+    'h2a':    '202411',
+    'h2ag':   '202411',
+    'h2b':    '202411',
+    'j1g':    '202411',
+    'j1':     '202411',
+    'j1n':    '202411',
+    'j2g':    '202411',
+    'j2':     '202411',
+    'j2n':    '202411',
+    'j3':     '202411',
+    'j3n':    '202411',
+    's3a':    '202411',
+    's3b':    '202411',
+    's6a-lr': '202411',
+    'tp':     '202411',
+    'tpn':    '202411',
+    'swon':   '202411',  
+    'swonc':  '202411'   
+}
 
-myint = {'alg': '202311',
-         'c2n': '202311',
-         'h2b': '202311',
-         'j3n': '202311',
-         's3a': '202311',
-         's3b': '202311',
-         's6a-lr': '202311'}
+myint = {}
+
+# my = {'al': '202112',
+#       'alg': '202112',
+#        'c2': '202112',
+#        'c2n': '202112',
+#        'e1g': '202112',
+#        'e1': '202112',
+#        'e2': '202112',
+#        'en': '202112',
+#        'enn': '202112',
+#        'g2': '202112',
+#        'h2a': '202112',
+#        'h2b': '202112',
+#        'j1g': '202112',
+#        'j1': '202112',
+#        'j1n': '202112',
+#        'j2g': '202112',
+#        'j2': '202112',
+#        'j2n': '202112',
+#        'j3': '202112',
+#        'j3n': '202207',
+#        's3a': '202112',
+#        's3b': '202112',
+#        's6a-lr': '202207',
+#        'tp': '202112',
+#        'tpn': '202112'}
+
+# myint = {'alg': '202311',
+#          'c2n': '202311',
+#          'h2b': '202311',
+#          'j3n': '202311',
+#          's3a': '202311',
+#          's3b': '202311',
+#          's6a-lr': '202311'}
 
 dataset_id = []
 dataset_version = []
@@ -60,8 +99,8 @@ for mission in missions:
         dataset_id.append("cmems_obs-sl_glo_phy-ssh_myint_" + mission + "-l3-duacs_PT1S")
         dataset_version.append(myint[mission])
 
-copernicusmarine.login(username=along_params['copernicus_marine']['username'],
-                       password=along_params['copernicus_marine']['password'], skip_if_user_logged_in=True)
+# copernicusmarine.login(username=along_params['copernicus_marine']['username'],
+#                        password=along_params['copernicus_marine']['password'])
 
 # Call the get function to save data
 for i in range(len(dataset_id)):
@@ -69,8 +108,7 @@ for i in range(len(dataset_id)):
         dataset_id=dataset_id[i],
         output_directory=along_params['copernicus_marine']['nc_files_path'],
         sync=True,
-        dataset_version=dataset_version[i],
-        force_download=True
+        dataset_version=dataset_version[i]
     )
 
 names = {'e1': 'ERS-1 (only for dt)',
