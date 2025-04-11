@@ -234,7 +234,7 @@ class CheltonEddy(OceanDB):
     ######################################################
 
     def chelton_eddy_with_id(self, eddy_id):
-        tokenized_query = self.sql_query_with_name("eddy_with_id.sql")
+        tokenized_query = self.sql_query_with_name("chelton_eddy_with_id.sql")
         values = {"track_cyclonic_type": eddy_id}
 
         with pg.connect(self.connect_string()) as connection:
@@ -269,13 +269,13 @@ class CheltonEddy(OceanDB):
             FROM chelton_eddy as ceddy 
             LEFT JOIN basin ON ST_Intersects(basin.basin_geog, ceddy.chelton_eddy_point)
             LEFT JOIN basin_connection ON basin_connection.basin_id = basin.id
-            WHERE ceddy.id = %(eddy_id)s
+            WHERE ceddy.track = %(eddy_id)s
             GROUP BY track, cyclonic_type;"""
         along_query = """SELECT atk.file_name, atk.track, atk.cycle, atk.latitude, atk.longitude, atk.sla_unfiltered, atk.sla_filtered, atk.date_time as time, atk.dac, atk.ocean_tide, atk.internal_tide, atk.lwe, atk.mdt, atk.tpa_correction
                    FROM chelton_eddy as ceddy 
                    INNER JOIN along_track atk ON atk.date_time BETWEEN ceddy.date_time AND (ceddy.date_time + interval '1 day')
 	               AND st_dwithin(atk.along_track_point, ceddy.chelton_eddy_point, (ceddy.speed_radius * {speed_radius_scale_factor} * 2.0)::double precision)
-                   WHERE ceddy.id = %(eddy_id)s
+                   WHERE ceddy.track = %(eddy_id)s
                    AND atk.date_time BETWEEN '{min_date}'::timestamp AND '{max_date}'::timestamp
                    AND basin_id = ANY( ARRAY[{connected_basin_ids}] );"""
         values = {"eddy_id": eddy_id}
@@ -286,13 +286,13 @@ class CheltonEddy(OceanDB):
                 data = cursor.fetchall()
                 # values["min_date"] = data[0][0]
                 # values["max_date"] = data[0][1]
-                along_query = along_query.format(speed_radius_scale_factor=self.variable_scale_factor["speed_radius"],
+                print(data)
+                along_query = along_query.format(speed_radius_scale_factor=2*self.variable_scale_factor["speed_radius"],
                                                  min_date=data[0][0],
                                                  max_date=data[0][1],
                                                  connected_basin_ids=data[0][2])
                 cursor.execute(along_query, values)
                 data = cursor.fetchall()
-
         return data
 
     def along_track_points_near_chelton_eddy_as_xarray(self, eddy_id):
@@ -319,7 +319,7 @@ class CheltonEddy(OceanDB):
             max(ceddy.latitude)       as max_latitude,
             min(ceddy.latitude)       as min_latitude
             FROM chelton_eddy as ceddy
-            WHERE ceddy.id = %(eddy_id)s
+            WHERE ceddy.track = %(eddy_id)s
             GROUP BY track, cyclonic_type''').format(scale_factor=self.variable_scale_factor["speed_radius"])
 
         values = {"eddy_id": eddy_id}

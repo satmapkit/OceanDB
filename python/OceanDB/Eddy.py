@@ -431,13 +431,13 @@ class Eddy(OceanDB):
                         FROM eddy 
                         LEFT JOIN basin ON ST_Intersects(basin.basin_geog, eddy.eddy_point)
                         LEFT JOIN basin_connection ON basin_connection.basin_id = basin.id
-                        WHERE eddy.id = %(eddy_id)s
+                        WHERE eddy.track * eddy.cyclonic_type=%(eddy_id)s
                         GROUP BY track, cyclonic_type;"""
         along_query = """SELECT atk.file_name, atk.track, atk.cycle, atk.latitude, atk.longitude, atk.sla_unfiltered, atk.sla_filtered, atk.date_time as time, atk.dac, atk.ocean_tide, atk.internal_tide, atk.lwe, atk.mdt, atk.tpa_correction
                    FROM eddy
                    INNER JOIN along_track atk ON atk.date_time BETWEEN eddy.date_time AND (eddy.date_time + interval '1 day')
 	               AND st_dwithin(atk.along_track_point, eddy.eddy_point, (eddy.speed_radius * {speed_radius_scale_factor} * 2.0)::double precision)
-                   WHERE eddy.id = %(eddy_id)s
+                   WHERE eddy.track * eddy.cyclonic_type=%(eddy_id)s
                    AND atk.date_time BETWEEN '{min_date}'::timestamp AND '{max_date}'::timestamp
                    AND basin_id = ANY( ARRAY[{connected_basin_ids}] );"""
         values = {"eddy_id": eddy_id}

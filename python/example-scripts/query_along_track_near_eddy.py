@@ -11,7 +11,7 @@ import xarray as xr
 
 eddy_id = -41
 eddy_id = 527413
-eddy_id = 700000
+# eddy_id = 700000
 
 if eddy_id > 0:
     filename = f"eddy_+{abs(eddy_id)}.nc"
@@ -20,10 +20,10 @@ else:
 
 eddy_db = Eddy(db_name='ocean')
 
-start = time.time()
-eddy_db.along_track_points_near_eddy_old(eddy_id)
-end = time.time()
-print(f"Finished along_track_points_near_eddy_old. Total time: {end - start}")
+# start = time.time()
+# eddy_db.along_track_points_near_eddy_old(eddy_id)
+# end = time.time()
+# print(f"Finished along_track_points_near_eddy_old. Total time: {end - start}")
 
 start = time.time()
 eddy_db.along_track_points_near_eddy(eddy_id)
@@ -37,13 +37,13 @@ print(f"Finished along_track_points_near_eddy. Total time: {end - start}")
 
 # Helpful discussion here
 #https://github.com/pydata/xarray/issues/3739
-# eddy.to_netcdf(filename, "w", group="eddy", encoding=eddy_encoding, format="NETCDF4")
-# along_track.to_netcdf(filename, "a", group="alongtrack", encoding=along_encoding, format="NETCDF4")
-
-plt.figure()
-plt.scatter(eddy["longitude"], eddy["latitude"], c=eddy["amplitude"])
-plt.scatter(along_track["longitude"], along_track["latitude"], c=along_track["sla_filtered"])
-plt.show()
+eddy.to_netcdf(filename, "w", group="eddy", encoding=eddy_encoding, format="NETCDF4")
+along_track.to_netcdf(filename, "a", group="alongtrack", encoding=along_encoding, format="NETCDF4")
+print(f"File exported: {filename}")
+# plt.figure()
+# plt.scatter(eddy["longitude"], eddy["latitude"], c=eddy["amplitude"])
+# plt.scatter(along_track["longitude"], along_track["latitude"], c=along_track["sla_filtered"])
+# plt.show()
 
 # eddy_data_xarray.to_netcdf('output.nc')
 
