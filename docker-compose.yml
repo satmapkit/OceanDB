@@ -1,0 +1,19 @@
+networks:
+  ocean_network:
+    name: ocean_network
+    external: true
+
+
+services:
+  ocean_db_client:
+    image: ocean_db_client:latest
+    stdin_open: true
+    tty: true
+    env_file:
+      - .env
+    volumes:
+      - ./OceanDB:/app/OceanDB
+      - ./data/copernicus:/app/data
+      - ./config.yaml:/app/config.yaml
+    networks:
+      - ocean_network

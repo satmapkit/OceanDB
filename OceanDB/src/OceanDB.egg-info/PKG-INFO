@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: OceanDB
+Version: 1.0.0
+Summary: Ocean database ingestion and processing library
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: netCDF4~=1.7.1.post1
+Requires-Dist: psycopg~=3.2.1
+Requires-Dist: python-dateutil~=2.9.0.post0
+Requires-Dist: numpy~=2.0.1
+Requires-Dist: pandas~=2.2.2
+Requires-Dist: copernicusmarine>=2.0.0
+Requires-Dist: xarray~=2024.6.0

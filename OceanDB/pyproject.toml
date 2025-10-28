@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "OceanDB"
+version = "1.0.0"
+description = "Ocean database ingestion and processing library"
+readme = "README.md"
+requires-python = ">=3.9"
+
+
+dependencies = [
+    "netCDF4~=1.7.1.post1",
+    "psycopg~=3.2.1",
+    "python-dateutil~=2.9.0.post0",
+    "numpy~=2.0.1",
+    "pandas~=2.2.2",
+    "copernicusmarine>=2.0.0",
+    "xarray~=2024.6.0"
+]
+
+[project.scripts]
+ocean_db = "OceanDB.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["OceanDB*"]
+
+[tool.setuptools.package-data]
+"OceanDB.sql" = ["*.sql"]
+"OceanDB.data" = ["*.csv"]
