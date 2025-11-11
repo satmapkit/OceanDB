@@ -1,1 +1,0 @@
-DROP INDEX IF EXISTS public.track_times_cyclonic_type_idx

@@ -15,8 +15,11 @@ run_postgres: create_network
 shell:
 	docker-compose run --rm -it ocean_db_client bash
 
+delete_volume:
+	docker volume rm oceandb_postgres_data
+
 build_image:
 	docker build -f build/Dockerfile -t ocean_db_client:latest .
 
 psql:
-	docker exec -it postgres psql -h localhost -p 5432 -U postgres -d ocean_db
+	docker exec -it postgres psql -h localhost -p 5432 -U postgres -d ocean
