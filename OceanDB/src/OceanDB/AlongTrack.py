@@ -5,13 +5,10 @@ from datetime import timedelta, datetime
 import os
 import yaml
 import numpy as np
+import numpy.typing as npt
 from OceanDB.OceanDB import OceanDB
 from functools import cached_property
 
-
-class NearestNeighbor:
-    def __init__(self):
-        pass
 
 class SLA_Geographic:
     """
@@ -22,62 +19,43 @@ class SLA_Geographic:
 	 EXTRACT(EPOCH FROM ({central_date_time} - date_time)) AS time_difference_secs
 
     """
-    latitudes: np.array
-    longitudes: np.array
-    sla_filtered: float
-    date: datetime
-    length: int
+    latitude: npt.NDArray
+    longitude: npt.NDArray
+    sla_filtered: npt.NDArray
+    delta_t: npt.NDArray
 
     def __str__(self):
         return f"""
-        latitudes: {self.latitudes[:10]}...
-        longitudes: {self.longitudes[:10]} ...
-        date: {self.t[:10]} ...
-        sla_filtered: {self.sla[:10]} ...
+        latitude: {self.latitude[:10]}...
+        longitude: {self.longitude[:10]} ...
+        delta_t: {self.delta_t[:10]} ...
+        sla_filtered: {self.sla_filtered[:10]} ...
         """
 
-    def __init__(self, rows):
-        self.latitudes = np.array([data_i[0] for data_i in rows])
-        self.longitudes = np.array([data_i[1] for data_i in rows])
-        self.sla = np.array([data_i[2] for data_i in rows])
-        self.t = np.array([data_i[3] for data_i in rows])
-
-
-
+    def __init__(self, rows, variable_scale_factor):
         if not rows:
-            data = {"longitude": np.full(shape=1, fill_value=np.nan),
-                    "latitude": np.full(shape=1, fill_value=np.nan),
-                    "sla_filtered": np.full(shape=1, fill_value=np.nan),
-                    "delta_t": np.full(shape=1, fill_value=np.nan)}
+            self.longitude = np.full(shape=1, fill_value=np.nan)
+            self.latitude = np.full(shape=1, fill_value=np.nan)
+            self.sla_filtered = np.full(shape=1, fill_value=np.nan)
+            self.delta_t = np.full(shape=1, fill_value=np.nan)
         else:
-            self.longitude = np.array([data_i[0] for data_i in rows])
-            self.latitude = np.array([data_i[1] for data_i in rows])
-            # self.sla_filtered =
-
-            # data = {"longitude": np.array([data_i[0] for data_i in rows]),
-            #         "latitude": np.array([data_i[1] for data_i in rows]),
-            #         "sla_filtered": self.variable_scale_factor["sla_filtered"] * np.array(
-            #             [data_i[2] for data_i in rows]),
-            #         "delta_t": np.array(np.array([data_i[3] for data_i in rows]), dtype=np.float64)}
-
-
-        # self.latitude = row[0]
-        # self.longitude = row[1]
-        # self.sla_filtered = row[2]
-        # self.date = row[3]
+            self.latitude = np.array([data_i[0] for data_i in rows])
+            self.longitude = np.array([data_i[1] for data_i in rows])
+            self.sla_filtered = variable_scale_factor * np.array([data_i[2] for data_i in rows])
+            self.delta_t = np.array([data_i[3] for data_i in rows], dtype=np.float64)
 
     def to_dict(self):
         return {
-            'longitude': self.longitudes,
-            'latitude': self.latitudes,
+            'longitude': self.longitude,
+            'latitude': self.latitude,
             'sla_filtered': self.sla_filtered,
-            'date': self.date
+            'delta_t': self.delta_t
         }
 
 
 class SLA_Projected(SLA_Geographic):
-    x: np.array
-    y: np.array
+    delta_x: npt.NDArray
+    delta_y: npt.NDArray
 
 
 class AlongTrack(OceanDB):
