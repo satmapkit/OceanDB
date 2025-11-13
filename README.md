@@ -1,35 +1,58 @@
+# OceanDB
+OceanDB is a python package for managing oceanic satellite data intelligently.  The python package interfaces with a postgres database enabling efficient geospatial/temporal queries.  OceanDB comes with a simple cli that allows users to initialize database & ingest data.  
 
-## Installing PostgreSQL
 
-We need to install PostgreSQL with the PostGIS extension. On macOS, there is a [nice simple installer](https://postgresapp.com) which includes the necessary components. Open up the app, and then hit `initialize` and now the PostgreSQL server is running locally on our machine.
+## Build Docker Image
+This repository is configured such that we are using Docker to run the python package & a self hosted postgres container.  If Docker is not installed you will need to install it & docker-compose.    
 
-Now we need to interact with the server as a client from within python. The [psycopg](https://www.psycopg.org) package is the primary interface we will use. There is a pre-compiled binary available which should work fine, but if not, you can just request `psycopg`.
+1. **Running Postgres**
+   ```bash
+   make run_postgres // runs postgres postgis in docker compose
+   ```
+   
+2. **Build OceanDB Python Image**
+   ```bash
+   make build_image
+   ```
+## Configuring Database Connection
+2. **Edit config.yaml** 
 
-```
-pip install --upgrade pip
-pip install "psycopg[binary,pool]"
-```
+   Copy config.example.yaml to config.yaml, and modify postgres connection values if using an external postgres instance. (If using local docker postgres instance, the default credentials will work)
 
-It is also useful to download [pgAdmin](https://www.pgadmin.org), which is a postgresql client.
+## Deploying & Initializing OceanDB
+To Initialize the database run the following commands
+1. **Running Container**
+   ```bash
+   make shell // Open shell in docker container with Oceandb package installed 
+   ```
+   Subsequent commands will be run from this shell
+2. **Initializing the Database**
+   ```bash
+   oceandb init // Creates the database tables 
+   ```
 
-## Initialize the along-track database
+3. **Ingesting Data**
 
-As of 2024-07-12, I am piecing together code snippets and building a class `AlongTrack.py` which will handling building, indexing, populating, and querying the database. The script `create_along_track_db.py` shows basic usage.
+   Downloads data from Copernicus Marine Service over given date range & ingests into postgres.  Will take a long time.  
+    ```bash
+   oceandb ingest --start-date 2021-02-01 --end-date 2024-03-01 --missions all // Ingest all date between start-date & end-date
+    ```
+4. **Querying SLA Data** 
 
-## Downloading the data
-Start by installing [copernicusmarine](https://help.marine.copernicus.eu/en/articles/7970514-copernicus-marine-toolbox-installation),
-```
-python3 -m pip install copernicusmarine
-```
-
-To download the data, you need to [setup credential](https://help.marine.copernicus.eu/en/articles/8185007-copernicus-marine-toolbox-credentials-configuration).
-```
-copernicusmarine login
-```
-
-I now run the script `copernicus_download_netcdf_data.py` with my own paths set.
-
-## Notes
-
-https://www.postgresql.org/docs/current/populate.html
-https://www.postgresql.org/docs/16/sql-copy.html
+   To query the sea level anomaly for a given satellite mission, time range & radius around a given point
+   ```python
+   from datetime import datetime
+   from OceanDB.AlongTrack import AlongTrack
+   
+   latitude =  -63.77912
+   longitude = 291.794742
+   date = datetime(year=2013, month=12, day=31, hour=23)
+   along_track = AlongTrack()
+   
+   sla_geographic = along_track.geographic_points_in_spatialtemporal_window(
+    latitude=latitude,
+    longitude=longitude,
+    date=date,
+    missions = ['al']
+   )
+   ```

@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ocean_db = "OceanDB.cli:cli"
+oceandb = "OceanDB.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
