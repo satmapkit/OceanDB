@@ -261,8 +261,8 @@ class AlongTrack(OceanDB):
         connected_basin_id.append(3)
 
         params = {
-            "longitude": latitude,
-            "latitude": longitude,
+            "longitude": longitude,
+            "latitude": latitude,
             "distance": distance,
             "central_date_time": date,
             "time_delta": time_window,
@@ -305,8 +305,8 @@ class AlongTrack(OceanDB):
 
         params = [
             {
-                "longitude": latitude,
-                "latitude": longitude,
+                "longitude": longitude,
+                "latitude": latitude,
                 "distance": distance,
                 "central_date_time": date,
                 "time_delta": time_window,

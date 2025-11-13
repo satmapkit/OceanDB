@@ -1,2 +1,0 @@
-[console_scripts]
-ocean_db = OceanDB.cli:cli
