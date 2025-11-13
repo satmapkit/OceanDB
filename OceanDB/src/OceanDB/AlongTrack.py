@@ -200,7 +200,7 @@ class AlongTrack(OceanDB):
     def geographic_nearest_neighbors(self,
                                      latitudes: npt.NDArray[np.floating],
                                      longitudes: npt.NDArray[np.floating],
-                                     date: datetime,
+                                     dates: List[datetime],
                                      time_window=timedelta(seconds=856710),
                                      missions=None
                                      ) -> Generator[SLA_Geographic, None, None]:
@@ -218,14 +218,14 @@ class AlongTrack(OceanDB):
         connected_basin_ids = list( map(self.basin_connection_map.get, basin_ids) )
         params = [
             {
-                "latitude": latitudes,
-                "longitude": longitudes,
+                "latitude": latitude,
+                "longitude": longitude,
                 "central_date_time": date,
                 "connected_basin_ids": connected_basin_ids,
                 "time_delta": str(time_window / 2),
                 "missions": missions
              }
-            for latitudes, longitudes, connected_basin_ids in zip(latitudes, longitudes, connected_basin_ids)]
+            for latitude, longitude, date, connected_basin_ids in zip(latitudes, longitudes, dates, connected_basin_ids)]
 
         with pg.connect(self.connect_string()) as connection:
             with connection.cursor() as cursor:
@@ -285,7 +285,11 @@ class AlongTrack(OceanDB):
                                                      time_window=timedelta(seconds=856710),
                                                      missions=None) -> Generator[SLA_Geographic, None, None]:
         """
-        Runs the geographic_points_in_spatialtemporal_window query for every point in the latitudes & the longitudes arrays
+        Runs the geographic_points_in_spatialtemporal_window query for every point in the latitudes and longitudes arrays and dates list.
+
+        latitudes: n-array
+        longitudes: n-array
+        dates: n-list
         """
         query = self.load_sql_file(self.geo_spatiotemporal_query)
 
