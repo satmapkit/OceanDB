@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS along_track_point_date_idx

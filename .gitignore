@@ -9,3 +9,8 @@ __pycache__/
 *.png
 python/OceanDB/__pycache__/AlongTrack.cpython-312.pyc
 python/OceanDB/__pycache__/__init__.cpython-312.pyc
+
+.idea/
+
+/.env
+/OceanDB/src/OceanDB.egg-info/
