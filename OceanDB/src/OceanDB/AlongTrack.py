@@ -22,6 +22,7 @@ class SLA_Geographic:
     latitude: npt.NDArray
     longitude: npt.NDArray
     sla_filtered: npt.NDArray
+    distance: npt.NDArray
     delta_t: npt.NDArray
 
     def __repr__(self):
@@ -43,7 +44,8 @@ class SLA_Geographic:
             latitude = np.array([data_i[0] for data_i in rows]),
             longitude = np.array([data_i[1] for data_i in rows]),
             sla_filtered = variable_scale_factor * np.array([data_i[2] for data_i in rows]),
-            delta_t = np.array([data_i[3] for data_i in rows], dtype=np.float64)
+            distance = np.array([data_i[3] for data_i in rows]),
+            delta_t = np.array([data_i[4] for data_i in rows], dtype=np.float64)
         )
 
     def to_dict(self):
