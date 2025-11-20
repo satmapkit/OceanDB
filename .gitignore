@@ -14,3 +14,4 @@ python/OceanDB/__pycache__/__init__.cpython-312.pyc
 
 /.env
 /OceanDB/src/OceanDB.egg-info/
+/OceanDB/dist/
