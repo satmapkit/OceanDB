@@ -293,9 +293,12 @@ class AlongTrack(OceanDB):
         """
         Runs the geographic_points_in_spatialtemporal_window query for every point in the latitudes and longitudes arrays and dates list.
 
+        Returns all along_track points within the geospatial window within distance
+
         latitudes: n-array
         longitudes: n-array
         dates: n-list
+        distances
         """
         query = self.load_sql_file(self.geo_spatiotemporal_query)
 

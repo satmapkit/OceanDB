@@ -1,7 +1,5 @@
 from functools import cached_property
-from io import BytesIO
 import netCDF4 as nc
-import psycopg as pg
 from psycopg import sql
 import os
 import yaml
@@ -13,47 +11,41 @@ import psycopg as pg
 from psycopg.rows import dict_row
 from typing import Any, List, Dict, Optional
 import numpy as np
+from OceanDB.config import Config
 
 from sqlalchemy import create_engine
 
 from OceanDB.utils.logging import get_logger
 
 class OceanDB:
-    def __init__(self, host="", username="", password="", port=5432, db_name='ocean', config_path='/app/config.yaml'):
+    """
+    Base class for all classes that interface with the Postgres database
+
+    This class expects a .env file at the project root with database credentials.  See instructions in the README
+    """
+    def __init__(
+        self,
+        host: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        port: Optional[int] = None,
+        db_name: Optional[str] = None,
+        ):
+
+        self.config = Config()
+        self.host = host or self.config.POSTGRES_HOST
+        self.username = username or self.config.POSTGRES_USERNAME
+        self.password = password or self.config.POSTGRES_PASSWORD
+        self.port = port or self.config.POSTGRES_PORT
+        self.db_name = db_name or self.config.POSTGRES_DATABASE
+
         self.sql_pkg = "OceanDB.sql"
         self.data_pkg = "OceanDB.data"
         self.logger = get_logger()
-
-        self.host = host
-        self.username = username
-        self.password = password
-        self.port = port
-        self.db_name = db_name
-
-        if os.path.exists(config_path):
-            with open(config_path, "r") as param_file:
-                params = yaml.safe_load(param_file) or {}
-                db_cfg = params.get("db_connect", {})
-                self.host = host or db_cfg.get("host", self.host)
-                self.username = username or db_cfg.get("username", self.username)
-                self.password = password or db_cfg.get("password", self.password)
-                self.port = port or db_cfg.get("port", self.port)
-                self.db_name = db_name or db_cfg.get("db_name", self.db_name)
-        else:
-            print(f"config.yaml not found at {config_path}, using defaults or env vars")
+        self.config = Config()
 
 
-    def connect_string(self):
-        conn_str = f'''
-            host={self.host}
-            dbname={self.db_name}
-            port={self.port}
-            user={self.username}
-            password={self.password}'''
-        return conn_str
-
-
-    def load_module_file(self, module, filename, encoding="utf-8", mode="rb") -> IO:
+    def load_module_file(self, module: str, filename: str, encoding="utf-8", mode="rb") -> IO:
         """
         Open a resource file bundled within a Python package.
 
@@ -67,7 +59,10 @@ class OceanDB:
             return file_path.open(mode)
         return file_path.open(mode, encoding=encoding)
 
-    def load_sql_file(self, filename):
+    def load_sql_file(self, filename: str):
+        """
+        Load the contents of a SQL file
+        """
         with self.load_module_file(module="OceanDB.sql",
                                    filename=filename,
                                    mode="r",
@@ -107,8 +102,8 @@ class OceanDB:
                         return None
 
         except Exception as ex:
-            self.logger.info(f"❌ Error executing {table}")
-            self.logger.info(f"❌ Error while Executing Query: {ex}")
+            self.logger.info(f"Error executing {table}")
+            self.logger.info(f"Error while Executing Query: {ex}")
             return None
 
     def execute_query(self, table, query):
@@ -258,7 +253,3 @@ class OceanDB:
                     if not cursor.nextset():
                         break
         return basin_id_connection_dict
-
-
-# ocean_db = OceanDB()
-# ocean_db.basin_connection_map
