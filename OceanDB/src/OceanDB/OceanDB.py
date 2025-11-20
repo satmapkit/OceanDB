@@ -33,6 +33,7 @@ class OceanDB:
         ):
 
         self.config = Config()
+        self.connection_string = self.config.connect_string()
         self.host = host or self.config.POSTGRES_HOST
         self.username = username or self.config.POSTGRES_USERNAME
         self.password = password or self.config.POSTGRES_PASSWORD
@@ -87,7 +88,7 @@ class OceanDB:
             List of dictionaries (rows), or None if no results.
         """
         try:
-            with pg.connect(self.connect_string(), row_factory=dict_row) as conn:
+            with pg.connect(self.connection_string, row_factory=dict_row) as conn:
                 with conn.cursor() as cur:
                     cur.execute(query)
 
@@ -108,7 +109,7 @@ class OceanDB:
 
     def execute_query(self, table, query):
         try:
-            with pg.connect(self.connect_string()) as conn:
+            with pg.connect(self.connection_string) as conn:
                  with conn.cursor() as cur:
                      cur.execute(query)
                      conn.commit()
@@ -131,7 +132,7 @@ class OceanDB:
     def vacuum_analyze(self):
         print(f"Starting VACUUM ANALYZE...")
         start = time.time()
-        with pg.connect(self.connect_string()) as conn:
+        with pg.connect(self.connection_string) as conn:
             conn.autocommit = True
             with conn.cursor() as cur:
                 cur.execute("VACUUM ANALYZE")
@@ -152,7 +153,7 @@ class OceanDB:
             table_name=sql.Identifier(name)
         )
 
-        with pg.connect(self.connect_string()) as conn:
+        with pg.connect(self.connection_string) as conn:
             with conn.cursor() as cur:
                 cur.execute(query_truncate_table)
                 conn.commit()
@@ -228,10 +229,11 @@ class OceanDB:
 
     @cached_property
     def basin_connection_map(self) -> dict:
-        with pg.connect(self.connect_string()) as connection:
+        with pg.connect(self.connection_string) as connection:
             with connection.cursor() as cursor:
                 cursor.execute("""SELECT DISTINCT basin_id FROM basin_connections ORDER BY basin_id""")
                 unique_ids = cursor.fetchall()
+
         uid = [data_i[0] for data_i in unique_ids]
         basin_id_dict = [{"basin_id": basin_id} for basin_id in uid]
 
@@ -241,7 +243,7 @@ class OceanDB:
         		GROUP BY basin_id"""
 
         basin_id_connection_dict = {}
-        with pg.connect(self.connect_string()) as connection:
+        with pg.connect(self.connection_string) as connection:
             with connection.cursor() as cursor:
                 cursor.executemany(query, basin_id_dict, returning=True)
                 i = 0

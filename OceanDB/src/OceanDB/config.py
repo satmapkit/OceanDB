@@ -53,10 +53,13 @@ class Config:
 
         self.COPERNICUS_USERNAME = os.getenv("COPERNICUS_USERNAME")
         self.COPERNICUS_PASSWORD = os.getenv("COPERNICUS_PASSWORD")
-        self.ALONG_TRACK_FILE_PATH = os.getenv("ALONG_TRACK_FILE_PATH")
-        self.EDDIES_FILE_PATH = os.getenv("EDDIES_FILE_PATH")
+        self.ALONG_TRACK_DATA_DIRECTORY = os.getenv("ALONG_TRACK_DATA_DIRECTORY")
+        self.EDDIES_DATA_DIRECTORY = os.getenv("EDDIES_DATA_DIRECTORY")
 
     def connect_string(self):
+        """
+        Postgres connection string
+        """
         conn_str = (
             f"host={self.POSTGRES_HOST} "
             f"dbname={self.POSTGRES_DATABASE} "
@@ -64,5 +67,4 @@ class Config:
             f"user={self.POSTGRES_USERNAME} "
             f"password={self.POSTGRES_PASSWORD}"
         )
-        print(conn_str)
         return conn_str

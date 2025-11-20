@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-
+from dataclasses import asdict
 import netCDF4 as nc
 import pandas as pd
 import psycopg
@@ -67,13 +67,22 @@ class AlongTrackMetaData:
     summary: Optional[str] = None
     title: Optional[str] = None
 
+    def to_dict(self):
+        return asdict(self)
+
+
     @classmethod
-    def from_netcdf(cls, ds: nc.Dataset, file: Path) -> "AlongTrackMetaData":
+    def from_netcdf(cls, ds: nc.Dataset, file_name: str) -> "AlongTrackMetaData":
         """Create AlongTrackMetaData from a NetCDF4 dataset."""
+
         def get(attr: str):
             return getattr(ds, attr, None)
+        # print("from netcdf")
+        # print(getattr(ds, "Conventions", None))
+        # print(ds)
+
         return cls(
-            file_name=file.name,
+            file_name=file_name,
             conventions=get("Conventions"),
             metadata_conventions=get("Metadata_Conventions"),
             cdm_data_type=get("cdm_data_type"),
@@ -100,6 +109,7 @@ class AlongTrackMetaData:
             summary=get("summary"),
             title=get("title"),
         )
+
 
 
 
@@ -198,7 +208,7 @@ class OceanDBETl(OceanDB):
         return ds
 
     def extract_dataset_metadata(self, ds: nc.Dataset, file: Path) -> AlongTrackMetaData:
-        return AlongTrackMetaData.from_netcdf(ds, file=file)
+        return AlongTrackMetaData.from_netcdf(ds, file_name=file.name)
 
     def extract_data_from_netcdf(self, ds: nc.Dataset, file: Path) -> AlongTrackData:
         """
@@ -255,21 +265,21 @@ class OceanDBETl(OceanDB):
         #     print("File '{}' not found".format(file_path))
 
 
-    def insert_along_track_data_from_netcdf(self, directory):
-        """
-        Iterate over all files in direcotory,
-        """
-        start = time.time()
-        for file_path in glob.glob(directory + '/*.nc'):
-            names = [os.path.basename(x) for x in glob.glob(file_path)]
-            fname = names[0]  # filename will be used to link data to metadata
-            along_track: AlongTrackData = self.extract_data_from_netcdf(file_path)
-            import_start = time.time()
-            self.import_along_track_data_to_postgresql(fname, along_track)
-            import_end = time.time()
-            print(f"{fname} import time: {import_end - import_start}")
-        end = time.time()
-        print(f"Script end. Total time: {end - start}")
+    # def insert_along_track_data_from_netcdf(self, directory):
+    #     """
+    #     Iterate over all files in direcotory,
+    #     """
+    #     start = time.time()
+    #     for file_path in glob.glob(directory + '/*.nc'):
+    #         names = [os.path.basename(x) for x in glob.glob(file_path)]
+    #         fname = names[0]  # filename will be used to link data to metadata
+    #         along_track: AlongTrackData = self.extract_data_from_netcdf(file_path)
+    #         import_start = time.time()
+    #         self.import_along_track_data_to_postgresql(fname, along_track)
+    #         import_end = time.time()
+    #         print(f"{fname} import time: {import_end - import_start}")
+    #     end = time.time()
+    #     print(f"Script end. Total time: {end - start}")
 
 
     def insert_basins_data(self):
@@ -287,7 +297,7 @@ class OceanDBETl(OceanDB):
 
         data = df.to_records(index=False).tolist()
 
-        with psycopg.connect(self.connect_string()) as conn:
+        with psycopg.connect(self.connection_string) as conn:
             with conn.cursor() as cur:
                 cur.executemany(query.as_string(conn), data)
                 conn.commit()
@@ -301,6 +311,7 @@ class OceanDBETl(OceanDB):
         df.rename(columns={"basinid": "basin_id", "connected_basin": "connected_id"}, inplace=True)
         print(df.columns)
         columns = list(df.columns)
+
         query = sql.SQL("INSERT INTO {table} ({fields}) VALUES ({placeholders})").format(
             table=sql.Identifier("basin_connections"),
             fields=sql.SQL(", ").join(map(sql.Identifier, columns)),
@@ -309,7 +320,7 @@ class OceanDBETl(OceanDB):
 
         data = df.to_records(index=False).tolist()
 
-        with psycopg.connect(self.connect_string()) as conn:
+        with psycopg.connect(self.connection_string) as conn:
             with conn.cursor() as cur:
                 cur.executemany(query.as_string(conn), data)
                 conn.commit()
@@ -399,7 +410,7 @@ class OceanDBETl(OceanDB):
             placeholders=sql.SQL(', ').join(sql.Placeholder() * len(fields)),
         )
 
-        with pg.connect(self.connect_string()) as conn:
+        with pg.connect(self.connection_string) as conn:
             with conn.cursor() as cur:
                 cur.execute(query, tuple(metadata.__dict__.values()))
             conn.commit()
@@ -407,86 +418,20 @@ class OceanDBETl(OceanDB):
 
     def ingest_along_track_file(self, file: Path):
         dataset: nc.Dataset = self.load_netcdf(file)
-        along_track_data: AlongTrackData = self.extract_data_from_netcdf(ds=dataset, file=file)
+        # print(dataset)
+        # along_track_data: AlongTrackData = self.extract_data_from_netcdf(ds=dataset, file=file)
         along_track_metadata: AlongTrackMetaData = self.extract_dataset_metadata(
              ds=dataset,
              file=file
         )
-        self.import_along_track_data_to_postgresql(
-             along_track_data=along_track_data
-        )
+        # for k, v in along_track_metadata.to_dict():
+        #     print(f"k: {k} v: {v}")
+        #
+        # print(along_track_metadata.to_dict())
+
+        # self.import_along_track_data_to_postgresql(
+        #      along_track_data=along_track_data
+        # )
         self.import_metadata_to_psql(
             metadata=along_track_metadata
         )
-
-
-
-
-    # def import_metadata_to_psql(self, metadata: AlongTrackMetaData):
-    #     query = sql.SQL("""
-    #         INSERT INTO {table} (
-    #             file_name, conventions, metadata_conventions, cdm_data_type,
-    #             comment, contact, creator_email, creator_name, creator_url,
-    #             date_created, date_issued, date_modified, history, institution,
-    #             keywords, license, platform, processing_level, product_version,
-    #             project, references, software_version, source, ssalto_duacs_comment,
-    #             summary, title
-    #         )
-    #         VALUES ({placeholders})
-    #         ON CONFLICT (file_name) DO NOTHING;
-    #     """).format(
-    #         table=sql.Identifier(self.along_track_metadata_table_name),
-    #         placeholders=sql.SQL(', ').join(sql.Placeholder() * len(metadata.__dataclass_fields__)),
-    #     )
-    #
-    #     with pg.connect(self.connect_string()) as conn:
-    #         with conn.cursor() as cur:
-    #             cur.execute(query, tuple(metadata.__dict__.values()))
-    #         conn.commit()
-
-
-    # def import_metadata_to_psql(self, ds, fname):
-    #     query = sql.SQL(
-    #         "INSERT INTO {table} ({fields}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s)").format(
-    #         fields=sql.SQL(',').join([
-    #             sql.Identifier('file_name'),
-    #             sql.Identifier('conventions'),
-    #             sql.Identifier('metadata_conventions'),
-    #             sql.Identifier('cdm_data_type'),
-    #             sql.Identifier('comment'),
-    #             sql.Identifier('contact'),
-    #             sql.Identifier('creator_email'),
-    #             sql.Identifier('creator_name'),
-    #             sql.Identifier('creator_url'),
-    #             sql.Identifier('date_created'),
-    #             sql.Identifier('date_issued'),
-    #             sql.Identifier('date_modified'),
-    #             sql.Identifier('history'),
-    #             sql.Identifier('institution'),
-    #             sql.Identifier('keywords'),
-    #             sql.Identifier('license'),
-    #             sql.Identifier('platform'),
-    #             sql.Identifier('processing_level'),
-    #             sql.Identifier('product_version'),
-    #             sql.Identifier('project'),
-    #             sql.Identifier('references'),
-    #             sql.Identifier('software_version'),
-    #             sql.Identifier('source'),
-    #             sql.Identifier('ssalto_duacs_comment'),
-    #             sql.Identifier('summary'),
-    #             sql.Identifier('title'),
-    #         ]),
-    #         table=sql.Identifier(self.along_track_metadata_table_name),
-    #     )
-    #     with pg.connect(self.connect_string()) as conn:
-    #         with conn.cursor() as cur:
-    #             data = (fname, ds.Conventions, ds.Metadata_Conventions, ds.cdm_data_type, ds.comment, ds.contact,
-    #                     ds.creator_email,
-    #                     ds.creator_name, ds.creator_url, ds.date_created, ds.date_issued, ds.date_modified, ds.history,
-    #                     ds.institution,
-    #                     ds.keywords, ds.license, ds.platform, ds.processing_level, ds.product_version, ds.project,
-    #                     ds.references,
-    #                     ds.software_version, ds.source, ds.ssalto_duacs_comment, ds.summary, ds.title)
-    #
-    #             cur.execute(query, data)
-    #             conn.commit()
