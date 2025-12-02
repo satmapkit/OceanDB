@@ -1,9 +1,10 @@
 # OceanDB
 OceanDB is a python package for managing oceanic satellite data intelligently.  The python package interfaces with a postgres database enabling efficient geospatial/temporal queries.  OceanDB comes with a simple cli that allows users to initialize database & ingest data.  
 
+Configuring the .env 
+Using the .env.example create an .env populated with 
 
-## Build Docker Image
-This repository is configured such that we are using Docker to run the python package & a self hosted postgres container.  If Docker is not installed you will need to install it & docker-compose.    
+
 
 1. **Running Postgres**
    ```bash
@@ -56,3 +57,9 @@ To Initialize the database run the following commands
     missions = ['al']
    )
    ```
+   
+
+
+WHAT IS THIS?
+In [6]: quit
+error ignored in rollback on <psycopg.Connection [BAD] at 0xffffaef09d50>: terminating connection due to administrator command
