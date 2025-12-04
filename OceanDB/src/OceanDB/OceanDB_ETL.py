@@ -418,20 +418,14 @@ class OceanDBETl(OceanDB):
 
     def ingest_along_track_file(self, file: Path):
         dataset: nc.Dataset = self.load_netcdf(file)
-        # print(dataset)
-        # along_track_data: AlongTrackData = self.extract_data_from_netcdf(ds=dataset, file=file)
+        along_track_data: AlongTrackData = self.extract_data_from_netcdf(ds=dataset, file=file)
         along_track_metadata: AlongTrackMetaData = self.extract_dataset_metadata(
              ds=dataset,
              file=file
         )
-        # for k, v in along_track_metadata.to_dict():
-        #     print(f"k: {k} v: {v}")
-        #
-        # print(along_track_metadata.to_dict())
-
-        # self.import_along_track_data_to_postgresql(
-        #      along_track_data=along_track_data
-        # )
+        self.import_along_track_data_to_postgresql(
+             along_track_data=along_track_data
+        )
         self.import_metadata_to_psql(
             metadata=along_track_metadata
         )

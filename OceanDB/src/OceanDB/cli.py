@@ -2,8 +2,6 @@ from datetime import datetime
 
 import click
 from pathlib import Path
-
-from OceanDB.OceanDB_Copernicus import OceanDBCopernicusMarine
 from OceanDB.OceanDB_ETL import OceanDBETl, AlongTrackData, AlongTrackMetaData
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.config import Config
@@ -35,8 +33,6 @@ def init():
     oceandb_etl = OceanDBETl()
     oceandb_etl.insert_basins_data()
     oceandb_etl.insert_basin_connections_data()
-
-
 
 
 @cli.command
@@ -96,7 +92,7 @@ def parse_date(ctx, param, value) -> datetime:
 
 
 
-@cli.command
+
 # @click.option(
 #     "--missions",
 #     "-m",
@@ -119,73 +115,53 @@ def parse_date(ctx, param, value) -> datetime:
 #     is_flag=True,
 #     help="Ingest all missions and all available date ranges."
 # )
+@cli.command
+@click.option(
+    "--missions",
+    "-m",
+    multiple=True,
+    help="One or more missions to ingest (e.g. -m j3 -m al -m s3a).",
+    required=False
+)
+def ingest(missions=None):
+    """
+    missions, can provide multiple -m flags to ingest multiple missions,
 
-def ingest():
-    config = Config()
+    To specify the 'al' mission
+    -m al
+    --missions al
 
-    mission = "al"
-    prefix = "SEALEVEL_GLO_PHY_L3_MY_008_062"
-    file_structure = f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411"
-    ingest_directory = Path(f"{config.ALONG_TRACK_DATA_DIRECTORY}/{prefix}/{file_structure}")
-    nc_files = ingest_directory.rglob("*.nc")
 
+
+
+    """
     oceandb_etl = OceanDBETl()
 
-    for file in nc_files:
-        print(file)
-        print(f"Processing {file.name}")
-        start = time.perf_counter()
-        oceandb_etl.ingest_along_track_file(file)
-        size_mb = file.stat().st_size / (1024 * 1024)
-        duration = time.perf_counter() - start
-        print(f"✅ {file.name} | {size_mb:.2f} MB | {duration:.2f}s")
 
+    if not missions or (len(missions) == 1 and missions[0] == "all"):
+        missions = oceandb_etl.missions
 
-        break
+    config = Config()
+    missions = list(missions)  # convert tuple → list
 
-# def insert():
-#     """
-#     Iterate over ALL
-#     """
-#     config = Config()
-#     root_directory = Path(config.ALONG_TRACK_DATA_DIRECTORY)
-#     nc_files = root_directory.rglob("*.nc")
-#     oceandb_etl = OceanDBETl()
-#
-#     for file in nc_files:
-#         print("The ")
-#         oceandb_etl.ingest_along_track_file(file)
-#         break
-#
-#     mission = "al"
-#     file_structure = f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411"
-    # # oceandb_etl = OceanDBETl()
-    #
-    # al_root_dir = Path("data/copernicus/SEALEVEL_GLO_PHY_L3_MY_008_062/cmems_obs-sl_glo_phy-ssh_my_al-l3-duacs_PT1S_202411")
-    # # alg_root_dir = Path("data/copernicus/SEALEVEL_GLO_PHY_L3_MY_008_062/cmems_obs-sl_glo_phy-ssh_my_alg-l3-duacs_PT1S_202411")
-    # #
-    # #
-    # # # Recursively iterate through all .nc files
-    # # oceandb_etl = OceanDBETl()
-    # # al_nc_files = al_root_dir.rglob("*.nc")
-    # # alg_nc_files = alg_root_dir.rglob("*.nc")
-    # #
-    # # nc_files = [*al_nc_files, *alg_nc_files]
-    # #
-    # for file in nc_files:
-    #     # try:
-    #     start = time.perf_counter()
-    #     oceandb_etl.ingest_along_track_file(file)
-    #     size_mb = file.stat().st_size / (1024 * 1024)
-    #     duration = time.perf_counter() - start
-    #     print(f"✅ {file.name} | {size_mb:.2f} MB | {duration:.2f}s")
-    #
-    #     # except Exception as ex:
-    #     #     logger.error(f"❌ {file.name}: {ex}")
-# @cli.command()
-# def insert_basins():
-#     from OceanDB.OceanDB_ETL import OceanDBETl
-#     oceandb_etl = OceanDBETl()
-#     oceandb_etl.insert_basins_data()
-#     oceandb_etl.insert_basin_connections_data()
-#
+    click.echo(f"Ingesting missions: {oceandb_etl.missions}")
+
+    if not click.confirm("This may take many hours. Continue?"):
+        return
+
+    prefix = "SEALEVEL_GLO_PHY_L3_MY_008_062"
+    for i, mission in enumerate(missions):
+        file_structure = f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411"
+        ingest_directory = Path(f"{config.ALONG_TRACK_DATA_DIRECTORY}/{prefix}/{file_structure}")
+        nc_files = list(ingest_directory.rglob("*.nc"))
+
+        print(f"Iterating over {len(nc_files)} along track files in {ingest_directory}")
+
+        for file in nc_files:
+            print(file)
+            print(f"Processing {file.name}")
+            start = time.perf_counter()
+            oceandb_etl.ingest_along_track_file(file)
+            size_mb = file.stat().st_size / (1024 * 1024)
+            duration = time.perf_counter() - start
+            print(f"✅ {file.name} | {size_mb:.2f} MB | {duration:.2f}s")
