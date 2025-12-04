@@ -25,20 +25,15 @@ class OceanDB:
     """
     def __init__(
         self,
-        host: Optional[str] = None,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        port: Optional[int] = None,
-        db_name: Optional[str] = None,
         ):
 
         self.config = Config()
         self.connection_string = self.config.connect_string()
-        self.host = host or self.config.POSTGRES_HOST
-        self.username = username or self.config.POSTGRES_USERNAME
-        self.password = password or self.config.POSTGRES_PASSWORD
-        self.port = port or self.config.POSTGRES_PORT
-        self.db_name = db_name or self.config.POSTGRES_DATABASE
+        self.host = self.config.POSTGRES_HOST
+        self.username = self.config.POSTGRES_USERNAME
+        self.password = self.config.POSTGRES_PASSWORD
+        self.port = self.config.POSTGRES_PORT
+        self.db_name = self.config.POSTGRES_DATABASE
 
         self.sql_pkg = "OceanDB.sql"
         self.data_pkg = "OceanDB.data"

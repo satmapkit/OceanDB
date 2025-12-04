@@ -182,8 +182,8 @@ EXPECTED_TABLE_INDEXES = {
 
 
 class OceanDBInit(OceanDB):
-    def __init__(self, host="", username="", password="", port=5432, db_name='ocean', config_path='/app/config.yaml'):
-        super().__init__(host=host, username=username, password=password, port=port, db_name=db_name)
+    def __init__(self):
+        super().__init__()
 
     def create_database(self):
         # Create the Database

@@ -49,7 +49,7 @@ class Config:
         self.POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
         self.POSTGRES_USERNAME = os.getenv("POSTGRES_USERNAME", "postgres")
         self.POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
-        self.POSTGRES_DATABASE = os.getenv("DB_NAME", "ocean")
+        self.POSTGRES_DATABASE = os.getenv("POSTGRES_DATABASE", "ocean")
 
         self.COPERNICUS_USERNAME = os.getenv("COPERNICUS_USERNAME")
         self.COPERNICUS_PASSWORD = os.getenv("COPERNICUS_PASSWORD")
