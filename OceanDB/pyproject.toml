@@ -12,7 +12,7 @@ requires-python = ">=3.9"
 dependencies = [
     "netCDF4~=1.7.1.post1",
     "psycopg~=3.2.1",
-    "psycopg2-binary",
+    "psycopg2-binary~=3.2.1",
     "python-dateutil~=2.9.0.post0",
     "numpy~=2.0.1",
     "pandas~=2.2.2",
