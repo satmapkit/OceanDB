@@ -16,7 +16,9 @@ dependencies = [
     "numpy~=2.0.1",
     "pandas~=2.2.2",
     "copernicusmarine>=2.0.0",
-    "xarray~=2024.6.0"
+    "xarray~=2024.6.0",
+    "dotenv",
+    "sqlalchemy>2.0"
 ]
 
 [project.scripts]
@@ -28,4 +30,11 @@ include = ["OceanDB*"]
 
 [tool.setuptools.package-data]
 "OceanDB.sql" = ["*.sql"]
-"OceanDB.data" = ["*.csv"]
+"OceanDB.sql.tables" = ["*.sql"]
+"OceanDB.sql.indices" = ["*.sql"]
+"OceanDB.sql.queries" = ["*.sql"]
+
+
+"OceanDB.data.basin_masks" = ["*.nc"]
+
+"OceanDB.data.basins" = ["*.csv"]

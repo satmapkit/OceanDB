@@ -32,20 +32,23 @@ table_definitions = [
         "params": {"table_name": "along_track"},
     },
     {
-        "name": "eddy",
-        "filepath": "tables/create_eddy_table.sql",
-        "params": {"table_name": "eddy"},
-    },
-    {
-        "name": "chelton_eddy",
-        "filepath": "tables/create_chelton_eddy_table.sql",
-        "params": {"table_name": "chelton_eddy"},
-    },
-    {
         "name": "basin_connection",
         "filepath": "tables/create_basin_connection_table.sql",
         "params": {"table_name": "basin_connection"},
     }
+
+
+    # {
+    #     "name": "eddy",
+    #     "filepath": "tables/create_eddy_table.sql",
+    #     "params": {"table_name": "eddy"},
+    # },
+    # {
+    #     "name": "chelton_eddy",
+    #     "filepath": "tables/create_chelton_eddy_table.sql",
+    #     "params": {"table_name": "chelton_eddy"},
+    # },
+
 ]
 
 sql_index_files = [
@@ -109,41 +112,41 @@ sql_index_files = [
         "filepath": "indices/create_basin_index_geom.sql",
         "params": {"index_name": "basin_index_geom"},
     },
-    {
-        "name": "chelton_eddy_index_point",
-        "filepath": "indices/create_chelton_eddy_index_point.sql",
-        "params": {"index_name": "chelton_eddy_index_point"},
-    },
-    {
-        "name": "chelton_eddy_index_track_cyclonic_type",
-        "filepath": "indices/create_chelton_eddy_index_track_cyclonic_type.sql",
-        "params": {"index_name": "chelton_eddy_index_track_cyclonic_type"},
-    },
-    {
-        "name": "eddy_index_point",
-        "filepath": "indices/create_eddy_index_point.sql",
-        "params": {"index_name": "eddy_index_point"},
-    },
-    {
-        "name": "eddy_index_track_cyclonic_type",
-        "filepath": "indices/create_eddy_index_track_cyclonic_type.sql",
-        "params": {"index_name": "eddy_index_track_cyclonic_type"},
-    },
-    {
-        "name": "eddy_index_track_cyclonic_type",
-        "filepath": "indices/create_eddy_index_track_cyclonic_type.sql",
-        "params": {"index_name": "eddy_index_track_cyclonic_type"},
-    },
-    {
-        "name": "eddy_index_track_cyclonic_type",
-        "filepath": "indices/create_eddy_index_track_cyclonic_type.sql",
-        "params": {"index_name": "eddy_index_track_cyclonic_type"},
-    },
-    {
-        "name": "eddy_index_track_cyclonic_type",
-        "filepath": "indices/create_eddy_index_track_cyclonic_type.sql",
-        "params": {"index_name": "eddy_index_track_cyclonic_type"},
-    }
+    # {
+    #     "name": "chelton_eddy_index_point",
+    #     "filepath": "indices/create_chelton_eddy_index_point.sql",
+    #     "params": {"index_name": "chelton_eddy_index_point"},
+    # },
+    # {
+    #     "name": "chelton_eddy_index_track_cyclonic_type",
+    #     "filepath": "indices/create_chelton_eddy_index_track_cyclonic_type.sql",
+    #     "params": {"index_name": "chelton_eddy_index_track_cyclonic_type"},
+    # },
+    # {
+    #     "name": "eddy_index_point",
+    #     "filepath": "indices/create_eddy_index_point.sql",
+    #     "params": {"index_name": "eddy_index_point"},
+    # },
+    # {
+    #     "name": "eddy_index_track_cyclonic_type",
+    #     "filepath": "indices/create_eddy_index_track_cyclonic_type.sql",
+    #     "params": {"index_name": "eddy_index_track_cyclonic_type"},
+    # },
+    # {
+    #     "name": "eddy_index_track_cyclonic_type",
+    #     "filepath": "indices/create_eddy_index_track_cyclonic_type.sql",
+    #     "params": {"index_name": "eddy_index_track_cyclonic_type"},
+    # },
+    # {
+    #     "name": "eddy_index_track_cyclonic_type",
+    #     "filepath": "indices/create_eddy_index_track_cyclonic_type.sql",
+    #     "params": {"index_name": "eddy_index_track_cyclonic_type"},
+    # },
+    # {
+    #     "name": "eddy_index_track_cyclonic_type",
+    #     "filepath": "indices/create_eddy_index_track_cyclonic_type.sql",
+    #     "params": {"index_name": "eddy_index_track_cyclonic_type"},
+    # }
 ]
 
 
@@ -195,7 +198,7 @@ class OceanDBInit(OceanDB):
                 print(f"Database '{self.db_name}' created successfully.")
 
         ## Enable POSTGIS extensions
-        with pg.connect(self.connect_string()) as atdb_conn:
+        with pg.connect(self.connection_string) as atdb_conn:
             with atdb_conn.cursor() as atdb_cur:
                 atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS plpgsql;"))
                 atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS postgis;"))

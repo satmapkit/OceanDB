@@ -33,19 +33,18 @@ class SLA_Geographic:
         sla_filtered: {self.sla_filtered[:10]} ...
         """
 
-
-
     @classmethod
     def from_rows(cls,
                  rows: list,
                  variable_scale_factor
                  ):
+
         return cls(
-            latitude = np.array([data_i[0] for data_i in rows]),
-            longitude = np.array([data_i[1] for data_i in rows]),
-            sla_filtered = variable_scale_factor * np.array([data_i[2] for data_i in rows]),
-            distance = np.array([data_i[3] for data_i in rows]),
-            delta_t = np.array([data_i[4] for data_i in rows], dtype=np.float64)
+            latitude = np.array([row['latitude'] for row in rows]),
+            longitude = np.array([row['longitude'] for row in rows]),
+            sla_filtered = variable_scale_factor * np.array([row['sla_filtered'] for row in rows]),
+            distance = np.array([row['distance'] for row in rows]),
+            delta_t = np.array([row['time_difference_secs'] for row in rows], dtype=np.float64)
         )
 
     def to_dict(self):
@@ -269,8 +268,8 @@ class AlongTrack(OceanDB):
              }
             for latitude, longitude, date, connected_basin_ids in zip(latitudes, longitudes, dates, connected_basin_ids)]
 
-        with pg.connect(self.connect_string()) as connection:
-            with connection.cursor() as cursor:
+        with pg.connect(self.connection_string) as connection:
+            with connection.cursor(row_factory=pg.rows.dict_row) as cursor:
                 cursor.executemany(query, params, returning=True)
                 while True:
                     rows = cursor.fetchall()
@@ -293,9 +292,12 @@ class AlongTrack(OceanDB):
         """
         Runs the geographic_points_in_spatialtemporal_window query for every point in the latitudes and longitudes arrays and dates list.
 
+        Returns all along_track points within the geospatial window within distance
+
         latitudes: n-array
         longitudes: n-array
         dates: n-list
+        distances
         """
         query = self.load_sql_file(self.geo_spatiotemporal_query)
 
@@ -323,8 +325,8 @@ class AlongTrack(OceanDB):
         ]
 
 
-        with pg.connect(self.connect_string()) as connection:
-            with connection.cursor() as cursor:
+        with pg.connect(self.connection_string) as connection:
+            with connection.cursor(row_factory=pg.rows.dict_row) as cursor:
                 cursor.executemany(query, params, returning=True)
                 while True:
                     rows = cursor.fetchall()
@@ -389,9 +391,9 @@ class AlongTrack(OceanDB):
             missions = self.missions
 
         if should_basin_mask:
-            query = self.load_sql_file("queries/geographic_points_in_spatialtemporal_projected_window.sql")
+            query = self.load_sql_file(self.projected_spatio_temporal_query_mask)
         else:
-            query = self.load_sql_file("queries/geographic_points_in_spatialtemporal_projected_window_nomask.sql")
+            query = self.load_sql_file(self.projected_spatio_temporal_query_mask)
 
         [x0s, y0s, minLats, minLons, maxLats, maxLons] = latitude_longitude_bounds_for_transverse_mercator_box(latitudes, longitudes, 2*Lx, 2*Ly)
 
@@ -418,7 +420,7 @@ class AlongTrack(OceanDB):
             )
         ]
 
-        with pg.connect(self.connect_string()) as connection:
+        with pg.connect(self.connection_string) as connection:
             with connection.cursor() as cursor:
                 cursor.executemany(query, params, returning=True)
                 for x0,y0 in zip(x0s, y0s):

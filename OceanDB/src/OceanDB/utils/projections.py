@@ -70,7 +70,8 @@ def latitude_longitude_to_spherical_transverse_mercator(
 def spherical_transverse_mercator_to_latitude_longitude(
         x: float|npt.NDArray[np.floating],
         y: float|npt.NDArray[np.floating],
-        lon0: float|npt.NDArray[np.floating]):
+        lon0: float|npt.NDArray[np.floating]
+    ):
     """
 
     """
