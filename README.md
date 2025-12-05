@@ -3,7 +3,7 @@ OceanDB is a python package for managing oceanic satellite data intelligently.  
 
 Configuring the .env 
 Using the .env.example create an .env populated with 
-
+```
 POSTGRES_HOST=postgres
 POSTGRES_USERNAME=postgres
 POSTGRES_PASSWORD=postgres
@@ -15,7 +15,7 @@ EDDY_DATA_DIRECTORY=/app/data/eddies
 
 COPERNICUS_PASSWORD=copernicus_marine_service_password_placeholder
 COPERNICUS_USERNAME=copernicus_marine_service_username
-
+```
 ## Installation Instructions
 1. **Instalalling**
    With your python environment activated
@@ -31,13 +31,22 @@ The OceanDB package provides a CLI for
    oceandb init // Creates the database tables 
    ```
 
-TODO -> this is in progress 
-1. **Ingesting Data**
-   Downloads data from Copernicus Marine Service over given date range & ingests into postgres.  Will take a long time.  
-    ```bash
-   oceandb ingest --start-date 2021-02-01 --end-date 2024-03-01 --missions all // Ingest all date between start-date & end-date  
-    ```
-2. **Querying SLA Data**
+2. **Ingesting Data** 
+
+With Copernicus Marine Service Along Track downloaded to your computer. ensure that the ALONG_TRACK_DATA_DIRECTORY is set correctly in
+the .env file.  ALONG_TRACK_DATA_DIRECTORY should be the file path to the directory at which the SEALEVEL_GLO existis.  so ALONG_TRACK_DATA_DIRECTORY=/path/../../copernicus   
+
+
+![Screenshot 2025-12-05 at 11.19.07 AM.png](docs/Screenshot%202025-12-05%20at%2011.19.07%E2%80%AFAM.png)
+
+   ```bash
+    oceandb ingest // Ingest all missions across all date ranges
+    oceandb ingest -m j1 -m j3 // Multiple missions 
+    oceandb ingest --start-date 2021-02-01 --end-date 2024-03-01 -m all // Ingest all data between start-date & end-date  
+  ```
+
+ 
+4. **Querying SLA Data**
    To query the sea level anomaly for a given satellite mission, time range & radius around a given point
    ```python
    from datetime import datetime

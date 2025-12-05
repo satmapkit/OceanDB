@@ -91,30 +91,86 @@ def parse_date(ctx, param, value) -> datetime:
         raise click.BadParameter(f"Invalid date format: {value}. Use YYYY-MM-DD.")
 
 
+from datetime import date
+
+def iter_year_months(start: datetime, end: datetime):
+    """Yield (year, month) for all months between start and end (inclusive)."""
+    year, month = start.year, start.month
+    end_year, end_month = end.year, end.month
+
+    while (year < end_year) or (year == end_year and month <= end_month):
+        yield year, month
+        # increment month
+        month += 1
+        if month == 13:
+            month = 1
+            year += 1
 
 
-# @click.option(
-#     "--missions",
-#     "-m",
-#     multiple=True,
-#     help="One or more missions to ingest (e.g. -m j3 -m al -m s3a)."
-# )
-# @click.option(
-#     "--start-date",
-#     callback=parse_date,
-#     help="Start date (YYYY-MM-DD)."
-# )
-# @click.option(
-#     "--end-date",
-#     callback=parse_date,
-#     help="End date (YYYY-MM-DD)."
-# )
-# @click.option(
-#     "--all",
-#     "ingest_all",
-#     is_flag=True,
-#     help="Ingest all missions and all available date ranges."
-# )
+def get_netcdf4_files(
+    missions: list,
+    start_date: datetime = None,
+    end_date: datetime = None
+):
+    """
+    Generate a list of NetCDF along-track files based on missions and optional date filtering.
+    If start_date and end_date are both None → return ALL files for those missions.
+    """
+
+    oceandb_etl = OceanDBETl()
+    missions = list(missions)
+
+    # -----------------------
+    # Mission handling
+    # -----------------------
+    if not missions or (len(missions) == 1 and missions[0] == "all"):
+        missions = oceandb_etl.missions
+
+    click.echo(f"Ingesting missions: {missions}")
+
+    prefix = "SEALEVEL_GLO_PHY_L3_MY_008_062"
+    all_netcdf_files = []
+
+    # -----------------------
+    # Determine year/months
+    # -----------------------
+    if start_date is None and end_date is None:
+        year_months = None  # means: ingest EVERYTHING
+    elif start_date is None or end_date is None:
+        raise ValueError("start_date and end_date must both be provided or both be None.")
+    else:
+        year_months = list(iter_year_months(start_date, end_date))
+
+    # -----------------------
+    # Collect files
+    # -----------------------
+    for mission in missions:
+        file_structure = f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411"
+        ingest_directory = (
+            Path(oceandb_etl.config.ALONG_TRACK_DATA_DIRECTORY)
+            / prefix
+            / file_structure
+        )
+
+        if year_months is None:
+            # Ingest ALL .nc files recursively
+            nc_files = list(ingest_directory.rglob("*.nc"))
+        else:
+            # Ingest date-filtered months only
+            nc_files = [
+                nc_file
+                for year, month in year_months
+                for nc_file in (ingest_directory / f"{year:04d}" / f"{month:02d}").rglob("*.nc")
+                if (ingest_directory / f"{year:04d}" / f"{month:02d}").exists()
+            ]
+
+        all_netcdf_files.extend(nc_files)
+
+    return all_netcdf_files
+
+
+
+
 @cli.command
 @click.option(
     "--missions",
@@ -123,45 +179,86 @@ def parse_date(ctx, param, value) -> datetime:
     help="One or more missions to ingest (e.g. -m j3 -m al -m s3a).",
     required=False
 )
-def ingest(missions=None):
+@click.option(
+    "--start-date",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    required=False,
+    help="Start date (YYYY-MM-DD)",
+)
+@click.option(
+    "--end-date",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    required=False,
+    help="End date (YYYY-MM-DD, inclusive)",
+)
+def ingest(missions=None, start_date=None, end_date=None):
     """
-    missions, can provide multiple -m flags to ingest multiple missions,
+    Ingest along-track NetCDF4 files into the OceanDB database.
 
-    To specify the 'al' mission
-    -m al
-    --missions al
+    This command loads one or more missions and optionally filters the data
+    by a start and end date. Files are discovered on disk based on the mission
+    directory structure and passed to the OceanDBETL ingestion pipeline.
 
+    Parameters
+    ----------
+    missions : tuple[str], optional
+        One or more mission codes to ingest. Mission values are provided using
+        repeated flags (e.g. ``-m j3 -m al``). If omitted or if the value
+        ``"all"`` is supplied, all supported missions will be ingested.
 
+        Examples:
+            - ``-m al``
+            - ``-m j3 -m s3a``
+            - ``--missions al``
 
+    start_date : datetime, optional
+        The beginning of the date range (inclusive). Must be provided in the
+        form ``YYYY-MM-DD``. If both ``start_date`` and ``end_date`` are omitted,
+        the command ingests **all** files for the selected missions.
 
+    end_date : datetime, optional
+        The end of the date range (inclusive). Must be provided in the form
+        ``YYYY-MM-DD``. If only one of ``start_date`` or ``end_date`` is provided,
+        the command will raise an error.
+
+    Behavior
+    --------
+    - If no dates are provided → ingest **all** available files.
+    - If both dates are provided → ingest only files belonging to year/month
+      folders within the given range.
+    - The command asks for confirmation before running ingestion, as the
+      operation may take several hours depending on the number and size of
+      files.
+
+    Examples
+    --------
+    Ingest the 'al' mission:
+
+        oceandb ingest -m al
+
+    Ingest multiple missions:
+
+        oceandb ingest -m j3 -m s3a
+
+    Ingest all missions between March and May 2013:
+
+        oceandb ingest --start-date 2013-03-01 --end-date 2013-05-31
+
+    Returns
+    -------
+    None
+        Processes each file and writes results to the database.
     """
     oceandb_etl = OceanDBETl()
+    nc_files = get_netcdf4_files(missions=missions, start_date=start_date, end_date=end_date)
 
-
-    if not missions or (len(missions) == 1 and missions[0] == "all"):
-        missions = oceandb_etl.missions
-
-    config = Config()
-    missions = list(missions)  # convert tuple → list
-
-    click.echo(f"Ingesting missions: {oceandb_etl.missions}")
-
-    if not click.confirm("This may take many hours. Continue?"):
+    if not click.confirm(f"Ingesting {len(nc_files)} files This may take many hours. Continue?"):
         return
 
-    prefix = "SEALEVEL_GLO_PHY_L3_MY_008_062"
-    for i, mission in enumerate(missions):
-        file_structure = f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411"
-        ingest_directory = Path(f"{config.ALONG_TRACK_DATA_DIRECTORY}/{prefix}/{file_structure}")
-        nc_files = list(ingest_directory.rglob("*.nc"))
-
-        print(f"Iterating over {len(nc_files)} along track files in {ingest_directory}")
-
-        for file in nc_files:
-            print(file)
-            print(f"Processing {file.name}")
-            start = time.perf_counter()
-            oceandb_etl.ingest_along_track_file(file)
-            size_mb = file.stat().st_size / (1024 * 1024)
-            duration = time.perf_counter() - start
-            print(f"✅ {file.name} | {size_mb:.2f} MB | {duration:.2f}s")
+    for file in nc_files:
+        print(f"Processing {file.name}")
+        start = time.perf_counter()
+        oceandb_etl.ingest_along_track_file(file)
+        size_mb = file.stat().st_size / (1024 * 1024)
+        duration = time.perf_counter() - start
+        print(f"✅ {file.name} | {size_mb:.2f} MB | {duration:.2f} seconds")
