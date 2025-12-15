@@ -11,7 +11,7 @@ import os
 import numpy as np
 from OceanDB.OceanDB import OceanDB
 from functools import cached_property
-from typing import List, Tuple, Any, Iterable, Optional
+from typing import List, Tuple, Any, Iterable, Optional, Union
 from datetime import datetime, timedelta
 from pathlib import Path
 from OceanDB.utils.postgres_upsert import upsert_ignore
@@ -117,10 +117,47 @@ class AlongTrackMetaData:
         )
 
 
+@dataclass
+class EddyData:
+    amplitude: np.ndarray
+    cost_association: np.ndarray
+    effective_area: np.ndarray
+    effective_contour_height: np.ndarray
+    effective_contour_latitude: np.ndarray
+    effective_contour_longitude: np.ndarray
+    effective_contour_shape_error: np.ndarray
+    effective_radius: np.ndarray
+    inner_contour_height: np.ndarray
+
+    latitude: np.ndarray
+    latitude_max: np.ndarray
+    longitude: np.ndarray
+    longitude_max: np.ndarray
+
+    num_contours: np.ndarray
+    num_point_e: np.ndarray
+    num_point_s: np.ndarray
+
+    observation_flag: np.ndarray
+    observation_number: np.ndarray
+
+    speed_area: np.ndarray
+    speed_average: np.ndarray
+    speed_contour_height: np.ndarray
+    # speed_contour_latitude: np.ndarray
+    # speed_contour_longitude: np.ndarray
+    speed_contour_shape_error: np.ndarray
+    speed_radius: np.ndarray
+    date_time: np.ndarray
+    track: np.ndarray
 
 
 
-class OceanDBETl(OceanDB):
+
+
+
+
+class OceanDBETL(OceanDB):
     ocean_basin_table_name: str = 'basin'
     ocean_basins_connections_table_name: str = 'basin_connection'
     along_track_table_name: str = 'along_track'
@@ -210,14 +247,17 @@ class OceanDBETl(OceanDB):
              'dtype': 'int16'}]
         return along_track_variable_metadata
 
-    def load_netcdf(self, file: Path) -> nc.Dataset:
-        ds = nc.Dataset(file, 'r')
-        return ds
+    def load_netcdf(self, file: Union[str, Path]) -> nc.Dataset:
+        """
+        Load a NetCDF file from either a string path or a Path object.
+        """
+        file = Path(file)  # normalize to Path
+        return nc.Dataset(str(file), "r")
 
     def extract_dataset_metadata(self, ds: nc.Dataset, file: Path) -> AlongTrackMetaData:
         return AlongTrackMetaData.from_netcdf(ds, file_name=file.name)
 
-    def extract_data_from_netcdf(self, ds: nc.Dataset, file: Path) -> AlongTrackData:
+    def extract_along_track_from_netcdf(self, ds: nc.Dataset, file: Path) -> AlongTrackData:
         """
         Parse & transform NetCDF file
         """
@@ -438,12 +478,15 @@ class OceanDBETl(OceanDB):
 
     def extract_along_track_file(self, file: Path) -> (AlongTrackData, AlongTrackMetaData):
         dataset: nc.Dataset = self.load_netcdf(file)
-        along_track_data: AlongTrackData = self.extract_data_from_netcdf(ds=dataset, file=file)
+        along_track_data: AlongTrackData = self.extract_along_track_from_netcdf(ds=dataset, file=file)
         along_track_metadata: AlongTrackMetaData = self.extract_dataset_metadata(
              ds=dataset,
              file=file
         )
         return along_track_data, along_track_metadata
+
+    def extract_eddy_data_from_netcdf(self):
+        pass
 
     def ingest_along_track_file(self, along_track_data: AlongTrackData, along_track_metadata: AlongTrackMetaData):
         self.import_along_track_data_to_postgresql(
@@ -454,4 +497,101 @@ class OceanDBETl(OceanDB):
         )
 
 
+    def extract_eddy_data(self, file: Path) -> EddyData:
+        ds: nc.Dataset = self.load_netcdf(file)
 
+        date_time = ds.variables['time']  # Extract dates from the dataset and convert them to standard datetime
+
+        time_data = nc.num2date(date_time[:], date_time.units, only_use_cftime_datetimes=False,
+                                only_use_python_datetimes=False)
+        eddy_data = EddyData(
+            amplitude=ds.variables['amplitude'][:],
+            cost_association=ds.variables['cost_association'][:],
+            effective_area= ds.variables['effective_area'][:],
+            effective_contour_height= ds.variables['effective_contour_height'][:],
+            effective_contour_latitude=ds.variables['effective_contour_latitude'][:],
+            effective_contour_longitude=ds.variables['effective_contour_longitude'][:],
+            effective_contour_shape_error=ds.variables['effective_contour_shape_error'][:],
+            effective_radius=ds.variables['effective_radius'][:],
+            inner_contour_height=ds.variables['inner_contour_height'][:],
+            latitude=ds.variables['latitude'][:],
+            latitude_max=ds.variables['latitude_max'][:],
+            longitude= ds.variables['longitude'][:],
+            longitude_max=ds.variables['longitude_max'][:],
+            num_contours=ds.variables['num_contours'][:],
+            num_point_e=ds.variables['num_point_e'][:],
+            num_point_s=ds.variables['num_point_s'][:],
+            observation_flag=ds.variables['observation_flag'][:],
+            observation_number=ds.variables['observation_number'][:],
+            speed_area=ds.variables['speed_area'][:],
+            speed_average=ds.variables['speed_average'][:],
+            speed_contour_height=ds.variables['speed_contour_height'][:],
+            # speed_contour_latitude=ds.variables['speed_contour_latitude'][:],
+            # speed_contour_longitude=ds.variables['speed_contour_longitude'][:],
+            speed_contour_shape_error=ds.variables['speed_contour_shape_error'][:],
+            speed_radius=ds.variables['speed_radius'][:],
+            date_time=time_data,
+            track=ds.variables['track'][:]
+            # track=ds.variables['track'][:],
+        )
+        return eddy_data
+
+    def import_eddy_data_to_postgresql(self, eddy: EddyData, cyclonic_type: int):
+        """
+        Insert EddyData (columnar arrays) into the PostgreSQL eddy table.
+        """
+
+        df = pd.DataFrame({
+            "amplitude": eddy.amplitude.astype("float"),  # pandas handles downcast
+            "cost_association": eddy.cost_association,
+            "effective_area": eddy.effective_area,
+            "effective_contour_height": eddy.effective_contour_height,
+
+            # 2D arrays → choose representative element (vertex 0)
+            "effective_contour_latitude": eddy.effective_contour_latitude[:, 0],
+            "effective_contour_longitude": eddy.effective_contour_longitude[:, 0],
+
+            "effective_contour_shape_error": eddy.effective_contour_shape_error,
+            "effective_radius": eddy.effective_radius,
+            "inner_contour_height": eddy.inner_contour_height,
+
+            "latitude": eddy.latitude,
+            "latitude_max": eddy.latitude_max,
+            "longitude": eddy.longitude,
+            "longitude_max": eddy.longitude_max,
+
+            "num_contours": eddy.num_contours,
+            "num_point_e": eddy.num_point_e,
+            "num_point_s": eddy.num_point_s,
+
+            "observation_flag": eddy.observation_flag.astype(bool),
+            "observation_number": eddy.observation_number,
+
+            "speed_area": eddy.speed_area,
+            "speed_average": eddy.speed_average,
+            "speed_contour_height": eddy.speed_contour_height,
+
+            # also 2D arrays
+            # "speed_contour_latitude": eddy.speed_contour_latitude[:, 0],
+            # "speed_contour_longitude": eddy.speed_contour_longitude[:, 0],
+
+            "speed_contour_shape_error": eddy.speed_contour_shape_error,
+            "speed_radius": eddy.speed_radius,
+
+            "date_time": eddy.date_time,
+            "track": eddy.track,
+
+            "cyclonic_type": cyclonic_type,
+
+            # leave NULL → PostgreSQL computes eddy_point automatically
+            # "speed_contour_shape": None,
+        })
+        return df
+        # df.to_sql(
+        #     name="eddy",
+        #     con=self.get_engine(),
+        #     schema="public",
+        #     if_exists="append",
+        #     index=False,
+        #     chunksize=1000
+        # )

@@ -1,4 +1,3 @@
-
 NETWORK_NAME=ocean_network
 
 create_network:

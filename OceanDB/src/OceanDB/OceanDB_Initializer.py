@@ -16,38 +16,38 @@ from sqlalchemy import text
 from OceanDB.OceanDB import OceanDB
 
 table_definitions = [
-    {
-        "name": "basin",
-        "filepath": "tables/create_basin_table.sql",
-        "params": {"table_name": "basin"},
-    },
-    {
-        "name": "along_track_metadata",
-        "filepath": "tables/create_along_track_metadata_table.sql",
-        "params": {"table_name": "along_track_metadata"},
-    },
-    {
-        "name": "along_track",
-        "filepath": "tables/create_along_track_table.sql",
-        "params": {"table_name": "along_track"},
-    },
-    {
-        "name": "basin_connection",
-        "filepath": "tables/create_basin_connection_table.sql",
-        "params": {"table_name": "basin_connection"},
-    }
-
-
     # {
-    #     "name": "eddy",
-    #     "filepath": "tables/create_eddy_table.sql",
-    #     "params": {"table_name": "eddy"},
+    #     "name": "basin",
+    #     "filepath": "tables/create_basin_table.sql",
+    #     "params": {"table_name": "basin"},
     # },
     # {
-    #     "name": "chelton_eddy",
-    #     "filepath": "tables/create_chelton_eddy_table.sql",
-    #     "params": {"table_name": "chelton_eddy"},
+    #     "name": "along_track_metadata",
+    #     "filepath": "tables/create_along_track_metadata_table.sql",
+    #     "params": {"table_name": "along_track_metadata"},
     # },
+    # {
+    #     "name": "along_track",
+    #     "filepath": "tables/create_along_track_table.sql",
+    #     "params": {"table_name": "along_track"},
+    # },
+    # {
+    #     "name": "basin_connection",
+    #     "filepath": "tables/create_basin_connection_table.sql",
+    #     "params": {"table_name": "basin_connection"},
+    # }
+    #
+
+    {
+        "name": "eddy",
+        "filepath": "tables/create_eddy_table.sql",
+        "params": {"table_name": "eddy"},
+    },
+    {
+        "name": "chelton_eddy",
+        "filepath": "tables/create_chelton_eddy_table.sql",
+        "params": {"table_name": "chelton_eddy"},
+    },
 
 ]
 
@@ -152,24 +152,24 @@ sql_index_files = [
 
 
 EXPECTED_TABLE_INDEXES = {
-    "along_track": {
-        "along_track_basin_idx",
-        "along_track_date_idx",
-        "along_track_file_name_idx",
-        "along_track_mission_idx",
-        "along_track_point_idx",
-        "along_track_point_date_idx",
-        "along_track_point_date_mission_idx",
-        "along_track_point_date_mission_basin_idx",
-        "along_track_point_geom_idx",
-        "along_track_time_idx",
-    },
-    "basin": {
-        "basin_geog_idx",
-    },
-    "basin_connections": {
-        "basin_id_idx",
-    },
+    # "along_track": {
+    #     "along_track_basin_idx",
+    #     "along_track_date_idx",
+    #     "along_track_file_name_idx",
+    #     "along_track_mission_idx",
+    #     "along_track_point_idx",
+    #     "along_track_point_date_idx",
+    #     "along_track_point_date_mission_idx",
+    #     "along_track_point_date_mission_basin_idx",
+    #     "along_track_point_geom_idx",
+    #     "along_track_time_idx",
+    # },
+    # "basin": {
+    #     "basin_geog_idx",
+    # },
+    # "basin_connections": {
+    #     "basin_id_idx",
+    # },
     "chelton_eddy": {
         "chelton_eddy_point_idx",
         "chelton_track_times_cyclonic_type_idx",
