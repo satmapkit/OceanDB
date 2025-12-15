@@ -187,7 +187,7 @@ class OceanDBInit(OceanDB):
 
     def create_database(self):
         # Create the Database
-        with pg.connect(f"host={self.host} port={self.port} user={self.username} password={self.password}") as conn:
+        with pg.connect(self.config.postgres_dsn_admin) as conn:
             conn.autocommit = True
             with conn.cursor() as cur:
                 cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (self.db_name,))
@@ -198,7 +198,7 @@ class OceanDBInit(OceanDB):
                 print(f"Database '{self.db_name}' created successfully.")
 
         ## Enable POSTGIS extensions
-        with pg.connect(self.connection_string) as atdb_conn:
+        with pg.connect(self.config.postgres_dsn) as atdb_conn:
             with atdb_conn.cursor() as atdb_cur:
                 atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS plpgsql;"))
                 atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS postgis;"))

@@ -20,6 +20,7 @@ dependencies = [
     "xarray~=2024.6.0",
     "dotenv",
     "sqlalchemy>2.0",
+    "pydantic-settings"
 
 ]
 

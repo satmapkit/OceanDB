@@ -344,7 +344,7 @@ class OceanDBETL(OceanDB):
 
         data = df.to_records(index=False).tolist()
 
-        with psycopg.connect(self.connection_string) as conn:
+        with psycopg.connect(self.config.postgres_dsn) as conn:
             with conn.cursor() as cur:
                 cur.executemany(query.as_string(conn), data)
                 conn.commit()
@@ -367,7 +367,7 @@ class OceanDBETL(OceanDB):
 
         data = df.to_records(index=False).tolist()
 
-        with psycopg.connect(self.connection_string) as conn:
+        with psycopg.connect(self.config.postgres_dsn) as conn:
             with conn.cursor() as cur:
                 cur.executemany(query.as_string(conn), data)
                 conn.commit()

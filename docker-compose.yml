@@ -9,11 +9,10 @@ services:
     image: ocean_db_client:latest
     stdin_open: true
     tty: true
+    env_file:
+      - .env
     volumes:
       - ./OceanDB:/app/OceanDB
       - ./data:/app/data
-#      - ./data/copernicus:/app/data
-#      - ./data/cop
-      - .env:/app/.env
     networks:
       - ocean_network
