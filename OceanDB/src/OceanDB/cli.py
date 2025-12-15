@@ -3,7 +3,7 @@ import click
 from pathlib import Path
 from OceanDB.OceanDB_ETL import OceanDBETl, AlongTrackData, AlongTrackMetaData
 from OceanDB.OceanDB_Initializer import OceanDBInit
-from OceanDB.config import Config
+from OceanDB.config1 import Config
 from OceanDB.utils.logging import get_logger
 
 import netCDF4 as nc
@@ -23,6 +23,7 @@ def process():
 
 @cli.command()
 def init():
+    print("DFdf")
     ocean_db_init = OceanDBInit()
     ocean_db_init.create_database()
     ocean_db_init.create_tables()

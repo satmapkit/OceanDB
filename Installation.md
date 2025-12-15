@@ -74,3 +74,14 @@ pip install .
 
 did not work
 oceandb ingest -m s6a --start-date 2025-01-01 --end-date 2025-12-31
+
+
+### Run OceanDB scripts in PyCharm
+1. **Activate the environment**
+``` 
+source venv/bin/activate
+```
+
+![Screenshot 2025-12-15 at 1.07.47 PM.png](docs/Screenshot%202025-12-15%20at%201.07.47%E2%80%AFPM.png)
+
+2. **Run the Script**

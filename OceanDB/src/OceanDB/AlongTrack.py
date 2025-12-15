@@ -137,7 +137,6 @@ class SLA_Projected(SLA_Geographic):
                 )
 
 
-
 class AlongTrack(OceanDB):
     along_track_table_name: str = 'along_track'
     along_track_metadata_table_name: str = 'along_track_metadata'
@@ -268,7 +267,7 @@ class AlongTrack(OceanDB):
              }
             for latitude, longitude, date, connected_basin_ids in zip(latitudes, longitudes, dates, connected_basin_ids)]
 
-        with pg.connect(self.connection_string) as connection:
+        with pg.connect(self.config.postgres_dsn) as connection:
             with connection.cursor(row_factory=pg.rows.dict_row) as cursor:
                 cursor.executemany(query, params, returning=True)
                 while True:
@@ -325,7 +324,7 @@ class AlongTrack(OceanDB):
         ]
 
 
-        with pg.connect(self.connection_string) as connection:
+        with pg.connect(self.config.postgres_dsn) as connection:
             with connection.cursor(row_factory=pg.rows.dict_row) as cursor:
                 cursor.executemany(query, params, returning=True)
                 while True:
@@ -420,7 +419,7 @@ class AlongTrack(OceanDB):
             )
         ]
 
-        with pg.connect(self.connection_string) as connection:
+        with pg.connect(self.config.postgres_dsn) as connection:
             with connection.cursor() as cursor:
                 cursor.executemany(query, params, returning=True)
                 for x0,y0 in zip(x0s, y0s):
