@@ -38,7 +38,7 @@ def init():
 def download():
     config = Config()
 
-    along_track_directory = Path(config.ALONG_TRACK_DATA_DIRECTORY)
+    along_track_directory = Path(config.along_track_data_directory)
 
     # 2️⃣ Check contents
     files = list(along_track_directory.glob("*"))
@@ -146,7 +146,7 @@ def get_netcdf4_files(
     for mission in missions:
         file_structure = f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411"
         ingest_directory = (
-            Path(oceandb_etl.config.ALONG_TRACK_DATA_DIRECTORY)
+            Path(oceandb_etl.config.along_track_data_directory)
             / prefix
             / file_structure
         )

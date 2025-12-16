@@ -1,70 +1,46 @@
-import os
-from dotenv import load_dotenv
 from pathlib import Path
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Config:
-    def __init__(self, env_file: str | None = None):
-        """
-        Initialize configuration.
+class Config(BaseSettings):
 
-        Either pass in a file path to an env_file, or maybe support a dictionary
+    postgres_host: str = Field(default="localhost")
+    postgres_port: int = Field(default=5432)
+    postgres_username: str
+    postgres_password: str
+    postgres_database: str = Field(default="ocean")
 
-        Parameters
-        ----------
-        env_file : str | None
-            Optional path to a .env file. If not provided, will try:
-            1. ENV_PATH env var
-            2. cwd/.env
-            3. HOME/.env
-        """
 
-        # Determine env path
-        if env_file:
-            env_path = Path(env_file)
-        else:
-            env_path = (
-                Path(os.getenv("ENV_PATH", ""))
-                if os.getenv("ENV_PATH") else None
-            )
+    along_track_data_directory: str
+    eddy_data_directory: str
+    copernicus_password: str
+    copernicus_username: str
 
-            if env_path is None or not env_path.exists():
-                cwd_env = Path.cwd() / ".env"
-                home_env = Path.home() / ".env"
+    model_config = SettingsConfigDict(
+        env_prefix="",                # no prefix (POSTGRES_HOST, etc.)
+        env_file=".env",               # default fallback
+        env_file_encoding="utf-8",
+        extra="ignore",                # ignore unrelated env vars
+        case_sensitive=False,
+    )
 
-                if cwd_env.exists():
-                    env_path = cwd_env
-                elif home_env.exists():
-                    env_path = home_env
-                else:
-                    raise FileNotFoundError(
-                        "No .env file found. Provide env_file or set ENV_PATH."
-                    )
-
-        # Load environment variables
-        load_dotenv(env_path, override=False)
-
-        # Store config values
-        self.POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
-        self.POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
-        self.POSTGRES_USERNAME = os.getenv("POSTGRES_USERNAME", "postgres")
-        self.POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
-        self.POSTGRES_DATABASE = os.getenv("POSTGRES_DATABASE", "ocean")
-
-        self.COPERNICUS_USERNAME = os.getenv("COPERNICUS_USERNAME")
-        self.COPERNICUS_PASSWORD = os.getenv("COPERNICUS_PASSWORD")
-        self.ALONG_TRACK_DATA_DIRECTORY = os.getenv("ALONG_TRACK_DATA_DIRECTORY")
-        self.EDDIES_DATA_DIRECTORY = os.getenv("EDDIES_DATA_DIRECTORY")
-
-    def connect_string(self):
-        """
-        Postgres connection string
-        """
-        conn_str = (
-            f"host={self.POSTGRES_HOST} "
-            f"dbname={self.POSTGRES_DATABASE} "
-            f"port={self.POSTGRES_PORT} "
-            f"user={self.POSTGRES_USERNAME} "
-            f"password={self.POSTGRES_PASSWORD}"
+    @property
+    def postgres_dsn_admin(self) -> str:
+        return (
+            f"host={self.postgres_host} "
+            # f"dbname={self.postgres_database} "
+            f"port={self.postgres_port} "
+            f"user={self.postgres_username} "
+            f"password={self.postgres_password}"
         )
-        return conn_str
+
+    @property
+    def postgres_dsn(self) -> str:
+        return (
+            f"host={self.postgres_host} "
+            f"dbname={self.postgres_database} "
+            f"port={self.postgres_port} "
+            f"user={self.postgres_username} "
+            f"password={self.postgres_password}"
+        )

@@ -28,17 +28,18 @@ class OceanDB:
         ):
 
         self.config = Config()
-        self.connection_string = self.config.connect_string()
-        self.host = self.config.POSTGRES_HOST
-        self.username = self.config.POSTGRES_USERNAME
-        self.password = self.config.POSTGRES_PASSWORD
-        self.port = self.config.POSTGRES_PORT
-        self.db_name = self.config.POSTGRES_DATABASE
+        self.connection_string = self.config.postgres_dsn
+        print(self.connection_string)
+        self.host = self.config.postgres_host
+        self.username = self.config.postgres_username
+        self.password = self.config.postgres_password
+        self.port = self.config.postgres_port
+        self.db_name = self.config.postgres_database
 
         self.sql_pkg = "OceanDB.sql"
         self.data_pkg = "OceanDB.data"
         self.logger = get_logger()
-        self.config = Config()
+
 
 
     def load_module_file(self, module: str, filename: str, encoding="utf-8", mode="rb") -> IO:
@@ -115,11 +116,11 @@ class OceanDB:
     def get_engine(self, echo: bool = False):
         """Return a SQLAlchemy engine connected to the OceanDB Postgres database."""
 
-        host = self.config.POSTGRES_HOST
-        port = self.config.POSTGRES_PORT
-        user = self.config.POSTGRES_USERNAME
-        password = self.config.POSTGRES_PASSWORD
-        db = self.config.POSTGRES_DATABASE
+        host = self.config.postgres_host
+        port = self.config.postgres_port
+        user = self.config.postgres_username
+        password = self.config.postgres_password
+        db = self.config.postgres_database
         url = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{db}"
         engine = create_engine(url, echo=echo)
         return engine
