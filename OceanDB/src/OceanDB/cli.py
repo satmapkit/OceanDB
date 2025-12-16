@@ -35,8 +35,21 @@ def init():
 
 @cli.command()
 def ingest_eddy():
-    ocean_db_etl = OceanDBETL()
-    ocean_db_etl.extract_eddy_data()
+    oceandb_etl = OceanDBETL()
+    eddy_directory = oceandb_etl.config.eddy_data_directory
+
+    cyclonic_filepath = Path(f"{eddy_directory}/META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc")
+    oceandb_etl.ingest_eddy_data_file(cyclonic_filepath)
+
+
+    # anticyclonic_filepath = f"{eddy_directory}/META3.2_DT_allsat_Antiyclonic_long_19930101_20220209.nc"
+    # num_points = 95000
+    # oceandb_etl.ingest_eddy_data_file(cyclonic_filepath)
+    # duration = time.perf_counter() - start
+    # print(f"✅ Ingested {num_points} Eddy Data Points took {duration:.2f} seconds")
+
+
+    # ocean_db_etl.extract_eddy_file(amplitude)
 
 @cli.command
 def download():
@@ -252,7 +265,7 @@ def ingest(missions=None, start_date=None, end_date=None):
     None
         Processes each file and writes results to the database.
     """
-    oceandb_etl = OceanDBETl()
+    oceandb_etl = OceanDBETL()
     nc_files = get_netcdf4_files(missions=missions, start_date=start_date, end_date=end_date)
 
     if not click.confirm(f"Ingesting {len(nc_files)} files This may take many hours. Continue?"):
@@ -269,7 +282,7 @@ def ingest(missions=None, start_date=None, end_date=None):
         print(f"Processing {file_name}")
         start = time.perf_counter()
 
-        along_track_data, along_track_metadata = oceandb_etl.extract_along_track_file(file=file )
+        along_track_data, along_track_metadata = oceandb_etl.extract_along_track_file(file=file)
         oceandb_etl.ingest_along_track_file( along_track_data=along_track_data, along_track_metadata=along_track_metadata)
 
         size_mb = file.stat().st_size / (1024 * 1024)
