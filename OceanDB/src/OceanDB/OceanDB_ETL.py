@@ -495,7 +495,7 @@ class OceanDBETL(OceanDB):
         return along_track_data, along_track_metadata
 
 
-    def ingest_eddy_data_file(self, file: Path):
+    def ingest_eddy_data_file(self, file: Path, cyclonic_type):
         dataset = self.load_netcdf(file)
         for eddy_data in self.extract_data_batches_from_netcdf(dataset, batch_size=50000):
             start = time.perf_counter()
