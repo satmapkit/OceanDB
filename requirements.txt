@@ -1,3 +1,0 @@
-copernicusmarine>=2.0.0
-sphinx~=9.0
-pydantic-settings

@@ -1,0 +1,4 @@
+OceanDB
+sphinx~=9.0.4
+sphinx-autodoc-typehints~=3.5.2
+pydantic-settings
