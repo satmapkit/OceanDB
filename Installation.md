@@ -33,7 +33,7 @@ and install it
   ```bash
 cd OceanDB
 pip install --upgrade pip
- pip install -e ./OceanDB
+ pip install -e .
 ```
   
   
