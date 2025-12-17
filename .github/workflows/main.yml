@@ -1,57 +1,47 @@
-version: 1.0
-
-executors:
-  python-executor:
-    docker:
-      - image: python:3.13.7
-    working_directory: ~/project
+name: OceanDB
+on: push
 
 jobs:
   docs-build:
-    executor: python-executor
+    runs-on: ubuntu-latest
     steps:
-      - checkout
-      - run:
-          name: Install dependencies
-          command: pip install .
-      - run:
-          name: Build documentation
-          command: |
-              cd docs
-              pip install -r requirements.txt
-              make html
-      - persist_to_workspace:
-          root: docs/build
-          paths: html
-  docs-deploy:
-    docker:
-      - image: cimg/node:16.17
-    steps:
-      - checkout
-      - attach_workspace:
-          at: docs/build
-      - run:
-          name: Disable Jekyll (static site generator) for GitHub Pages
-          command: touch docs/build/html/.nojekyll
-      - run:
-          name: Install gh-pages
-          command: npm install gh-pages@3.2.3 --silent
-      - run:
-          name: Configure Git for deployment
-          command: |
-            git config --global user.email "ci-build@example.com"
-            git config --global user.name "CI Build"
-      - run:
-          name: Deploy documentation to GitHub Pages
-          command: npx gh-pages --dotfiles --message "[skip ci] Updates" --dist docs/build/html
-
-
-
-workflows:
-  version: 2
-  build:
-    jobs:
-      - docs-build
-      - docs-deploy:
-          requires:
-            - docs-build
+      - uses: actions/checkout@v5
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Display Python version
+        run: python -c "import sys; print(sys.version)"
+  #     - run:
+  #         name: Install dependencies
+  #         command: pip install .
+  #     - run:
+  #         name: Build documentation
+  #         command: |
+  #             cd docs
+  #             pip install -r requirements.txt
+  #             make html
+  #     - persist_to_workspace:
+  #         root: docs/build
+  #         paths: html
+  # docs-deploy:
+  #   docker:
+  #     - image: cimg/node:16.17
+  #   steps:
+  #     - checkout
+  #     - attach_workspace:
+  #         at: docs/build
+  #     - run:
+  #         name: Disable Jekyll (static site generator) for GitHub Pages
+  #         command: touch docs/build/html/.nojekyll
+  #     - run:
+  #         name: Install gh-pages
+  #         command: npm install gh-pages@3.2.3 --silent
+  #     - run:
+  #         name: Configure Git for deployment
+  #         command: |
+  #           git config --global user.email "ci-build@example.com"
+  #           git config --global user.name "CI Build"
+  #     - run:
+  #         name: Deploy documentation to GitHub Pages
+  #         command: npx gh-pages --dotfiles --message "[skip ci] Updates" --dist docs/build/html
