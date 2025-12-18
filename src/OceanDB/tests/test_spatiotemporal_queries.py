@@ -10,8 +10,8 @@ TEST single point spatiotemporal query
 """
 
 latitude =  -69
-longitude = 4.4
-date = datetime(year=2022, month=3, day=23, hour=23)
+longitude = 28.1
+date = datetime(year=2013, month=3, day=14, hour=23)
 
 sla_geographic = along_track.geographic_points_in_r_dt(
     latitudes=np.array([latitude]),
@@ -19,3 +19,5 @@ sla_geographic = along_track.geographic_points_in_r_dt(
     dates=[date]
 )
 
+for d in sla_geographic:
+    print(d)

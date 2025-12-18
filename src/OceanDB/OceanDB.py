@@ -29,7 +29,6 @@ class OceanDB:
 
         self.config = Config()
         self.connection_string = self.config.postgres_dsn
-        print(self.connection_string)
         self.host = self.config.postgres_host
         self.username = self.config.postgres_username
         self.password = self.config.postgres_password
