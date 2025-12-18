@@ -73,20 +73,21 @@ By default if no arguments are provided this CLI command will iterate over all o
    
    To query the sea level anomaly for a given satellite mission, time range & radius around a given point
    ```python
-   from datetime import datetime
-   from OceanDB.AlongTrack import AlongTrack
+   latitude = -69
+   longitude = 28
+   date = datetime(year=2013, month=3, day=14, hour=5)
    
-   latitude =  -63.77912
-   longitude = 291.794742
-   date = datetime(year=2013, month=12, day=31, hour=23)
-   along_track = AlongTrack()
    
-   sla_geographic = along_track.geographic_points_in_spatialtemporal_window(
-    latitude=latitude,
-    longitude=longitude,
-    date=date,
-    missions = ['al']
+   data = along_track.geographic_nearest_neighbors_dt(
+       latitudes=np.array([latitude]),
+       longitudes=np.array([longitude]),
+       dates=[date],
+       missions=['al']
    )
+   
+   for d in data:
+       print(d)
+
    ```
 
 ## Docker Instructions

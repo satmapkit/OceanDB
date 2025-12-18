@@ -374,10 +374,6 @@ class OceanDBETl(OceanDB):
             "summary", "title",
         ]
 
-        for k,v in metadata.to_dict().items():
-            print(f"k: {k} v: {v}")
-
-
         query = sql.SQL("""
             INSERT INTO {table} ({fields})
             VALUES ({placeholders})

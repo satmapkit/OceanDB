@@ -233,14 +233,6 @@ def get_netcdf4_files(
     prefix = "SEALEVEL_GLO_PHY_L3_MY_008_062"
     all_netcdf_files = []
 
-    # Determine year/months
-    # if start_date is None and end_date is None:
-    #     year_months = None  # means: ingest EVERYTHING
-    # elif start_date is None or end_date is None:
-    #     raise ValueError("start_date and end_date must both be provided or both be None.")
-    # else:
-    #     year_months = list(iter_year_months(start_date, end_date))
-
     if start_date is None and end_date is None:
         # ingest EVERYTHING
         year_months = None
@@ -287,14 +279,6 @@ def get_netcdf4_files(
 
 
 @cli.command()
-def val():
-    oceandb_etl = OceanDBETl()
-    for mission in oceandb_etl.missions:
-        files = get_netcdf4_files(missions=[mission])
-        print(f"N files {len(files)}")
-
-
-@cli.command()
 @click.argument("missions", nargs=-1)
 @click.option(
     "--start-date",
@@ -308,22 +292,65 @@ def val():
 )
 def ingest_along_track(missions, start_date, end_date):
     """
-    Ingest along-track data for one or more missions.
-    """
-    missions = list(missions)
+    Ingest along-track altimetry data for one or more missions.
 
-    oceandb_etl = OceanDBETl()
+    This command  parses, and ingests along-track NetCDF files
+    into the OceanDB PostgreSQL database. Data are streamed into Postgres
+    using a bulk COPY operation for efficiency.
+
+    Parameters
+    ----------
+    missions : tuple[str]
+        One or more mission identifiers (e.g. ``j3``, ``al``, ``s3a``).
+        If no missions are provided, all supported missions are ingested.
+
+    start_date : datetime, optional
+        The beginning of the date range (inclusive). Must be provided in the
+        form ``YYYY-MM-DD``. If both ``start_date`` and ``end_date`` are omitted,
+        the command ingests **all** files for the selected missions.
+
+    end_date : datetime, optional
+        The end of the date range (inclusive). Must be provided in the form
+        ``YYYY-MM-DD``. If only one of ``start_date`` or ``end_date`` is provided,
+        the command will raise an error.
+
+    Behavior
+    --------
+    - If no dates are provided → ingest **all** available files.
+    - If both dates are provided → ingest only files belonging to year/month
+      folders within the given range.
+    - The command asks for confirmation before running ingestion, as the
+      operation may take several hours depending on the number and size of
+      files.
+
+    Examples
+    --------
+    Ingest all along-track data for the Jason-3 mission::
+
+        oceandb ingest-along-track j3
+
+    Ingest data for multiple missions within a date range::
+
+        oceandb ingest-along-track j3 al s3a \\
+            --start-date 2023-01-01 \\
+            --end-date 2023-03-31
+    """
+
+
+    missions = list(missions)
     nc_files = get_netcdf4_files(missions=missions, start_date=start_date, end_date=end_date)
 
     if not click.confirm(f"Ingesting {len(nc_files)} files This may take many hours. Continue?"):
         return
 
     # Query the ingested metadata so that we can skip processing files that have already been processed
+    oceandb_etl = OceanDBETl()
     metadata_filenames = oceandb_etl.query_metadata()
 
     for file in nc_files:
         file_name = file.name
         if file_name in metadata_filenames:
+            print(f"{file_name} already processed, skipping")
             continue
 
         print(f"Processing {file_name}")
@@ -372,24 +399,24 @@ def ingest_along_track(missions, start_date, end_date):
 #             - ``-m j3 -m s3a``
 #             - ``--missions al``
 #
-#     start_date : datetime, optional
-#         The beginning of the date range (inclusive). Must be provided in the
-#         form ``YYYY-MM-DD``. If both ``start_date`` and ``end_date`` are omitted,
-#         the command ingests **all** files for the selected missions.
-#
-#     end_date : datetime, optional
-#         The end of the date range (inclusive). Must be provided in the form
-#         ``YYYY-MM-DD``. If only one of ``start_date`` or ``end_date`` is provided,
-#         the command will raise an error.
-#
-#     Behavior
-#     --------
-#     - If no dates are provided → ingest **all** available files.
-#     - If both dates are provided → ingest only files belonging to year/month
-#       folders within the given range.
-#     - The command asks for confirmation before running ingestion, as the
-#       operation may take several hours depending on the number and size of
-#       files.
+    # start_date : datetime, optional
+    #     The beginning of the date range (inclusive). Must be provided in the
+    #     form ``YYYY-MM-DD``. If both ``start_date`` and ``end_date`` are omitted,
+    #     the command ingests **all** files for the selected missions.
+    #
+    # end_date : datetime, optional
+    #     The end of the date range (inclusive). Must be provided in the form
+    #     ``YYYY-MM-DD``. If only one of ``start_date`` or ``end_date`` is provided,
+    #     the command will raise an error.
+    #
+    # Behavior
+    # --------
+    # - If no dates are provided → ingest **all** available files.
+    # - If both dates are provided → ingest only files belonging to year/month
+    #   folders within the given range.
+    # - The command asks for confirmation before running ingestion, as the
+    #   operation may take several hours depending on the number and size of
+    #   files.
 #
 #     Examples
 #     --------
@@ -410,6 +437,4 @@ def ingest_along_track(missions, start_date, end_date):
 #     None
 #         Processes each file and writes results to the database.
 #     """
-#
 #     print(missions)
-#
