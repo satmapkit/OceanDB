@@ -292,10 +292,11 @@ class AlongTrack(OceanDB):
 
         Returns all along_track points within the geospatial window within distance
 
-        latitudes: n-array
-        longitudes: n-array
-        dates: n-list
-        distances
+        :param latitudes: n-array
+        :param longitudes: n-array
+        :param dates: n-list
+        :param distances
+
         """
         query = self.load_sql_file(self.geo_spatiotemporal_query)
 

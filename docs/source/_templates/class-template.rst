@@ -10,7 +10,6 @@
 
    .. autosummary::
       :toctree: generated
-      .. autosummary-widths:: 5/10
 
    .. =================== METHODS ===================
    {% block methods %}
