@@ -36,7 +36,7 @@ class AlongTrackData:
     tpa_correction: np.ndarray
     basin_id: np.ndarray
 
-# filepath = "data/copernicus/SEALEVEL_GLO_PHY_L3_MY_008_062/cmems_obs-sl_glo_phy-ssh_my_al-l3-duacs_PT1S_202411/2013/03/dt_global_al_phy_l3_1hz_20130331_20240205.nc"
+
 @dataclass
 class AlongTrackMetaData:
     """Structured representation of NetCDF global metadata."""
@@ -80,9 +80,6 @@ class AlongTrackMetaData:
 
         def get(attr: str):
             return getattr(ds, attr, None)
-        # print("from netcdf")
-        # print(getattr(ds, "Conventions", None))
-        # print(ds)
 
         conventions = getattr(ds, 'Conventions', None)
 
@@ -115,9 +112,6 @@ class AlongTrackMetaData:
             summary=get("summary"),
             title=get("title"),
         )
-
-
-
 
 
 class OceanDBETl(OceanDB):
@@ -223,8 +217,6 @@ class OceanDBETl(OceanDB):
         """
         mission = file.name.split('_')[2]
         try:
-            # ds = nc.Dataset(file_path, 'r')
-            # Don't scale most variables, so they are stored more efficiently in db
             ds.variables['sla_unfiltered'].set_auto_maskandscale(False)
             ds.variables['sla_filtered'].set_auto_maskandscale(False)
             ds.variables['ocean_tide'].set_auto_maskandscale(False)
@@ -260,34 +252,11 @@ class OceanDBETl(OceanDB):
                 mission=mission,
                 file_name=file.name
             )
-
             ds.close()
             return data
-            #return time_data, lat_data, lon_data, cycle_data, track_data, sla_un_data, sla_f_data, dac_data, o_tide_data, i_tide_data, lwe_data, mdt_data, tpa_corr_data
 
         except Exception as ex:
             print(ex)
-
-        # except FileNotFoundError:
-        #     print("File '{}' not found".format(file_path))
-
-
-    # def insert_along_track_data_from_netcdf(self, directory):
-    #     """
-    #     Iterate over all files in direcotory,
-    #     """
-    #     start = time.time()
-    #     for file_path in glob.glob(directory + '/*.nc'):
-    #         names = [os.path.basename(x) for x in glob.glob(file_path)]
-    #         fname = names[0]  # filename will be used to link data to metadata
-    #         along_track: AlongTrackData = self.extract_data_from_netcdf(file_path)
-    #         import_start = time.time()
-    #         self.import_along_track_data_to_postgresql(fname, along_track)
-    #         import_end = time.time()
-    #         print(f"{fname} import time: {import_end - import_start}")
-    #     end = time.time()
-    #     print(f"Script end. Total time: {end - start}")
-
 
     def insert_basins_data(self):
         with self.load_module_file(module="OceanDB.data", filename="basins/ocean_basins.csv", mode="r") as f:
@@ -363,37 +332,35 @@ class OceanDBETl(OceanDB):
         """
 
         EPOCH = datetime(2000, 1, 1)
-
         date_times = [EPOCH + timedelta(microseconds=int(t)) for t in along_track_data.time]
 
-        df = pd.DataFrame({
-            "file_name": along_track_data.file_name,
-            "mission": along_track_data.mission,
-            "track": along_track_data.track,
-            "cycle": along_track_data.cycle,
-            "latitude": along_track_data.latitude,
-            "longitude": along_track_data.longitude,
-            "sla_unfiltered": along_track_data.sla_unfiltered,
-            "sla_filtered": along_track_data.sla_filtered,
-            "date_time": date_times,
-            "dac": along_track_data.dac,
-            "ocean_tide": along_track_data.ocean_tide,
-            "internal_tide": along_track_data.internal_tide,
-            "lwe": along_track_data.lwe,
-            "mdt": along_track_data.mdt,
-            "tpa_correction": along_track_data.tpa_correction,
-            "basin_id": along_track_data.basin_id,
-        })
+        copy_query = sql.SQL(
+            "COPY {along_tbl_nme} (  file_name, mission, track, cycle, latitude, longitude, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt, basin_id) FROM STDIN").format(
+            along_tbl_nme=sql.Identifier(self.along_track_table_name))
 
-        df.to_sql(
-            name=self.along_track_table_name,
-            con=self.get_engine(),
-            schema="public",
-            if_exists="append",
-            index=False,
-            chunksize=1000,
-            method=upsert_ignore
-        )
+        with pg.connect(self.config.postgres_dsn) as connection:
+            with connection.cursor() as cursor:
+                with cursor.copy(copy_query) as copy:
+                    for i in range(len(along_track_data.time)):
+                        copy.write_row([
+
+                            along_track_data.file_name,
+                            along_track_data.mission,
+                            along_track_data.track[i],
+                            along_track_data.cycle[i],
+                            along_track_data.latitude[i],
+                            along_track_data.longitude[i],
+                            along_track_data.sla_unfiltered[i],
+                            along_track_data.sla_filtered[i],
+                            date_times[i],
+                            along_track_data.dac[i],
+                            along_track_data.ocean_tide[i],
+                            along_track_data.internal_tide[i],
+                            along_track_data.lwe[i],
+                            along_track_data.mdt[i],
+                            along_track_data.basin_id[i]
+                        ])
+
 
     def import_metadata_to_psql(self, metadata: AlongTrackMetaData) -> None:
         """Insert metadata into along_track_metadata table, ignoring duplicates."""
@@ -452,6 +419,3 @@ class OceanDBETl(OceanDB):
         self.import_metadata_to_psql(
             metadata=along_track_metadata
         )
-
-
-

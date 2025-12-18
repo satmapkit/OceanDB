@@ -265,7 +265,7 @@ def ingest(missions=None, start_date=None, end_date=None):
         print(f"Processing {file_name}")
         start = time.perf_counter()
 
-        along_track_data, along_track_metadata = oceandb_etl.extract_along_track_file(file=file )
+        along_track_data, along_track_metadata = oceandb_etl.extract_along_track_file(file=file)
         oceandb_etl.ingest_along_track_file( along_track_data=along_track_data, along_track_metadata=along_track_metadata)
 
         size_mb = file.stat().st_size / (1024 * 1024)
