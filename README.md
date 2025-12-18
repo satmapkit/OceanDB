@@ -90,7 +90,37 @@ By default if no arguments are provided this CLI command will iterate over all o
 
    ```
 
-## Docker Instructions
+
+## Running OceanDB scripts in PyCharm
+1. **Activate the environment & Install OceanDB**
+``` 
+source venv/bin/activate
+pip install -e . 
+```
+2. **Set the Pycharm Run Configuration Parameters**
+
+In the top right of the PyCharm window, click the 'edit' button to configure the PyCharm run parameters
+
+![Screenshot 2025-12-18 at 12.14.04 PM.png](docs/Screenshot%202025-12-18%20at%2012.14.04%E2%80%AFPM.png)
+
+- **Script path**  
+  Select the script you want to run, for example:  
+  `src/OceanDB/tests/test_geographic_nearest_neighbor.py`
+
+- **Python interpreter**  
+  Ensure the correct virtual environment is selected (the same one where OceanDB was installed).
+
+- **Working directory**  
+  Set this to the **repository root** (the directory containing `pyproject.toml`).
+
+- **Environment file (.env)**  
+  Set **Paths to .env files** to point to your `.env` file containing PostgreSQL credentials and any other required environment variables.
+
+![Screenshot 2025-12-18 at 12.18.01 PM.png](docs/Screenshot%202025-12-18%20at%2012.18.01%E2%80%AFPM.png)
+
+
+
+## Running OceanDB in Docker Instructions
 
 1. **Running Postgres**
    
@@ -99,7 +129,7 @@ By default if no arguments are provided this CLI command will iterate over all o
    make run_postgres // runs postgres postgis in docker compose
    ```
    
-3. **Build OceanDB Python Image**
+2. **Build OceanDB Python Image**
    If building a development image 
    ```bash
    make build_image
