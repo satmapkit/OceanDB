@@ -119,6 +119,7 @@ class OceanDBETl(OceanDB):
     ocean_basins_connections_table_name: str = 'basin_connection'
     along_track_table_name: str = 'along_track'
     along_track_metadata_table_name: str = 'along_track_metadata'
+    along_track_staging_table_name: str = 'along_track_staging'
 
 
     variable_scale_factor: dict = dict()
@@ -224,7 +225,8 @@ class OceanDBETl(OceanDB):
             ds.variables['lwe'].set_auto_maskandscale(False)
             ds.variables['mdt'].set_auto_maskandscale(False)
             ds.variables['dac'].set_auto_maskandscale(False)
-            ds.variables['tpa_correction'].set_auto_maskandscale(False)
+            if 'tpa_correction' in ds.variables:
+                ds.variables['tpa_correction'].set_auto_maskandscale(False)
 
             time_data = ds.variables['time']  # Extract dates from the dataset and convert them to standard datetime
             time_data = nc.num2date(time_data[:], time_data.units, only_use_cftime_datetimes=False,
@@ -234,6 +236,14 @@ class OceanDBETl(OceanDB):
 
             basin_id = self.basin_mask(ds.variables['latitude'][:], ds.variables['longitude'][:])
 
+            sla_filtered = ds.variables["sla_filtered"][:]
+            if 'tpa_correction' in ds.variables:
+                tpa_correction = np.asarray(ds.variables["tpa_correction"][:])
+                if tpa_correction.ndim == 0:
+                    tpa_correction = np.full(sla_filtered.shape, tpa_correction.item())
+            else:
+                tpa_correction = np.zeros(sla_filtered.shape, dtype=sla_filtered.dtype)
+
             data = AlongTrackData(
                 time=time_data,
                 latitude=ds.variables["latitude"][:],
@@ -241,13 +251,13 @@ class OceanDBETl(OceanDB):
                 cycle=ds.variables["cycle"][:],
                 track=ds.variables["track"][:],
                 sla_unfiltered=ds.variables["sla_unfiltered"][:],
-                sla_filtered=ds.variables["sla_filtered"][:],
+                sla_filtered=sla_filtered,
                 dac=ds.variables["dac"][:],
                 ocean_tide=ds.variables["ocean_tide"][:],
                 internal_tide=ds.variables["internal_tide"][:],
                 lwe=ds.variables["lwe"][:],
                 mdt=ds.variables["mdt"][:],
-                tpa_correction=ds.variables["tpa_correction"][:],
+                tpa_correction=tpa_correction,
                 basin_id=basin_id,
                 mission=mission,
                 file_name=file.name
@@ -334,12 +344,73 @@ class OceanDBETl(OceanDB):
         EPOCH = datetime(2000, 1, 1)
         date_times = [EPOCH + timedelta(microseconds=int(t)) for t in along_track_data.time]
 
-        copy_query = sql.SQL(
-            "COPY {along_tbl_nme} (  file_name, mission, track, cycle, latitude, longitude, sla_unfiltered, sla_filtered, date_time, dac, ocean_tide, internal_tide, lwe, mdt, basin_id) FROM STDIN").format(
-            along_tbl_nme=sql.Identifier(self.along_track_table_name))
+        columns = [
+            "file_name",
+            "mission",
+            "track",
+            "cycle",
+            "latitude",
+            "longitude",
+            "sla_unfiltered",
+            "sla_filtered",
+            "date_time",
+            "dac",
+            "ocean_tide",
+            "internal_tide",
+            "lwe",
+            "mdt",
+            "tpa_correction",
+            "basin_id",
+        ]
+
+        create_staging_query = sql.SQL("""
+            CREATE UNLOGGED TABLE IF NOT EXISTS {staging_table} (
+                file_name text,
+                mission text,
+                track smallint,
+                cycle smallint,
+                latitude double precision,
+                longitude double precision,
+                sla_unfiltered smallint,
+                sla_filtered smallint,
+                date_time timestamp without time zone,
+                dac smallint,
+                ocean_tide smallint,
+                internal_tide smallint,
+                lwe smallint,
+                mdt smallint,
+                tpa_correction smallint,
+                basin_id smallint
+            );
+        """).format(staging_table=sql.Identifier(self.along_track_staging_table_name))
+
+        copy_query = sql.SQL("COPY {table} ({fields}) FROM STDIN").format(
+            table=sql.Identifier(self.along_track_staging_table_name),
+            fields=sql.SQL(", ").join(map(sql.Identifier, columns)),
+        )
+
+        insert_query = sql.SQL("""
+            INSERT INTO {target} ({fields})
+            SELECT {fields}
+            FROM {staging}
+            ON CONFLICT (date_time, latitude, longitude) DO NOTHING
+        """).format(
+            target=sql.Identifier(self.along_track_table_name),
+            staging=sql.Identifier(self.along_track_staging_table_name),
+            fields=sql.SQL(", ").join(map(sql.Identifier, columns)),
+        )
+
+        truncate_query = sql.SQL("TRUNCATE {staging}").format(
+            staging=sql.Identifier(self.along_track_staging_table_name)
+        )
+
+        # print(self.config.postgres_dsn)
+        print(f"Row count: {len(along_track_data.time)}")
 
         with pg.connect(self.config.postgres_dsn) as connection:
             with connection.cursor() as cursor:
+                cursor.execute("SET synchronous_commit = OFF")
+                cursor.execute(create_staging_query)
                 with cursor.copy(copy_query) as copy:
                     for i in range(len(along_track_data.time)):
                         copy.write_row([
@@ -358,8 +429,12 @@ class OceanDBETl(OceanDB):
                             along_track_data.internal_tide[i],
                             along_track_data.lwe[i],
                             along_track_data.mdt[i],
+                            along_track_data.tpa_correction[i],
                             along_track_data.basin_id[i]
                         ])
+                cursor.execute(insert_query)
+                cursor.execute(truncate_query)
+            connection.commit()
 
 
     def import_metadata_to_psql(self, metadata: AlongTrackMetaData) -> None:
