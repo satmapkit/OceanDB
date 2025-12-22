@@ -209,7 +209,7 @@ class OceanDBInit(OceanDB):
         print(f"Database '{self.db_name}' POSTGIS enabled.")
 
     def create_eddy_tables(self):
-        for table in table_definitions:
+        for table in eddy_tables:
             try:
                 table_name = table['name']
                 query = self.parametrize_sql_statements(table)
