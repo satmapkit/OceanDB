@@ -48,7 +48,7 @@ The OceanDB package provides a CLI for initializing the database and ingesting d
    oceandb init // Creates the database tables 
    ```
 
-2. **Ingesting Data** 
+2. **Ingesting Along Track Data** 
 
 With Copernicus Marine Service Along Track downloaded to your computer. ensure that the ALONG_TRACK_DATA_DIRECTORY is set correctly in
 the .env file.  ALONG_TRACK_DATA_DIRECTORY should be the file path to the directory at which the SEALEVEL_GLO existis.  so ALONG_TRACK_DATA_DIRECTORY=/path/../../copernicus   
@@ -66,6 +66,14 @@ By default if no arguments are provided this CLI command will iterate over all o
     oceandb ingest -m j3 --start-date 2019-01-01 --end-date 2020-12-3 // Ingest data from specific missions between start-date and end-date  
   ```
 
+
+
+3. **Ingesting Eddy Data** 
+
+   ```bash
+    oceandb init-eddy 
+    oceandb ingest-eddy // Ingest all missions across all date ranges
+   ```
  
 4. **Querying SLA Data**
    
@@ -101,3 +109,6 @@ By default if no arguments are provided this CLI command will iterate over all o
    ```bash
    make build_image
    ```
+   
+
+

@@ -16,28 +16,30 @@ from sqlalchemy import text
 from OceanDB.OceanDB import OceanDB
 
 table_definitions = [
-    # {
-    #     "name": "basin",
-    #     "filepath": "tables/create_basin_table.sql",
-    #     "params": {"table_name": "basin"},
-    # },
-    # {
-    #     "name": "along_track_metadata",
-    #     "filepath": "tables/create_along_track_metadata_table.sql",
-    #     "params": {"table_name": "along_track_metadata"},
-    # },
-    # {
-    #     "name": "along_track",
-    #     "filepath": "tables/create_along_track_table.sql",
-    #     "params": {"table_name": "along_track"},
-    # },
-    # {
-    #     "name": "basin_connection",
-    #     "filepath": "tables/create_basin_connection_table.sql",
-    #     "params": {"table_name": "basin_connection"},
-    # }
-    #
+    {
+        "name": "basin",
+        "filepath": "tables/create_basin_table.sql",
+        "params": {"table_name": "basin"},
+    },
+    {
+        "name": "along_track_metadata",
+        "filepath": "tables/create_along_track_metadata_table.sql",
+        "params": {"table_name": "along_track_metadata"},
+    },
+    {
+        "name": "along_track",
+        "filepath": "tables/create_along_track_table.sql",
+        "params": {"table_name": "along_track"},
+    },
+    {
+        "name": "basin_connection",
+        "filepath": "tables/create_basin_connection_table.sql",
+        "params": {"table_name": "basin_connection"},
+    }
+]
 
+
+eddy_tables = [
     {
         "name": "eddy",
         "filepath": "tables/create_eddy_table.sql",
@@ -47,9 +49,9 @@ table_definitions = [
         "name": "chelton_eddy",
         "filepath": "tables/create_chelton_eddy_table.sql",
         "params": {"table_name": "chelton_eddy"},
-    },
-
+    }
 ]
+
 
 sql_index_files = [
     {
@@ -205,6 +207,17 @@ class OceanDBInit(OceanDB):
                 atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS btree_gist;"))
                 atdb_conn.commit()
         print(f"Database '{self.db_name}' POSTGIS enabled.")
+
+    def create_eddy_tables(self):
+        for table in table_definitions:
+            try:
+                table_name = table['name']
+                query = self.parametrize_sql_statements(table)
+                self.execute_query(table, query)
+                self.logger.info(f"Executing {table_name}")
+            except Exception as ex:
+                self.logger.info(f"{table_name}")
+                self.logger.info(ex)
 
     def create_tables(self):
         for table in table_definitions:

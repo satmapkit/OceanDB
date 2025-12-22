@@ -499,7 +499,7 @@ class OceanDBETL(OceanDB):
         dataset = self.load_netcdf(file)
         for eddy_data in self.extract_data_batches_from_netcdf(dataset, batch_size=50000):
             start = time.perf_counter()
-            self.import_eddy_data_to_postgresql(data=eddy_data, cyclonic_type=1)
+            self.import_eddy_data_to_postgresql(data=eddy_data, cyclonic_type=cyclonic_type)
             duration = time.perf_counter() - start
             print(f"✅ Ingested Eddy Data Points took {duration:.2f} seconds")
 

@@ -34,22 +34,17 @@ def init():
     # oceandb_etl.insert_basin_connections_data()
 
 @cli.command()
+def init_eddy():
+    ocean_db_init = OceanDBInit()
+    ocean_db_init.create_database()
+    ocean_db_init.create_eddy_tables()
+
+@cli.command()
 def ingest_eddy():
     oceandb_etl = OceanDBETL()
     eddy_directory = oceandb_etl.config.eddy_data_directory
-
     cyclonic_filepath = Path(f"{eddy_directory}/META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc")
-    oceandb_etl.ingest_eddy_data_file(cyclonic_filepath)
-
-
-    # anticyclonic_filepath = f"{eddy_directory}/META3.2_DT_allsat_Antiyclonic_long_19930101_20220209.nc"
-    # num_points = 95000
-    # oceandb_etl.ingest_eddy_data_file(cyclonic_filepath)
-    # duration = time.perf_counter() - start
-    # print(f"✅ Ingested {num_points} Eddy Data Points took {duration:.2f} seconds")
-
-
-    # ocean_db_etl.extract_eddy_file(amplitude)
+    oceandb_etl.ingest_eddy_data_file(cyclonic_filepath, cyclonic_type=1)
 
 @cli.command
 def download():
