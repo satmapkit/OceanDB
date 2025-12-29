@@ -35,3 +35,4 @@ class Eddy(OceanDB):
 
         return data
 
+eddy = Eddy()

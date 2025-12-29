@@ -41,10 +41,36 @@ def init_eddy():
 
 @cli.command()
 def ingest_eddy():
+    """
+    Ingest eddy detection datasets into OceanDB.
+
+    Each file is parsed in batches and the extracted eddy observations are inserted
+    into the PostgreSQL ``eddy`` table.
+
+    The data source consists of two long-term global datasets:
+    - Cyclonic eddies (``cyclonic_type = 1``)
+    - Anticyclonic eddies (``cyclonic_type = 0``)
+
+    The input directory is resolved from the OceanDB configuration
+    (``eddy_data_directory``).
+
+    Notes
+    -----
+    - This command performs a full historical ingest.
+    - Inserts use strict PostgreSQL typing (INSERT, not COPY).
+    - Intended to be run once per database or during reinitialization.
+    """
     oceandb_etl = OceanDBETL()
     eddy_directory = oceandb_etl.config.eddy_data_directory
+
+    print("Processing Ingesting META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc")
     cyclonic_filepath = Path(f"{eddy_directory}/META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc")
     oceandb_etl.ingest_eddy_data_file(cyclonic_filepath, cyclonic_type=1)
+
+    print("Processing Ingesting META3.2_DT_allsat_Anticyclonic_long_19930101_20220209.nc")
+    anticyclonic_filepath = Path(f"{eddy_directory}/META3.2_DT_allsat_AntiCyclonic_long_19930101_20220209.nc")
+    oceandb_etl.ingest_eddy_data_file(anticyclonic_filepath, cyclonic_type=0)
+
 
 @cli.command
 def download():
