@@ -11,7 +11,6 @@ class Config(BaseSettings):
     postgres_password: str
     postgres_database: str = Field(default="ocean")
 
-
     along_track_data_directory: str
     eddy_data_directory: str
     copernicus_password: str

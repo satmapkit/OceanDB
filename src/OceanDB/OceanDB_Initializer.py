@@ -192,10 +192,12 @@ class OceanDBInit(OceanDB):
         with pg.connect(self.config.postgres_dsn_admin) as conn:
             conn.autocommit = True
             with conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (self.db_name,))
-                if cur.fetchone():
+                cur.execute("SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %s)", (self.db_name,))
+                exists = cur.fetchone()[0]
+                if exists:
                     print(f"Database '{self.db_name}' already exists.")
                     return
+
                 cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.db_name)))
                 print(f"Database '{self.db_name}' created successfully.")
 

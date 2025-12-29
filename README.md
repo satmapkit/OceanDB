@@ -60,10 +60,12 @@ the .env file.  ALONG_TRACK_DATA_DIRECTORY should be the file path to the direct
 By default if no arguments are provided this CLI command will iterate over all of the data
 
    ```bash
-    oceandb ingest // Ingest all missions across all date ranges
-    oceandb ingest -m s3a  // Ingest all Sentinel-3A (s3a) mission data
-    oceandb ingest -m s3a -m j3 // Ingest multiple missions
-    oceandb ingest -m j3 --start-date 2019-01-01 --end-date 2020-12-3 // Ingest data from specific missions between start-date and end-date  
+    oceandb ingest-along-track // Ingest all missions across all date ranges
+    oceandb ingest-along-track s3a  // Ingest all Sentinel-3A (s3a) mission data
+    oceandb ingest-along-track s3a j3 c2 // Ingest multiple missions
+    oceandb ingest-along-track j3 --start-date 2019-01-01 --end-date 2020-12-03 // Ingest data from specific missions between start-date and end-date
+    oceandb ingest-along-track s6a --end-date 2024-01-01 // Specify only end-date
+    oceandb ingest-along-track s6a --start-date 2024-01-01  // Specify only start-datea
   ```
 
 
@@ -79,23 +81,54 @@ By default if no arguments are provided this CLI command will iterate over all o
    
    To query the sea level anomaly for a given satellite mission, time range & radius around a given point
    ```python
-   from datetime import datetime
-   from OceanDB.AlongTrack import AlongTrack
+   latitude = -69
+   longitude = 28
+   date = datetime(year=2013, month=3, day=14, hour=5)
    
-   latitude =  -63.77912
-   longitude = 291.794742
-   date = datetime(year=2013, month=12, day=31, hour=23)
-   along_track = AlongTrack()
    
-   sla_geographic = along_track.geographic_points_in_spatialtemporal_window(
-    latitude=latitude,
-    longitude=longitude,
-    date=date,
-    missions = ['al']
+   data = along_track.geographic_nearest_neighbors_dt(
+       latitudes=np.array([latitude]),
+       longitudes=np.array([longitude]),
+       dates=[date],
+       missions=['al']
    )
+   
+   for d in data:
+       print(d)
+
    ```
 
-## Docker Instructions
+
+## Running OceanDB scripts in PyCharm
+1. **Activate the environment & Install OceanDB**
+``` 
+source .venv/bin/activate
+pip install -e . 
+```
+2. **Set the Pycharm Run Configuration Parameters**
+
+In the top right of the PyCharm window, click the 'edit' button to configure the PyCharm run parameters
+
+![Screenshot 2025-12-18 at 12.14.04 PM.png](docs/Screenshot%202025-12-18%20at%2012.14.04%E2%80%AFPM.png)
+
+- **Script path**  
+  Select the script you want to run, for example:  
+  `src/OceanDB/tests/test_geographic_nearest_neighbor.py`
+
+- **Python interpreter**  
+  Ensure the correct virtual environment is selected (the same one where OceanDB was installed).
+
+- **Working directory**  
+  Set this to the **repository root** (the directory containing `pyproject.toml`).
+
+- **Environment file (.env)**  
+  Set **Paths to .env files** to point to your `.env` file containing PostgreSQL credentials and any other required environment variables.
+
+![Screenshot 2025-12-18 at 12.18.01 PM.png](docs/Screenshot%202025-12-18%20at%2012.18.01%E2%80%AFPM.png)
+
+
+
+## Running OceanDB in Docker Instructions
 
 1. **Running Postgres**
    
@@ -104,7 +137,7 @@ By default if no arguments are provided this CLI command will iterate over all o
    make run_postgres // runs postgres postgis in docker compose
    ```
    
-3. **Build OceanDB Python Image**
+2. **Build OceanDB Python Image**
    If building a development image 
    ```bash
    make build_image
