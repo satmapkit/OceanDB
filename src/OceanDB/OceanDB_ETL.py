@@ -5,25 +5,19 @@ import pandas as pd
 import psycopg
 import psycopg as pg
 from psycopg import sql
-import glob
 import time
-import os
-import numpy as np
+from collections.abc import Iterator
 from OceanDB.OceanDB import OceanDB
 from functools import cached_property
-from typing import List, Tuple, Any, Iterable, Optional, Union
+from typing import List, Tuple, Any, Iterable, Optional, Union, Set
 from datetime import datetime, timedelta
 from pathlib import Path
 from OceanDB.utils.postgres_upsert import upsert_ignore
 from datetime import datetime, timedelta, timezone
-
-def parse_eddy_time(time_var, sl):
-    raw = time_var[sl].astype("int64")  # avoid uint32 overflow
-    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
-    return [epoch + timedelta(seconds=int(s)) for s in raw]
+import numpy as np
 
 
-
+NDArray = np.ndarray
 
 @dataclass
 class AlongTrackData:
@@ -125,45 +119,91 @@ class AlongTrackMetaData:
             title=get("title"),
         )
 
-
 @dataclass
 class EddyData:
-    amplitude: np.ndarray
-    cost_association: np.ndarray
-    effective_area: np.ndarray
-    effective_contour_height: np.ndarray
-    effective_contour_latitude: np.ndarray
-    effective_contour_longitude: np.ndarray
-    effective_contour_shape_error: np.ndarray
-    effective_radius: np.ndarray
-    inner_contour_height: np.ndarray
+    """Structured container for detected eddy observations."""
+    amplitude: NDArray
+    cost_association: NDArray
+    effective_area: NDArray
+    effective_contour_height: NDArray
+    effective_contour_latitude: NDArray
+    effective_contour_longitude: NDArray
+    effective_contour_shape_error: NDArray
+    effective_radius: NDArray
+    inner_contour_height: NDArray
+    latitude: NDArray
+    latitude_max: NDArray
+    longitude: NDArray
+    longitude_max: NDArray
+    num_contours: NDArray
+    num_point_e: NDArray
+    num_point_s: NDArray
+    observation_flag: NDArray  # will normalize to bool
+    observation_number: NDArray
+    speed_area: NDArray
+    speed_average: NDArray
+    speed_contour_height: NDArray
+    speed_contour_latitude: NDArray
+    speed_contour_longitude: NDArray
+    speed_contour_shape_error: NDArray
+    speed_radius: NDArray
+    date_time: NDArray
+    track: NDArray
 
-    latitude: np.ndarray
-    latitude_max: np.ndarray
-    longitude: np.ndarray
-    longitude_max: np.ndarray
+    def __post_init__(self) -> None:
+        """Normalize and validate eddy data arrays."""
+        if self.observation_flag.dtype != bool:
+            self.observation_flag = self.observation_flag.astype(bool)
 
-    num_contours: np.ndarray
-    num_point_e: np.ndarray
-    num_point_s: np.ndarray
-
-    observation_flag: np.ndarray
-    observation_number: np.ndarray
-
-    speed_area: np.ndarray
-    speed_average: np.ndarray
-    speed_contour_height: np.ndarray
-    # speed_contour_latitude: np.ndarray
-    # speed_contour_longitude: np.ndarray
-    speed_contour_shape_error: np.ndarray
-    speed_radius: np.ndarray
-    date_time: np.ndarray
-    track: np.ndarray
+        # Basic shape validation (cheap, very effective)
+        n = len(self.latitude)
+        for name, value in vars(self).items():
+            if len(value) != n:
+                raise ValueError(
+                    f"EddyData field '{name}' has length {len(value)} != {n}"
+                )
 
 
 
+# @dataclass
+# class EddyData:
+#     amplitude: np.ndarray
+#     cost_association: np.ndarray
+#     effective_area: np.ndarray
+#     effective_contour_height: np.ndarray
+#     effective_contour_latitude: np.ndarray
+#     effective_contour_longitude: np.ndarray
+#     effective_contour_shape_error: np.ndarray
+#     effective_radius: np.ndarray
+#     inner_contour_height: np.ndarray
+#
+#     latitude: np.ndarray
+#     latitude_max: np.ndarray
+#     longitude: np.ndarray
+#     longitude_max: np.ndarray
+#
+#     num_contours: np.ndarray
+#     num_point_e: np.ndarray
+#     num_point_s: np.ndarray
+#
+#     observation_flag: np.ndarray
+#     observation_number: np.ndarray
+#
+#     speed_area: np.ndarray
+#     speed_average: np.ndarray
+#     speed_contour_height: np.ndarray
+#     # speed_contour_latitude: np.ndarray
+#     # speed_contour_longitude: np.ndarray
+#     speed_contour_shape_error: np.ndarray
+#     speed_radius: np.ndarray
+#     date_time: np.ndarray
+#     track: np.ndarray
 
 
+def parse_eddy_time(time_var, sl):
+    raw = time_var[sl].astype("int64")  # avoid uint32 overflow
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    return [epoch + timedelta(seconds=int(s)) for s in raw]
 
 
 class OceanDBETL(OceanDB):
@@ -312,31 +352,9 @@ class OceanDBETL(OceanDB):
 
             ds.close()
             return data
-            #return time_data, lat_data, lon_data, cycle_data, track_data, sla_un_data, sla_f_data, dac_data, o_tide_data, i_tide_data, lwe_data, mdt_data, tpa_corr_data
 
         except Exception as ex:
             print(ex)
-
-        # except FileNotFoundError:
-        #     print("File '{}' not found".format(file_path))
-
-
-    # def insert_along_track_data_from_netcdf(self, directory):
-    #     """
-    #     Iterate over all files in direcotory,
-    #     """
-    #     start = time.time()
-    #     for file_path in glob.glob(directory + '/*.nc'):
-    #         names = [os.path.basename(x) for x in glob.glob(file_path)]
-    #         fname = names[0]  # filename will be used to link data to metadata
-    #         along_track: AlongTrackData = self.extract_data_from_netcdf(file_path)
-    #         import_start = time.time()
-    #         self.import_along_track_data_to_postgresql(fname, along_track)
-    #         import_end = time.time()
-    #         print(f"{fname} import time: {import_end - import_start}")
-    #     end = time.time()
-    #     print(f"Script end. Total time: {end - start}")
-
 
     def insert_basins_data(self):
         with self.load_module_file(module="OceanDB.data", filename="basins/ocean_basins.csv", mode="r") as f:
@@ -476,7 +494,10 @@ class OceanDBETL(OceanDB):
             conn.commit()
         print(f"Inserted Metadata for {metadata.file_name}")
 
-    def query_metadata(self):
+    def query_metadata(self)->Set[str]:
+        """
+        Queries the Along Track Metadata,
+        """
         query = "SELECT * FROM along_track_metadata;"
         with pg.connect(self.connection_string) as connection:
             with connection.cursor(row_factory=pg.rows.dict_row) as cursor:
@@ -484,8 +505,23 @@ class OceanDBETL(OceanDB):
                 rows = cursor.fetchall()
         return set([metadata['file_name'] for metadata in rows])
 
+    def extract_along_track_file(
+            self,
+            file: Path
+    ) -> tuple[AlongTrackData, AlongTrackMetaData]:
+        """
+        Extract along-track measurements and global metadata from a NetCDF file.
 
-    def extract_along_track_file(self, file: Path) -> (AlongTrackData, AlongTrackMetaData):
+        This method loads a NetCDF along-track product, parses the per-observation
+        along-track variables into a structured ``AlongTrackData`` object, and
+        extracts dataset-level metadata into an ``AlongTrackMetaData`` object.
+
+        Parameters
+        ----------
+        file : Path
+        Path to the NetCDF along-track file to be processed.
+
+        """
         dataset: nc.Dataset = self.load_netcdf(file)
         along_track_data: AlongTrackData = self.extract_along_track_from_netcdf(ds=dataset, file=file)
         along_track_metadata: AlongTrackMetaData = self.extract_dataset_metadata(
@@ -495,19 +531,24 @@ class OceanDBETL(OceanDB):
         return along_track_data, along_track_metadata
 
 
-    def ingest_eddy_data_file(self, file: Path, cyclonic_type):
+    def ingest_eddy_data_file(self,
+                              file: Path,
+                              cyclonic_type):
+        """
+        Processes & Ingests Eddy Data NetCDF file
+        """
         dataset = self.load_netcdf(file)
-        for eddy_data in self.extract_data_batches_from_netcdf(dataset, batch_size=50000):
+        for eddy_data in self.extract_eddy_data_batches_from_netcdf(dataset, batch_size=500000):
             start = time.perf_counter()
-            self.import_eddy_data_to_postgresql(data=eddy_data, cyclonic_type=cyclonic_type)
+            self.import_eddy_data_to_postgresql(eddy_data=eddy_data, cyclonic_type=cyclonic_type)
             duration = time.perf_counter() - start
             print(f"✅ Ingested Eddy Data Points took {duration:.2f} seconds")
 
-    def extract_data_batches_from_netcdf(
+    def extract_eddy_data_batches_from_netcdf(
             self,
             ds: nc.Dataset,
             batch_size: int,
-    ):
+    ) -> Iterator[EddyData]:
         """
         Yield batches of eddy data from a NetCDF dataset.
 
@@ -527,7 +568,6 @@ class OceanDBETL(OceanDB):
         dict
             Dictionary of arrays for one batch
         """
-
         ds.set_auto_mask(False)
         ds.set_auto_maskandscale(False)
 
@@ -550,103 +590,48 @@ class OceanDBETL(OceanDB):
                 for t in raw_time
             ]
 
-            yield {
-                "amplitude": ds.variables["amplitude"][sl],
-                "cost_association": ds.variables["cost_association"][sl],
-                "effective_area": ds.variables["effective_area"][sl],
-                "effective_contour_height": ds.variables["effective_contour_height"][sl],
-                "effective_contour_latitude": ds.variables["effective_contour_latitude"][sl],
-                "effective_contour_longitude": ds.variables["effective_contour_longitude"][sl],
-                "effective_contour_shape_error": ds.variables["effective_contour_shape_error"][sl],
-                "effective_radius": ds.variables["effective_radius"][sl],
-                "inner_contour_height": ds.variables["inner_contour_height"][sl],
-                "latitude": ds.variables["latitude"][sl],
-                "latitude_max": ds.variables["latitude_max"][sl],
-                "longitude": ds.variables["longitude"][sl],
-                "longitude_max": ds.variables["longitude_max"][sl],
-                "num_contours": ds.variables["num_contours"][sl],
-                "num_point_e": ds.variables["num_point_e"][sl],
-                "num_point_s": ds.variables["num_point_s"][sl],
-                "observation_flag": ds.variables["observation_flag"][sl],
-                "observation_number": ds.variables["observation_number"][sl],
-                "speed_area": ds.variables["speed_area"][sl],
-                "speed_average": ds.variables["speed_average"][sl],
-                "speed_contour_height": ds.variables["speed_contour_height"][sl],
-                "speed_contour_latitude": ds.variables["speed_contour_latitude"][sl],
-                "speed_contour_longitude": ds.variables["speed_contour_longitude"][sl],
-                "speed_contour_shape_error": ds.variables["speed_contour_shape_error"][sl],
-                "speed_radius": ds.variables["speed_radius"][sl],
-                "date_time": date_time,
-                "track": ds.variables["track"][sl],
-            }
+            yield EddyData(
+                amplitude=ds.variables["amplitude"][sl],
+                cost_association=ds.variables["cost_association"][sl],
+                effective_area=ds.variables["effective_area"][sl],
+                effective_contour_height=ds.variables["effective_contour_height"][sl],
+                effective_contour_latitude=ds.variables["effective_contour_latitude"][sl],
+                effective_contour_longitude=ds.variables["effective_contour_longitude"][sl],
+                effective_contour_shape_error=ds.variables["effective_contour_shape_error"][sl],
+                effective_radius=ds.variables["effective_radius"][sl],
+                inner_contour_height=ds.variables["inner_contour_height"][sl],
+                latitude=ds.variables["latitude"][sl],
+                latitude_max=ds.variables["latitude_max"][sl],
+                longitude=ds.variables["longitude"][sl],
+                longitude_max=ds.variables["longitude_max"][sl],
+                num_contours=ds.variables["num_contours"][sl],
+                num_point_e=ds.variables["num_point_e"][sl],
+                num_point_s=ds.variables["num_point_s"][sl],
+                observation_flag=ds.variables["observation_flag"][sl],
+                observation_number=ds.variables["observation_number"][sl],
+                speed_area=ds.variables["speed_area"][sl],
+                speed_average=ds.variables["speed_average"][sl],
+                speed_contour_height=ds.variables["speed_contour_height"][sl],
+                speed_contour_latitude=ds.variables["speed_contour_latitude"][sl],
+                speed_contour_longitude=ds.variables["speed_contour_longitude"][sl],
+                speed_contour_shape_error=ds.variables["speed_contour_shape_error"][sl],
+                speed_radius=ds.variables["speed_radius"][sl],
+                date_time=date_time,
+                track=ds.variables["track"][sl],
+            )
 
-    def extract_eddy_data_from_netcdf(self):
-        pass
 
-    def ingest_along_track_file(self, along_track_data: AlongTrackData, along_track_metadata: AlongTrackMetaData):
-        self.import_along_track_data_to_postgresql(
-             along_track_data=along_track_data
-        )
-        self.import_metadata_to_psql(
-            metadata=along_track_metadata
-        )
-
-    def extract_data_tuple_from_netcdf(self, ds: nc.Dataset, num_points=None):
+    def import_eddy_data_to_postgresql(
+            self,
+            eddy_data: EddyData,
+            cyclonic_type: int
+    ):
         """
-        Extract data from a netCDF file
-        """
-        ds.set_auto_mask(False)
-        # eddy_data = []
-        date_time = ds.variables['time']  # Extract dates from the dataset and convert them to standard datetime
+        Insert eddy records into PostgreSQL using INSERT statements.
 
-        # n_total = ds.variables["observation_number"].shape[0]
+        COPY implicitly casts 0/1 -> boolean
+        INSERT Strict typing - smallint != boolean
 
-        if num_points is None:
-            sl = slice(None)  # equivalent to [:]
-        else:
-            sl = slice(0, num_points)
-
-        time_data = nc.num2date(date_time[sl], date_time.units, only_use_cftime_datetimes=False,
-                                only_use_python_datetimes=False)
-        ds.set_auto_maskandscale(False)
-
-        eddy_data = {
-            'amplitude': ds.variables['amplitude'][sl],
-            'cost_association': ds.variables['cost_association'][sl],
-            'effective_area': ds.variables['effective_area'][sl],
-            'effective_contour_height': ds.variables['effective_contour_height'][sl],
-            'effective_contour_latitude': ds.variables['effective_contour_latitude'][sl],
-            'effective_contour_longitude': ds.variables['effective_contour_longitude'][sl],
-            'effective_contour_shape_error': ds.variables['effective_contour_shape_error'][sl],
-            'effective_radius': ds.variables['effective_radius'][sl],
-            'inner_contour_height': ds.variables['inner_contour_height'][sl],
-            'latitude': ds.variables['latitude'][sl],
-            'latitude_max': ds.variables['latitude_max'][sl],
-            'longitude': ds.variables['longitude'][sl],
-            'longitude_max': ds.variables['longitude_max'][sl],
-            'num_contours': ds.variables['num_contours'][sl],
-            'num_point_e': ds.variables['num_point_e'][sl],
-            'num_point_s': ds.variables['num_point_s'][sl],
-            'observation_flag': ds.variables['observation_flag'][sl],
-            'observation_number': ds.variables['observation_number'][sl],
-            'speed_area': ds.variables['speed_area'][sl],
-            'speed_average': ds.variables['speed_average'][sl],
-            'speed_contour_height': ds.variables['speed_contour_height'][sl],
-            'speed_contour_latitude': ds.variables['speed_contour_latitude'][sl],
-            'speed_contour_longitude': ds.variables['speed_contour_longitude'][sl],
-            'speed_contour_shape_error': ds.variables['speed_contour_shape_error'][sl],
-            'speed_radius': ds.variables['speed_radius'][sl],
-            'date_time': time_data[sl],
-            'track': ds.variables['track'][sl],
-        }
-        ds.close()
-
-        # eddy_data['longitude'][:] = (data['longitude'][:] + 180) % 360 - 180
-        return eddy_data
-
-    def import_eddy_data_to_postgresql(self, data: dict, cyclonic_type: int):
-        """
-        Insert into postgres
         """
 
         COLUMNS = [
@@ -676,46 +661,67 @@ class OceanDBETL(OceanDB):
             "cyclonic_type",
         ]
 
-        copy_query = sql.SQL("COPY {} ({}) FROM STDIN").format(
+        BOOLEAN_COLUMNS = {"observation_flag"}
+
+        def normalize_value(val, column: str | None = None):
+            """Convert numpy scalars to native, schema-correct Python types."""
+            if val is None:
+                return None
+
+            # numpy → python
+            if hasattr(val, "item"):
+                val = val.item()
+
+            # normalize booleans
+            if column in BOOLEAN_COLUMNS:
+                return bool(val)
+
+            return val
+
+        insert_query = sql.SQL("""
+            INSERT INTO {} ({})
+            VALUES ({})
+        """).format(
             sql.Identifier("public", "eddy"),
             sql.SQL(", ").join(map(sql.Identifier, COLUMNS)),
+            sql.SQL(", ").join(sql.Placeholder() * len(COLUMNS)),
         )
 
-        def py(val):
-            # convert numpy → python
-            return val.item() if hasattr(val, "item") else val
+        n_observations= len(eddy_data.observation_number)
+
+        rows = []
+        for i in range(n_observations):
+            rows.append([
+                normalize_value(eddy_data.amplitude[i]),
+                normalize_value(eddy_data.cost_association[i]),
+                normalize_value(eddy_data.effective_area[i]),
+                normalize_value(eddy_data.effective_contour_height[i]),
+                normalize_value(eddy_data.effective_contour_shape_error[i]),
+                normalize_value(eddy_data.effective_radius[i]),
+                normalize_value(eddy_data.inner_contour_height[i]),
+                normalize_value(eddy_data.latitude[i]),
+                normalize_value(eddy_data.latitude_max[i]),
+                normalize_value(eddy_data.longitude[i]),
+                normalize_value(eddy_data.longitude_max[i]),
+                normalize_value(eddy_data.num_contours[i]),
+                normalize_value(eddy_data.num_point_e[i]),
+                normalize_value(eddy_data.num_point_s[i]),
+                bool(eddy_data.observation_flag[i]),  # already normalized, but explicit is OK
+                normalize_value(eddy_data.observation_number[i]),
+                normalize_value(eddy_data.speed_area[i]),
+                normalize_value(eddy_data.speed_average[i]),
+                normalize_value(eddy_data.speed_contour_height[i]),
+                normalize_value(eddy_data.speed_contour_shape_error[i]),
+                normalize_value(eddy_data.speed_radius[i]),
+                normalize_value(eddy_data.date_time[i]),
+                normalize_value(eddy_data.track[i]),
+                cyclonic_type,
+            ])
 
         try:
-            with pg.connect(self.config.postgres_dsn) as connection:
-                with connection.cursor() as cursor:
-                    with cursor.copy(copy_query) as copy:
-                        for i in range(len(data["observation_number"])):
-                            copy.write_row([
-                                py(data["amplitude"][i]),
-                                py(data["cost_association"][i]),
-                                py(data["effective_area"][i]),
-                                py(data["effective_contour_height"][i]),
-                                py(data["effective_contour_shape_error"][i]),
-                                py(data["effective_radius"][i]),
-                                py(data["inner_contour_height"][i]),
-                                py(data["latitude"][i]),
-                                py(data["latitude_max"][i]),
-                                py(data["longitude"][i]),
-                                py(data["longitude_max"][i]),
-                                py(data["num_contours"][i]),
-                                py(data["num_point_e"][i]),
-                                py(data["num_point_s"][i]),
-                                py(data["observation_flag"][i]),
-                                py(data["observation_number"][i]),
-                                py(data["speed_area"][i]),
-                                py(data["speed_average"][i]),
-                                py(data["speed_contour_height"][i]),
-                                py(data["speed_contour_shape_error"][i]),
-                                py(data["speed_radius"][i]),
-                                py(data["date_time"][i]),
-                                py(data["track"][i]),
-                                cyclonic_type,
-                            ])
+            with pg.connect(self.config.postgres_dsn) as conn:
+                with conn.cursor() as cur:
+                    cur.executemany(insert_query, rows)
         except Exception as e:
-            print("COPY FAILED:", e)
+            print("INSERT FAILED:", e)
             raise
