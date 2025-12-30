@@ -1,10 +1,13 @@
 from datetime import datetime
 import click
 from pathlib import Path
+from multiprocessing import Pool, cpu_count
+
 from OceanDB.OceanDB_ETL import OceanDBETl, AlongTrackData, AlongTrackMetaData
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.config import Config
 from OceanDB.utils.logging import get_logger
+
 
 import netCDF4 as nc
 import time
@@ -282,18 +285,52 @@ def ingest_along_track(missions, start_date, end_date):
     oceandb_etl = OceanDBETl()
     metadata_filenames = oceandb_etl.query_metadata()
 
-    for file in nc_files:
-        file_name = file.name
-        if file_name in metadata_filenames:
-            print(f"{file_name} already processed, skipping")
-            continue
+    start_ingest_time = time.perf_counter()
 
-        print(f"Processing {file_name}")
-        start = time.perf_counter()
+    along_track_files = [
+        file
+        for file in nc_files
+        if file.name not in metadata_filenames
+    ]
 
-        along_track_data, along_track_metadata = oceandb_etl.extract_along_track_file(file=file)
-        oceandb_etl.ingest_along_track_file( along_track_data=along_track_data, along_track_metadata=along_track_metadata)
+    process_count = 6
+    with Pool(process_count) as multiprocessing_pool:
+        multiprocessing_pool.map(oceandb_etl.process_along_track_file, along_track_files)
 
-        size_mb = file.stat().st_size / (1024 * 1024)
-        duration = time.perf_counter() - start
-        print(f"✅ {file.name} | {size_mb:.2f} MB | {duration:.2f} seconds")
+    # for file in along_track_files:
+    #     file_name = file.name
+    #     if file_name in metadata_filenames:
+    #         print(f"{file_name} already processed, skipping")
+    #         continue
+    #
+    #     print(f"Processing {file_name}")
+    #     start = time.perf_counter()
+    #
+    #     oceandb_etl.process_along_track_file(file=file)
+    #
+    #     size_mb = file.stat().st_size / (1024 * 1024)
+    #     duration = time.perf_counter() - start
+    #     print(f"✅ {file.name} | {size_mb:.2f} MB | {duration:.2f} seconds")
+
+
+    full_ingest_duration = time.perf_counter() - start_ingest_time
+    print(f"Full Ingest Time {full_ingest_duration:.2f} seconds")
+
+
+    #
+    #
+    #
+    #     print(f"Processing {file_name}")
+    #     start = time.perf_counter()
+    #
+    #     oceandb_etl.process_along_track_file(file=file)
+    #
+    #
+    #     # along_track_data, along_track_metadata = oceandb_etl.extract_along_track_file(file=file)
+    #     # oceandb_etl.ingest_along_track_file( along_track_data=along_track_data, along_track_metadata=along_track_metadata)
+    #
+    #     size_mb = file.stat().st_size / (1024 * 1024)
+    #     duration = time.perf_counter() - start
+    #     print(f"✅ {file.name} | {size_mb:.2f} MB | {duration:.2f} seconds")
+    #
+    #
