@@ -1,0 +1,6 @@
+OceanDB
+sphinx~=8.2.3
+sphinx-autodoc-typehints~=3.5.2
+sphinx-toolbox~=4.1.0
+sphinx-readable-theme~=1.3.0
+pydantic-settings

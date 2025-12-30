@@ -1,0 +1,11 @@
+netCDF4~=1.7.1.post1
+psycopg~=3.2.1
+psycopg-binary~=3.2.1
+python-dateutil~=2.9.0.post0
+numpy~=2.0.1
+pandas~=2.2.2
+copernicusmarine>=2.0.0
+xarray~=2024.6.0
+dotenv
+sqlalchemy>2.0
+pydantic-settings
