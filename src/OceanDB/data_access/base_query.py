@@ -47,7 +47,8 @@ class BaseQuery(OceanDB):
             dtypes[name] = field.python_type
 
         return Dataset[K, T](
-            name="along_track_spatiotemporal", data=data, dtypes=dtypes, schema=schema
+            name="along_track_spatiotemporal",
+            data=data, dtypes=dtypes, schema=schema
         )
 
     def execute_query(
@@ -64,7 +65,6 @@ class BaseQuery(OceanDB):
                 cur.execute(query, params)
 
                 rows : list[dict[str, T]]= cur.fetchall()
-
                 if not rows:
                     return None
                 else:
@@ -86,12 +86,10 @@ class BaseQuery(OceanDB):
 
                 while True:
                     rows : list[dict[str, T]]= cur.fetchall()
-
                     if not rows:
                         yield None
                     else:
                         dataset = self.build_dataset(schema=schema, rows=rows)
                         yield dataset
-
                     if not cur.nextset():
                         break

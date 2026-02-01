@@ -10,6 +10,7 @@ import numpy.typing as npt
 import numpy as np
 
 from OceanDB.data_access.base_query import BaseQuery
+from OceanDB.data_access.project_compiler import ProjectionCompiler
 from OceanDB.data_access.schema.along_track_schema import along_track_fields, along_track_schema
 from OceanDB.ocean_data.dataset import Dataset
 
@@ -19,13 +20,11 @@ class AlongTrack(BaseQuery):
 
     Runs queries, returns datasets and bundles them into OceanData
 
-
     Query service for along-track altimetry data.
 
     Executes parameterized geospatial and spatiotemporal SQL queries and
     returns domain-level AlongTrackDataset objects instead of raw rows.
     """
-
 
     Mission = Literal[
         "al",
@@ -74,10 +73,10 @@ class AlongTrack(BaseQuery):
 
     def geographic_points_in_r_dt(
         self,
+        fields: list[along_track_fields],
         latitudes: npt.NDArray,
         longitudes: npt.NDArray,
         dates: List[datetime],
-        fields: list[along_track_fields],
         radii: List[float] | float = 500_000.0,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] = all_missions,
@@ -90,13 +89,13 @@ class AlongTrack(BaseQuery):
 
         # format what parameters we want out of the query
         query_string = self.load_sql_file(self.along_track_spatiotemporal_query)
-        query = pg.sql.SQL(query_string).format(
-            fields=pg.sql.SQL(', ').join([
-                along_track_schema[field].to_sql_query() for field in fields
-        ]))
+        compiler = ProjectionCompiler(schema=along_track_schema)
 
+        query_string = compiler.compile(
+            sql_template=query_string,
+            fields=fields,
+        )
 
-        # input niceties---allow users to specify one radius to be used for all query points
         if not isinstance(radii, list):
             radii = [float(radii)] * len(latitudes)
 
@@ -120,7 +119,7 @@ class AlongTrack(BaseQuery):
             )
         ]
         # execute the query
-        return self.execute_batch_query(query, along_track_schema, params)
+        return self.execute_batch_query(query_string, along_track_schema, params)
 
     def geographic_nearest_neighbors_dt(
         self,
@@ -135,11 +134,21 @@ class AlongTrack(BaseQuery):
         Given an array of spatiotemporal points, returns the THREE closest data points to each
         """
 
-        query_string = self.load_sql_file(self.nearest_neighbor_query)
-        query = pg.sql.SQL(query_string).format(
-            fields=pg.sql.SQL(', ').join([
-                along_track_schema[field].to_sql_query() for field in fields
-        ]))
+        # query_string = self.load_sql_file(self.nearest_neighbor_query)
+        # query = pg.sql.SQL(query_string).format(
+        #     fields=pg.sql.SQL(', ').join([
+        #         along_track_schema[field].to_sql_query() for field in fields
+        # ]))
+
+        query_string = self.load_sql_file(self.along_track_spatiotemporal_query)
+        compiler = ProjectionCompiler(schema=along_track_schema)
+
+        query_string = compiler.compile(
+            sql_template=query_string,
+            fields=fields,
+        )
+
+
 
         basin_ids = self.basin_mask(latitudes, longitudes)
         connected_basin_ids = list(map(self.basin_connection_map.get, basin_ids))
