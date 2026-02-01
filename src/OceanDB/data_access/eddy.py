@@ -47,7 +47,6 @@ class Eddy(BaseQuery):
         """
         Retrieve distinct eddy track identifiers observed within a given time range.
         This is executing a query -> but not going through our base execute query method quite yet,
-
         """
         query = """
         SELECT DISTINCT track
@@ -113,6 +112,10 @@ class Eddy(BaseQuery):
         - This method assumes the eddy track exists; no explicit guard is
           performed for empty result sets.
         """
+        eddy = self.eddy_with_track_id(
+            fields=[""],
+
+        )
 
         # eddy_query = """SELECT MIN(date_time), MAX(date_time), array_agg(distinct connected_id) || array_agg(distinct basin.id)
         #                     FROM eddy

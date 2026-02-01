@@ -118,7 +118,11 @@ class AlongTrack(BaseQuery):
             )
         ]
         # execute the query
-        return self.execute_batch_query(query_string, along_track_schema, params)
+        return self.execute_batch_query(
+            query=query_string,
+            schema=along_track_schema,
+            params=params
+        )
 
     def geographic_nearest_neighbors_dt(
         self,
