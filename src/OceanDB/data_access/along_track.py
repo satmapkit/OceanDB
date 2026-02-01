@@ -10,7 +10,7 @@ import numpy.typing as npt
 import numpy as np
 
 from OceanDB.data_access.base_query import BaseQuery
-from OceanDB.data_access.project_compiler import ProjectionCompiler
+from OceanDB.data_access.projection_compiler import ProjectionCompiler
 from OceanDB.data_access.schema.along_track_schema import along_track_fields, along_track_schema
 from OceanDB.ocean_data.dataset import Dataset
 
@@ -58,7 +58,7 @@ class AlongTrack(BaseQuery):
     # Domain key used by BaseQuery metadata registry
     # ALONG_TRACK_DOMAIN = "along_track"
 
-    nearest_neighbor_query = "queries/along_track/geographic_nearest_neighbor.sql"
+    along_track_nearest_neighbor_query = "queries/along_track/geographic_nearest_neighbor.sql"
     along_track_spatiotemporal_query = (
         "queries/along_track/geographic_points_in_spatialtemporal_window.sql"
     )
@@ -133,22 +133,13 @@ class AlongTrack(BaseQuery):
         """
         Given an array of spatiotemporal points, returns the THREE closest data points to each
         """
-
-        # query_string = self.load_sql_file(self.nearest_neighbor_query)
-        # query = pg.sql.SQL(query_string).format(
-        #     fields=pg.sql.SQL(', ').join([
-        #         along_track_schema[field].to_sql_query() for field in fields
-        # ]))
-
-        query_string = self.load_sql_file(self.along_track_spatiotemporal_query)
+        query_string = self.load_sql_file(self.along_track_nearest_neighbor_query)
         compiler = ProjectionCompiler(schema=along_track_schema)
 
         query_string = compiler.compile(
             sql_template=query_string,
             fields=fields,
         )
-
-
 
         basin_ids = self.basin_mask(latitudes, longitudes)
         connected_basin_ids = list(map(self.basin_connection_map.get, basin_ids))
@@ -166,4 +157,4 @@ class AlongTrack(BaseQuery):
             )
         ]
 
-        return self.execute_query(query, along_track_schema, params)
+        return self.execute_batch_query(query_string, along_track_schema, params)
