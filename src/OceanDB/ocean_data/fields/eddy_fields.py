@@ -173,23 +173,15 @@ speed_area = OceanDataField(
     postgres_table_name="eddy",
 )
 
-
-eddy_schema = {
-    "latitude": latitude,
-    "longitude": longitude,
-    "time": date_time,
-    "track": track,
-    "cyclonic_type": cyclonic_type,
-    "amplitude": amplitude,
-    "effective_radius": effective_radius,
-    "effective_area": effective_area,
-    "speed_average": speed_average,
-    "speed_radius": speed_radius,
-    "speed_area": speed_area,
-    "cost_association": cost_association,
-    "observation_flag": observation_flag,
-    "observation_number": observation_number,
-}
+num_contours = OceanDataField(
+    nc_name="None",
+    postgres_table_name="eddy",
+    postgres_column_or_query_name="num_contours",
+    nc_scale=1,
+    nc_offset=0,
+    python_type=int,
+    postgres_type="smallint"
+)
 
 
 

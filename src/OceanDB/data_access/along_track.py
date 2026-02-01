@@ -5,7 +5,6 @@ Projection-Aware Dataset Architecture
 
 from datetime import datetime, timedelta
 from typing import Iterable, List, Literal, get_args
-import psycopg as pg
 import numpy.typing as npt
 import numpy as np
 
@@ -13,6 +12,7 @@ from OceanDB.data_access.base_query import BaseQuery
 from OceanDB.data_access.projection_compiler import ProjectionCompiler
 from OceanDB.data_access.schema.along_track_schema import along_track_fields, along_track_schema
 from OceanDB.ocean_data.dataset import Dataset
+
 
 class AlongTrack(BaseQuery):
     """
@@ -90,7 +90,6 @@ class AlongTrack(BaseQuery):
         # format what parameters we want out of the query
         query_string = self.load_sql_file(self.along_track_spatiotemporal_query)
         compiler = ProjectionCompiler(schema=along_track_schema)
-
         query_string = compiler.compile(
             sql_template=query_string,
             fields=fields,

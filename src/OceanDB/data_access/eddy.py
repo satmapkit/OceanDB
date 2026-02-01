@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta
-from typing import Iterable, List, Literal, get_args
 import psycopg as pg
 import numpy.typing as npt
 import numpy as np
 
 from OceanDB.data_access.base_query import BaseQuery
+from OceanDB.data_access.projection_compiler import ProjectionCompiler
 from OceanDB.data_access.schema.along_track_schema import along_track_fields, along_track_schema
+from OceanDB.data_access.schema.eddy_schema import eddy_schema, eddy_fields
 from OceanDB.ocean_data.dataset import Dataset
-from OceanDB.ocean_data.fields.eddy_fields import eddy_schema
+# from OceanDB.ocean_data.fields.eddy_fields import eddy_schema
 
 
 class Eddy(BaseQuery):
@@ -19,19 +20,23 @@ class Eddy(BaseQuery):
 
     def eddy_with_track_id(
         self,
+        fields: list[eddy_fields],
         track_id: int,
-    ) -> Dataset[along_track_fields, npt.NDArray[np.floating]]:
+    ) -> Dataset[eddy_fields, npt.NDArray[np.floating]]:
         """
         Retrieve all observations for a single eddy track.
-
         Returns
         -------
         OceanData[EddyDataset] | None
         """
         query = self.load_sql_file(self.eddy_with_id_query)
         params = {"track_id": track_id}
-
-        return self.execute_query(query, eddy_schema, params)
+        compiler = ProjectionCompiler(schema=along_track_schema)
+        query_string = compiler.compile(
+            sql_template=self.load_sql_file(self.eddy_with_id_query),
+            fields=fields,
+        )
+        return self.execute_query(query_string, eddy_schema, params)
 
 
     def get_eddy_tracks_from_times(
@@ -41,7 +46,6 @@ class Eddy(BaseQuery):
     ) -> list[int]:
         """
         Retrieve distinct eddy track identifiers observed within a given time range.
-
         This is executing a query -> but not going through our base execute query method quite yet,
 
         """
@@ -108,8 +112,6 @@ class Eddy(BaseQuery):
         - Basin connectivity is resolved via the `basin_connections` table.
         - This method assumes the eddy track exists; no explicit guard is
           performed for empty result sets.
-
-
         """
 
         # eddy_query = """SELECT MIN(date_time), MAX(date_time), array_agg(distinct connected_id) || array_agg(distinct basin.id)
@@ -148,26 +150,26 @@ class Eddy(BaseQuery):
         #         cursor.execute(along_query, values)
         #         data = cursor.fetchall()
 
-        eddy_query = """
-                SELECT
-                    MIN(date_time) AS min_date,
-                    MAX(date_time) AS max_date,
-                    array_agg(DISTINCT connected_id)
-                        || array_agg(DISTINCT basin.id) AS basin_ids
-                FROM eddy
-                LEFT JOIN basin
-                    ON ST_Intersects(basin.basin_geog, eddy.eddy_point)
-                LEFT JOIN basin_connections
-                    ON basin_connections.basin_id = basin.id
-                WHERE eddy.track * eddy.cyclonic_type = %(track_id)s
-                GROUP BY track, cyclonic_type;
-                """
-
-        fields: list[along_track_fields]
-        query = pg.sql.SQL(eddy_query).format(
-            fields=pg.sql.SQL(', ').join([
-                along_track_schema[field].to_sql_query() for field in fields
-        ]))
+        # eddy_query = """
+        #         SELECT
+        #             MIN(date_time) AS min_date,
+        #             MAX(date_time) AS max_date,
+        #             array_agg(DISTINCT connected_id)
+        #                 || array_agg(DISTINCT basin.id) AS basin_ids
+        #         FROM eddy
+        #         LEFT JOIN basin
+        #             ON ST_Intersects(basin.basin_geog, eddy.eddy_point)
+        #         LEFT JOIN basin_connections
+        #             ON basin_connections.basin_id = basin.id
+        #         WHERE eddy.track * eddy.cyclonic_type = %(track_id)s
+        #         GROUP BY track, cyclonic_type;
+        #         """
+        #
+        # fields: list[along_track_fields]
+        # query = pg.sql.SQL(eddy_query).format(
+        #     fields=pg.sql.SQL(', ').join([
+        #         along_track_schema[field].to_sql_query() for field in fields
+        # ]))
         # self.execute_query(
         #     query=eddy_query,
         #     params={
