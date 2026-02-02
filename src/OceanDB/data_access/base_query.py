@@ -12,6 +12,14 @@ K = TypeVar("K", bound=str)
 T = TypeVar("T")
 
 
+def log_query(conn, query, params):
+    print("\n--- SQL QUERY ---")
+    print(query.as_string(conn))
+    print("--- PARAMS ---")
+    print(params)
+    print("----------------\n")
+
+
 class BaseQuery(OceanDB):
     """
     Base class for read-only query services.
@@ -77,11 +85,8 @@ class BaseQuery(OceanDB):
 
         with pg.connect(self.config.postgres_dsn) as conn:
             # 👇 THIS is the correct place to render SQL
-            print("\n--- SQL QUERY ---")
-            print(query.as_string(conn))
-            print("--- PARAMS ---")
-            print(params)
-            print("----------------\n")
+            log_query(conn=conn, query=query, params=params)
+
 
             with conn.cursor(row_factory=pg.rows.dict_row) as cur:
                 cur.execute(query, params)
@@ -136,6 +141,8 @@ class BaseQuery(OceanDB):
         """
 
         with pg.connect(self.config.postgres_dsn) as conn:
+            log_query(conn=conn, query=query, params=params)
+
             with conn.cursor(row_factory=pg.rows.dict_row) as cur:
                 cur.executemany(query, params, returning=True)
 

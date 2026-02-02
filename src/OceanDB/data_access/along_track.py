@@ -144,7 +144,7 @@ class AlongTrack(BaseQuery):
             sql_template=query_string,
             fields=fields,
         )
-
+        print(query_string)
         basin_ids = self.basin_mask(latitudes, longitudes)
         connected_basin_ids = list(map(self.basin_connection_map.get, basin_ids))
         params = [

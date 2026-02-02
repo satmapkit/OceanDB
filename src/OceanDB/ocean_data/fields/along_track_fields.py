@@ -7,9 +7,12 @@ from OceanDB.ocean_data.ocean_data import OceanDataField
 # Core coordinates & identity
 # -----------------
 
+atk_alias = "atk"
+
+
 latitude = OceanDataField(
     name="latitude",
-    postgres_table_name="atk",  # ✅ alias
+    postgres_table_name=atk_alias,  # ✅ alias
     postgres_column_name="latitude",
     python_type=np.float64,
     postgres_type="double precision",
@@ -20,7 +23,7 @@ latitude = OceanDataField(
 
 longitude = OceanDataField(
     name="longitude",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="longitude",
     python_type=np.float64,
     postgres_type="double precision",
@@ -30,8 +33,8 @@ longitude = OceanDataField(
 )
 
 date_time = OceanDataField(
-    name="time",
-    postgres_table_name="atk",
+    name="date_time",
+    postgres_table_name=atk_alias,
     postgres_column_name="date_time",
     python_type=datetime,
     postgres_type="timestamp",
@@ -42,7 +45,7 @@ date_time = OceanDataField(
 
 file_name = OceanDataField(
     name="file_name",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="file_name",
     python_type=str,
     postgres_type="text",
@@ -53,7 +56,7 @@ file_name = OceanDataField(
 
 mission = OceanDataField(
     name="mission",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="mission",
     python_type=str,
     postgres_type="text",
@@ -64,7 +67,7 @@ mission = OceanDataField(
 
 track = OceanDataField(
     name="track",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="track",
     python_type=int,
     postgres_type="smallint",
@@ -75,7 +78,7 @@ track = OceanDataField(
 
 cycle = OceanDataField(
     name="cycle",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="cycle",
     python_type=int,
     postgres_type="smallint",
@@ -86,7 +89,7 @@ cycle = OceanDataField(
 
 basin_id = OceanDataField(
     name="basin_id",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="basin_id",
     python_type=int,
     postgres_type="smallint",
@@ -101,7 +104,7 @@ basin_id = OceanDataField(
 
 sla_unfiltered = OceanDataField(
     name="sla_unfiltered",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="sla_unfiltered",
     python_type=np.float64,
     postgres_type="smallint",
@@ -112,7 +115,7 @@ sla_unfiltered = OceanDataField(
 
 sla_filtered = OceanDataField(
     name="sla_filtered",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="sla_filtered",
     python_type=np.float64,
     postgres_type="smallint",
@@ -123,7 +126,7 @@ sla_filtered = OceanDataField(
 
 dac = OceanDataField(
     name="dac",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="dac",
     python_type=np.float64,
     postgres_type="smallint",
@@ -134,7 +137,7 @@ dac = OceanDataField(
 
 ocean_tide = OceanDataField(
     name="ocean_tide",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="ocean_tide",
     python_type=np.float64,
     postgres_type="smallint",
@@ -145,7 +148,7 @@ ocean_tide = OceanDataField(
 
 internal_tide = OceanDataField(
     name="internal_tide",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="internal_tide",
     python_type=np.float64,
     postgres_type="smallint",
@@ -156,7 +159,7 @@ internal_tide = OceanDataField(
 
 lwe = OceanDataField(
     name="lwe",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="lwe",
     python_type=np.float64,
     postgres_type="smallint",
@@ -167,7 +170,7 @@ lwe = OceanDataField(
 
 mdt = OceanDataField(
     name="mdt",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="mdt",
     python_type=np.float64,
     postgres_type="smallint",
@@ -178,7 +181,7 @@ mdt = OceanDataField(
 
 tpa_correction = OceanDataField(
     name="tpa_correction",
-    postgres_table_name="atk",
+    postgres_table_name=atk_alias,
     postgres_column_name="tpa_correction",
     python_type=np.float64,
     postgres_type="smallint",
@@ -193,10 +196,10 @@ tpa_correction = OceanDataField(
 
 distance = OceanDataField(
     name="distance",
-    custom_calculation="""
+    custom_calculation=f"""
         ST_Distance(
             ST_MakePoint(%(longitude)s, %(latitude)s),
-            atk.along_track_point
+            {atk_alias}.along_track_point
         )
     """,
     python_type=np.float64,
@@ -205,8 +208,8 @@ distance = OceanDataField(
 
 delta_t = OceanDataField(
     name="delta_t",
-    custom_calculation="""
-        EXTRACT(EPOCH FROM (%(central_date_time)s - atk.date_time))
+    custom_calculation=f"""
+        EXTRACT(EPOCH FROM (%(central_date_time)s - {atk_alias}.date_time))
     """,
     python_type=np.float64,
     postgres_type="double precision",
