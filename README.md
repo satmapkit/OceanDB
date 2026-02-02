@@ -143,3 +143,11 @@ In the top right of the PyCharm window, click the 'edit' button to configure the
    ```bash
    make build_image
    ```
+
+
+## Query Notes
+
+Had to Modify the Query Slightly
+
+
+

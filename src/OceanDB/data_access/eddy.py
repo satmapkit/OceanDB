@@ -118,26 +118,37 @@ class Eddy(BaseQuery):
             params=params
         )
 
-
-    def along_track_points_near_eddy(self,
-                                    track_id: int,
-                                    fields: list[along_track_fields]
-        ):
-        eddy_track =  self.eddy_envelope_query(track_id=track_id)
+    def along_track_points_near_eddy(
+            self,
+            *,
+            track_id: int,
+            fields: list[along_track_fields] | None = None,
+    ):
         """
+        Retrieve along-track altimetry points spatially and temporally
+        associated with a given eddy track.
+
+        The eddy envelope (time range and basin membership) is computed
+        first and used to parameterize the along-track query.
+        """
+
+        # --- Phase 1: eddy envelope ---
+        eddy_track = self.eddy_envelope_query(track_id=track_id)
+
         min_date = eddy_track["min_date"][0]
         max_date = eddy_track["max_date"][0]
-        basin_ids = eddy_track["basin_ids"]
-        """
+        basin_ids = list(eddy_track["basin_ids"][0])
+        print(f"envelope for eddy with track id {track_id} is {min_date} {max_date} {basin_ids}")
+
+        # --- Phase 2: along-track projection ---
         compiler = ProjectionCompiler(schema=along_track_schema)
+
+        raw_query = self.load_sql_file(self.along_track_near_eddy_query)
+        print(raw_query)
         query = compiler.compile(
-            sql_template=self.load_sql_file(self.along_track_near_eddy_query),
+            sql_template=raw_query,
             fields=fields or self.default_along_track_fields,
         )
-
-        min_date = eddy_track["min_date"][0]
-        max_date = eddy_track["max_date"][0]
-        basin_ids = eddy_track["basin_ids"]
 
         params = {
             "track_id": track_id,
@@ -153,6 +164,50 @@ class Eddy(BaseQuery):
             params=params,
             dataset_name="along_track_near_eddy",
         )
+
+
+
+    # def along_track_points_near_eddy(self,
+    #                                 track_id: int,
+    #                                 fields: list[along_track_fields]
+    #     ):
+    #     """
+    #     Maybe provide more parameters?
+    #     what does "near" mean?
+    #
+    #     """
+    #
+    #
+    #     eddy_track =  self.eddy_envelope_query(track_id=track_id)
+    #     """
+    #     min_date = eddy_track["min_date"][0]
+    #     max_date = eddy_track["max_date"][0]
+    #     basin_ids = eddy_track["basin_ids"]
+    #     """
+    #     compiler = ProjectionCompiler(schema=along_track_schema)
+    #     query = compiler.compile(
+    #         sql_template=self.load_sql_file(self.along_track_near_eddy_query),
+    #         fields=fields or self.default_along_track_fields,
+    #     )
+    #
+    #     min_date = eddy_track["min_date"][0]
+    #     max_date = eddy_track["max_date"][0]
+    #     basin_ids = eddy_track["basin_ids"][0]
+    #
+    #     params = {
+    #         "track_id": track_id,
+    #         "min_date": min_date,
+    #         "max_date": max_date,
+    #         "basin_ids": basin_ids,
+    #         "speed_radius_scale_factor": 100,
+    #     }
+    #
+    #     return self.execute_query(
+    #         query=query,
+    #         schema=along_track_schema,
+    #         params=params,
+    #         dataset_name="along_track_near_eddy",
+    #     )
 
 
         # along_query = """SELECT atk.file_name, atk.track, atk.cycle, atk.latitude, atk.longitude, atk.sla_unfiltered, atk.sla_filtered, atk.date_time as time, atk.dac, atk.ocean_tide, atk.internal_tide, atk.lwe, atk.mdt, atk.tpa_correction
