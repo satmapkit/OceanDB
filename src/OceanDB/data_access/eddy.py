@@ -134,7 +134,6 @@ class Eddy(BaseQuery):
 
         # --- Phase 1: eddy envelope ---
         eddy_track = self.eddy_envelope_query(track_id=track_id)
-
         min_date = eddy_track["min_date"][0]
         max_date = eddy_track["max_date"][0]
         basin_ids = list(eddy_track["basin_ids"][0])

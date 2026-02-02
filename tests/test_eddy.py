@@ -1,13 +1,13 @@
 from datetime import datetime
 
-from OceanDB.data_access.schema.eddy_schema import eddy_fields
 from OceanDB.data_access import Eddy
+from OceanDB.data_access.schema.eddy_schema import eddy_schema
 
 eddy = Eddy()
-
+print(eddy_schema)
 output = eddy.eddy_with_track_id(
     track_id=4,
-    fields=eddy_fields
+    fields=eddy_schema.keys()
 )
 
 
