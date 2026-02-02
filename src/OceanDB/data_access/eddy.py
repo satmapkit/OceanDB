@@ -14,29 +14,26 @@ from OceanDB.ocean_data.dataset import Dataset
 class Eddy(BaseQuery):
     along_track_near_eddy_query = "queries/eddy/along_near_eddy.sql"
     eddy_with_id_query = "queries/eddy/eddy_from_track_id.sql"
+    envelope_query = "queries/eddy/eddy_envelope.sql"
+    default_along_track_fields = DEFAULT_ALONG_TRACK_FIELDS = [
+        "file_name",
+        "track",
+        "cycle",
+        "latitude",
+        "longitude",
+        "sla_unfiltered",
+        "sla_filtered",
+        "date_time",
+        "dac",
+        "ocean_tide",
+        "internal_tide",
+        "lwe",
+        "mdt",
+        "tpa_correction",
+    ]
 
     def __init__(self):
         super().__init__()
-
-    def eddy_with_track_id(
-        self,
-        fields: list[eddy_fields],
-        track_id: int,
-    ) -> Dataset[eddy_fields, npt.NDArray[np.floating]]:
-        """
-        Retrieve all observations for a single eddy track.
-        Returns
-        -------
-        OceanData[EddyDataset] | None
-        """
-        query = self.load_sql_file(self.eddy_with_id_query)
-        params = {"track_id": track_id}
-        compiler = ProjectionCompiler(schema=along_track_schema)
-        query_string = compiler.compile(
-            sql_template=self.load_sql_file(self.eddy_with_id_query),
-            fields=fields,
-        )
-        return self.execute_query(query_string, eddy_schema, params)
 
 
     def get_eddy_tracks_from_times(
@@ -67,70 +64,132 @@ class Eddy(BaseQuery):
                 return [row[0] for row in cur.fetchall()]
 
 
-    def along_track_points_near_eddy(self, track_id):
+    def eddy_with_track_id(
+        self,
+        fields: list[eddy_fields],
+        track_id: int,
+    ) -> Dataset[eddy_fields, npt.NDArray[np.floating]]:
         """
-        Retrieve along-track altimetry points spatially and temporally associated
-        with a given eddy track.
-
-        This method performs a two-stage query:
-
-        1. It first determines the temporal extent of the specified eddy track
-           (minimum and maximum `date_time`) and collects all basin identifiers
-           associated with the eddy, including directly intersecting basins and
-           their connected basins.
-
-        2. It then queries the `along_track` table for altimetry observations that:
-           - Occur within the eddy's lifetime (with an additional 1-day tolerance),
-           - Lie within a distance threshold of the eddy center
-             (`speed_radius * scale_factor * 2.0`),
-           - Belong to one of the basins connected to the eddy.
-
-        Parameters
-        ----------
-        track_id : int
-            Signed eddy track identifier. The sign encodes cyclonic polarity and
-            is matched against `eddy.track * eddy.cyclonic_type`.
-
+        Retrieve all observations for a single eddy track.
         Returns
         -------
-        list[tuple]
-            A list of rows from the `along_track` table containing altimetry
-            measurements near the eddy. Each row includes spatial coordinates,
-            sea level anomaly values, timing information, and geophysical
-            correction terms.
-
-        Notes
-        -----
-        - Temporal filtering is based on `TIMESTAMP WITHOUT TIME ZONE` columns;
-          all timestamps are assumed to be naive and expressed in a consistent
-          reference time (typically UTC).
-        - Spatial filtering uses PostGIS geography types and `ST_DWithin`, with
-          distances interpreted in meters.
-        - The spatial search radius is derived from the eddy `speed_radius` and
-          scaled using `self.variable_scale_factor["speed_radius"]`.
-        - Basin connectivity is resolved via the `basin_connections` table.
-        - This method assumes the eddy track exists; no explicit guard is
-          performed for empty result sets.
+        OceanData[EddyDataset] | None
         """
-        eddy = self.eddy_with_track_id(
-            fields=[""],
+        compiler = ProjectionCompiler(schema=eddy_schema)
+        query_string = compiler.compile(
+            sql_template=self.load_sql_file(self.eddy_with_id_query),
+            fields=fields,
+        )
+        params = {"track_id": track_id}
 
+        return self.execute_query(
+            query=query_string,
+            schema=eddy_schema,
+            params=params
         )
 
-        # eddy_query = """SELECT MIN(date_time), MAX(date_time), array_agg(distinct connected_id) || array_agg(distinct basin.id)
-        #                     FROM eddy
-        #                     LEFT JOIN basin ON ST_Intersects(basin.basin_geog, eddy.eddy_point)
-        #                     LEFT JOIN basin_connections ON basin_connections.basin_id = basin.id
-        #                     WHERE eddy.track * eddy.cyclonic_type=%(track_id)s
-        #                     GROUP BY track, cyclonic_type;"""
-        #
+    def eddy_envelope_query(self, track_id: int):
+        """
+        Compute the spatiotemporal envelope for a single eddy track.
+
+        This query aggregates all observations belonging to the given eddy
+        (`track * cyclonic_type`) and returns:
+        - the minimum and maximum observation timestamps, and
+        - the set of basin identifiers intersecting the eddy over its lifetime.
+
+        The result is a single-row dataset used to parameterize downstream
+        along-track queries (time window and basin filtering).
+        """
+
+        compiler = ProjectionCompiler(schema=eddy_schema)
+        query_string = compiler.compile(
+            sql_template=self.load_sql_file(self.envelope_query),
+            fields=[
+                "max_date",
+                "min_date",
+                "basin_ids"
+            ],
+        )
+        params = {"track_id": track_id}
+
+        return self.execute_query(
+            query=query_string,
+            schema=eddy_schema,
+            params=params
+        )
+
+
+    def along_track_points_near_eddy(self,
+                                    track_id: int,
+                                    fields: list[along_track_fields]
+        ):
+        eddy_track =  self.eddy_envelope_query(track_id=track_id)
+        """
+        min_date = eddy_track["min_date"][0]
+        max_date = eddy_track["max_date"][0]
+        basin_ids = eddy_track["basin_ids"]
+        """
+        compiler = ProjectionCompiler(schema=along_track_schema)
+        query = compiler.compile(
+            sql_template=self.load_sql_file(self.along_track_near_eddy_query),
+            fields=fields or self.default_along_track_fields,
+        )
+
+        min_date = eddy_track["min_date"][0]
+        max_date = eddy_track["max_date"][0]
+        basin_ids = eddy_track["basin_ids"]
+
+        params = {
+            "track_id": track_id,
+            "min_date": min_date,
+            "max_date": max_date,
+            "basin_ids": basin_ids,
+            "speed_radius_scale_factor": 100,
+        }
+
+        return self.execute_query(
+            query=query,
+            schema=along_track_schema,
+            params=params,
+            dataset_name="along_track_near_eddy",
+        )
+
+
         # along_query = """SELECT atk.file_name, atk.track, atk.cycle, atk.latitude, atk.longitude, atk.sla_unfiltered, atk.sla_filtered, atk.date_time as time, atk.dac, atk.ocean_tide, atk.internal_tide, atk.lwe, atk.mdt, atk.tpa_correction
-        #                FROM eddy
-        #                INNER JOIN along_track atk ON atk.date_time BETWEEN eddy.date_time AND (eddy.date_time + interval '1 day')
-    	#                AND st_dwithin(atk.along_track_point, eddy.eddy_point, (eddy.speed_radius * {speed_radius_scale_factor} * 2.0)::double precision)
-        #                WHERE eddy.track * eddy.cyclonic_type=%(track_id)s
-        #                AND atk.date_time BETWEEN '{min_date}'::timestamp AND '{max_date}'::timestamp
-        #                AND basin_id = ANY( ARRAY[{connected_basin_ids}] );"""
+        #                    FROM eddy
+        #                    INNER JOIN along_track atk ON atk.date_time BETWEEN eddy.date_time AND (eddy.date_time + interval '1 day')
+        # 	               AND st_dwithin(atk.along_track_point, eddy.eddy_point, (eddy.speed_radius * {speed_radius_scale_factor} * 2.0)::double precision)
+        #                    WHERE eddy.track * eddy.cyclonic_type=%(track_id)s
+        #                    AND atk.date_time BETWEEN '{min_date}'::timestamp AND '{max_date}'::timestamp
+        #                    AND basin_id = ANY( ARRAY[{connected_basin_ids}] );"""
+
+
+    #
+    #     eddy = self.eddy_with_track_id(
+    #         fields=[
+    #             "max_date",
+    #             "min_date",
+    #             "basin_ids"
+    #         ],
+    #         track_id=track_id
+    #     )
+    #     return eddy
+    #
+    #
+    #     eddy_query = """SELECT MIN(date_time), MAX(date_time), array_agg(distinct connected_id) || array_agg(distinct basin.id)
+    #                         FROM eddy
+    #                         LEFT JOIN basin ON ST_Intersects(basin.basin_geog, eddy.eddy_point)
+    #                         LEFT JOIN basin_connections ON basin_connections.basin_id = basin.id
+    #                         WHERE eddy.track * eddy.cyclonic_type=%(track_id)s
+    #                         GROUP BY track, cyclonic_type;"""
+    #     #
+    #     along_query = """SELECT atk.file_name, atk.track, atk.cycle, atk.latitude, atk.longitude, atk.sla_unfiltered, atk.sla_filtered, atk.date_time as time, atk.dac, atk.ocean_tide, atk.internal_tide, atk.lwe, atk.mdt, atk.tpa_correction
+    #                    FROM eddy
+    #                    INNER JOIN along_track atk ON atk.date_time BETWEEN eddy.date_time AND (eddy.date_time + interval '1 day')
+    # 	               AND st_dwithin(atk.along_track_point, eddy.eddy_point, (eddy.speed_radius * {speed_radius_scale_factor} * 2.0)::double precision)
+    #                    WHERE eddy.track * eddy.cyclonic_type=%(track_id)s
+    #                    AND atk.date_time BETWEEN '{min_date}'::timestamp AND '{max_date}'::timestamp
+    #                    AND basin_id = ANY( ARRAY[{connected_basin_ids}] );"""
         # values = {"track_id": track_id}
         #
         # with pg.connect(self.config.postgres_dsn) as connection:

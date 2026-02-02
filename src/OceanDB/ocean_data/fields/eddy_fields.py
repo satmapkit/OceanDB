@@ -207,13 +207,23 @@ speed_area = OceanDataField(
 # -----------------
 
 min_date_time = OceanDataField(
-    name="min_date_time",
+    name="min_date",
     custom_calculation="MIN(eddy.date_time)",
     python_type=datetime,
 )
 
 max_date_time = OceanDataField(
-    name="max_date_time",
+    name="max_date",
     custom_calculation="MAX(eddy.date_time)",
     python_type=datetime,
+)
+
+basin_ids = OceanDataField(
+    name="basin_ids",
+    custom_calculation="""
+        array_agg(DISTINCT basin_connections.connected_id)
+        || array_agg(DISTINCT basin.id)
+    """,
+    python_type=list,          # important
+    postgres_type="integer[]", # optional but useful
 )

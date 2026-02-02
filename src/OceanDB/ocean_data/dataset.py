@@ -28,6 +28,10 @@ class Dataset(Mapping[K, T], Generic[K, T]):
         self._dtypes = dict(dtypes)
         self.schema = schema
 
+    def __repr__(self) -> str:
+        cols = ", ".join(self._data.keys())
+        return f"Dataset(name='{self.name}', columns=[{cols}])"
+
     def __getitem__(self, key: K) -> T:
         return self._data[key]
 

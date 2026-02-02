@@ -64,18 +64,25 @@ class BaseQuery(OceanDB):
         )
 
     def execute_query(
-        self,
-        query: str,
-        *,
-        schema: Mapping[K, OceanDataField],
-        params: Mapping[str, Any],
-        dataset_name: str = "query_result",
+            self,
+            query,  # <- note: this is a psycopg.sql.SQL, not a str anymore
+            *,
+            schema: Mapping[K, OceanDataField],
+            params: Mapping[str, Any],
+            dataset_name: str = "query_result",
     ) -> Dataset[K, T] | None:
         """
         Execute a single query and return a Dataset, or None if empty.
         """
 
         with pg.connect(self.config.postgres_dsn) as conn:
+            # 👇 THIS is the correct place to render SQL
+            print("\n--- SQL QUERY ---")
+            print(query.as_string(conn))
+            print("--- PARAMS ---")
+            print(params)
+            print("----------------\n")
+
             with conn.cursor(row_factory=pg.rows.dict_row) as cur:
                 cur.execute(query, params)
                 rows: list[dict[str, T]] = cur.fetchall()
@@ -88,6 +95,33 @@ class BaseQuery(OceanDB):
                     rows=rows,
                     dataset_name=dataset_name,
                 )
+
+
+    # def execute_query(
+    #     self,
+    #     query: str,
+    #     *,
+    #     schema: Mapping[K, OceanDataField],
+    #     params: Mapping[str, Any],
+    #     dataset_name: str = "query_result",
+    # ) -> Dataset[K, T] | None:
+    #     """
+    #     Execute a single query and return a Dataset, or None if empty.
+    #     """
+    #
+    #     with pg.connect(self.config.postgres_dsn) as conn:
+    #         with conn.cursor(row_factory=pg.rows.dict_row) as cur:
+    #             cur.execute(query, params)
+    #             rows: list[dict[str, T]] = cur.fetchall()
+    #
+    #             if not rows:
+    #                 return None
+    #
+    #             return self.build_dataset(
+    #                 schema=schema,
+    #                 rows=rows,
+    #                 dataset_name=dataset_name,
+    #             )
 
     def execute_batch_query(
         self,
