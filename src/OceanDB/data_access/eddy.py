@@ -11,6 +11,8 @@ from OceanDB.ocean_data.dataset import Dataset
 # from OceanDB.ocean_data.fields.eddy_fields import eddy_schema
 
 
+
+
 class Eddy(BaseQuery):
     along_track_near_eddy_query = "queries/eddy/along_near_eddy.sql"
     eddy_with_id_query = "queries/eddy/eddy_from_track_id.sql"
@@ -134,9 +136,11 @@ class Eddy(BaseQuery):
 
         # --- Phase 1: eddy envelope ---
         eddy_track = self.eddy_envelope_query(track_id=track_id)
+
         min_date = eddy_track["min_date"][0]
         max_date = eddy_track["max_date"][0]
         basin_ids = list(eddy_track["basin_ids"][0])
+
         print(f"envelope for eddy with track id {track_id} is {min_date} {max_date} {basin_ids}")
 
         # --- Phase 2: along-track projection ---
@@ -164,163 +168,48 @@ class Eddy(BaseQuery):
             dataset_name="along_track_near_eddy",
         )
 
+    def old_eddy(self, track_id):
 
+        eddy_query = """
+                SELECT
+                    MIN(date_time) AS min_date,
+                    MAX(date_time) AS max_date,
+                    array_agg(DISTINCT connected_id)
+                        || array_agg(DISTINCT basin.id) AS basin_ids
+                FROM eddy
+                LEFT JOIN basin
+                    ON ST_Intersects(basin.basin_geog, eddy.eddy_point)
+                LEFT JOIN basin_connections
+                    ON basin_connections.basin_id = basin.id
+                WHERE eddy.track * eddy.cyclonic_type = %(track_id)s
+                GROUP BY track, cyclonic_type;
+                """
 
-    # def along_track_points_near_eddy(self,
-    #                                 track_id: int,
-    #                                 fields: list[along_track_fields]
-    #     ):
-    #     """
-    #     Maybe provide more parameters?
-    #     what does "near" mean?
-    #
-    #     """
-    #
-    #
-    #     eddy_track =  self.eddy_envelope_query(track_id=track_id)
-    #     """
-    #     min_date = eddy_track["min_date"][0]
-    #     max_date = eddy_track["max_date"][0]
-    #     basin_ids = eddy_track["basin_ids"]
-    #     """
-    #     compiler = ProjectionCompiler(schema=along_track_schema)
-    #     query = compiler.compile(
-    #         sql_template=self.load_sql_file(self.along_track_near_eddy_query),
-    #         fields=fields or self.default_along_track_fields,
-    #     )
-    #
-    #     min_date = eddy_track["min_date"][0]
-    #     max_date = eddy_track["max_date"][0]
-    #     basin_ids = eddy_track["basin_ids"][0]
-    #
-    #     params = {
-    #         "track_id": track_id,
-    #         "min_date": min_date,
-    #         "max_date": max_date,
-    #         "basin_ids": basin_ids,
-    #         "speed_radius_scale_factor": 100,
-    #     }
-    #
-    #     return self.execute_query(
-    #         query=query,
-    #         schema=along_track_schema,
-    #         params=params,
-    #         dataset_name="along_track_near_eddy",
-    #     )
-
-
-        # along_query = """SELECT atk.file_name, atk.track, atk.cycle, atk.latitude, atk.longitude, atk.sla_unfiltered, atk.sla_filtered, atk.date_time as time, atk.dac, atk.ocean_tide, atk.internal_tide, atk.lwe, atk.mdt, atk.tpa_correction
-        #                    FROM eddy
-        #                    INNER JOIN along_track atk ON atk.date_time BETWEEN eddy.date_time AND (eddy.date_time + interval '1 day')
-        # 	               AND st_dwithin(atk.along_track_point, eddy.eddy_point, (eddy.speed_radius * {speed_radius_scale_factor} * 2.0)::double precision)
-        #                    WHERE eddy.track * eddy.cyclonic_type=%(track_id)s
-        #                    AND atk.date_time BETWEEN '{min_date}'::timestamp AND '{max_date}'::timestamp
-        #                    AND basin_id = ANY( ARRAY[{connected_basin_ids}] );"""
-
-
-    #
-    #     eddy = self.eddy_with_track_id(
-    #         fields=[
-    #             "max_date",
-    #             "min_date",
-    #             "basin_ids"
-    #         ],
-    #         track_id=track_id
-    #     )
-    #     return eddy
-    #
-    #
-    #     eddy_query = """SELECT MIN(date_time), MAX(date_time), array_agg(distinct connected_id) || array_agg(distinct basin.id)
-    #                         FROM eddy
-    #                         LEFT JOIN basin ON ST_Intersects(basin.basin_geog, eddy.eddy_point)
-    #                         LEFT JOIN basin_connections ON basin_connections.basin_id = basin.id
-    #                         WHERE eddy.track * eddy.cyclonic_type=%(track_id)s
-    #                         GROUP BY track, cyclonic_type;"""
-    #     #
-    #     along_query = """SELECT atk.file_name, atk.track, atk.cycle, atk.latitude, atk.longitude, atk.sla_unfiltered, atk.sla_filtered, atk.date_time as time, atk.dac, atk.ocean_tide, atk.internal_tide, atk.lwe, atk.mdt, atk.tpa_correction
-    #                    FROM eddy
-    #                    INNER JOIN along_track atk ON atk.date_time BETWEEN eddy.date_time AND (eddy.date_time + interval '1 day')
-    # 	               AND st_dwithin(atk.along_track_point, eddy.eddy_point, (eddy.speed_radius * {speed_radius_scale_factor} * 2.0)::double precision)
-    #                    WHERE eddy.track * eddy.cyclonic_type=%(track_id)s
-    #                    AND atk.date_time BETWEEN '{min_date}'::timestamp AND '{max_date}'::timestamp
-    #                    AND basin_id = ANY( ARRAY[{connected_basin_ids}] );"""
-        # values = {"track_id": track_id}
-        #
-        # with pg.connect(self.config.postgres_dsn) as connection:
-        #     with connection.cursor() as cursor:
-        #         cursor.execute(eddy_query, values)
-        #         data = cursor.fetchall()
-        #
-        #         values["min_date"] = data[0][0]
-        #         values["max_date"] = data[0][1]
-        #
-        #         print(data)
-        #
-        #         along_query = along_query.format(
-        #             # speed_radius_scale_factor=self.variable_scale_factor["speed_radius"],
-        #             speed_radius_scale_factor=100,
-        #             min_date=data[0][0],
-        #             max_date=data[0][1],
-        #             connected_basin_ids=data[0][2],
-        #         )
-        #         cursor.execute(along_query, values)
-        #         data = cursor.fetchall()
-
-        # eddy_query = """
-        #         SELECT
-        #             MIN(date_time) AS min_date,
-        #             MAX(date_time) AS max_date,
-        #             array_agg(DISTINCT connected_id)
-        #                 || array_agg(DISTINCT basin.id) AS basin_ids
-        #         FROM eddy
-        #         LEFT JOIN basin
-        #             ON ST_Intersects(basin.basin_geog, eddy.eddy_point)
-        #         LEFT JOIN basin_connections
-        #             ON basin_connections.basin_id = basin.id
-        #         WHERE eddy.track * eddy.cyclonic_type = %(track_id)s
-        #         GROUP BY track, cyclonic_type;
-        #         """
-        #
-        # fields: list[along_track_fields]
-        # query = pg.sql.SQL(eddy_query).format(
-        #     fields=pg.sql.SQL(', ').join([
-        #         along_track_schema[field].to_sql_query() for field in fields
-        # ]))
-        # self.execute_query(
-        #     query=eddy_query,
-        #     params={
-        #         "track_id": track_id
-        #     },
-        #     schema=
-        # )
+        along_query = """SELECT atk.file_name, atk.track, atk.cycle, atk.latitude, atk.longitude, atk.sla_unfiltered, atk.sla_filtered, atk.date_time as time, atk.dac, atk.ocean_tide, atk.internal_tide, atk.lwe, atk.mdt, atk.tpa_correction
+                               FROM eddy
+                               INNER JOIN along_track atk ON atk.date_time BETWEEN eddy.date_time AND (eddy.date_time + interval '1 day')
+            	               AND st_dwithin(atk.along_track_point, eddy.eddy_point, (eddy.speed_radius * {speed_radius_scale_factor} * 2.0)::double precision)
+                               WHERE eddy.track * eddy.cyclonic_type=%(track_id)s
+                               AND atk.date_time BETWEEN '{min_date}'::timestamp AND '{max_date}'::timestamp
+                               AND basin_id = ANY( ARRAY[{connected_basin_ids}] );"""
+        values = {"track_id": track_id}
 
 
 
-        # along_query = """SELECT atk.file_name, atk.track, atk.cycle, atk.latitude, atk.longitude, atk.sla_unfiltered, atk.sla_filtered, atk.date_time as time, atk.dac, atk.ocean_tide, atk.internal_tide, atk.lwe, atk.mdt, atk.tpa_correction
-        #                        FROM eddy
-        #                        INNER JOIN along_track atk ON atk.date_time BETWEEN eddy.date_time AND (eddy.date_time + interval '1 day')
-        #     	               AND st_dwithin(atk.along_track_point, eddy.eddy_point, (eddy.speed_radius * {speed_radius_scale_factor} * 2.0)::double precision)
-        #                        WHERE eddy.track * eddy.cyclonic_type=%(track_id)s
-        #                        AND atk.date_time BETWEEN '{min_date}'::timestamp AND '{max_date}'::timestamp
-        #                        AND basin_id = ANY( ARRAY[{connected_basin_ids}] );"""
-        # values = {"track_id": track_id}
-        #
-        #
-        #
-        #
-        # with pg.connect(self.config.postgres_dsn) as connection:
-        #     with connection.cursor(row_factory=pg.rows.dict_row) as cursor:
-        #         cursor.execute(eddy_query, values)
-        #         data = cursor.fetchall()
-        #
-        #         along_query = along_query.format(
-        #             speed_radius_scale_factor=100,
-        #             min_date=data[0]['min_date'],
-        #             max_date=data[0]['max_date'],
-        #             connected_basin_ids=data[0]['basin_ids'],
-        #         )
-        #         cursor.execute(along_query, values)
-        #         data = cursor.fetchall()
 
-        # return data
+        with pg.connect(self.config.postgres_dsn) as connection:
+            with connection.cursor(row_factory=pg.rows.dict_row) as cursor:
+                cursor.execute(eddy_query, values)
+                data = cursor.fetchall()
+
+                along_query = along_query.format(
+                    speed_radius_scale_factor=100,
+                    min_date=data[0]['min_date'],
+                    max_date=data[0]['max_date'],
+                    connected_basin_ids=data[0]['basin_ids'],
+                )
+                cursor.execute(along_query, values)
+                data = cursor.fetchall()
+
+        return data
 

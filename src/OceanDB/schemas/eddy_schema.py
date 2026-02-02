@@ -33,6 +33,7 @@ eddy_schema: dict[eddy_fields, OceanDataField] = {
     "speed_average": edy_fields.speed_average,
     "num_contours": edy_fields.num_contours,
     "observation_flag": edy_fields.observation_flag,
+
     "max_date": edy_fields.max_date_time,
     "min_date": edy_fields.min_date_time,
     "basin_ids": edy_fields.basin_ids,

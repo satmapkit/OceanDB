@@ -150,4 +150,5 @@ In the top right of the PyCharm window, click the 'edit' button to configure the
 Had to Modify the Query Slightly
 
 
-
+Every projected column must be aliased to its schema name.
+No schema object should ever reference a query-specific table alias.

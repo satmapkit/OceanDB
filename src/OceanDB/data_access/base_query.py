@@ -1,6 +1,11 @@
-from typing import Iterable, Any, Mapping, TypeVar
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Iterable, Mapping, TypeVar, Optional, Union
+
 import numpy as np
 import psycopg as pg
+from psycopg import sql
 
 from OceanDB.OceanDB import OceanDB
 from OceanDB.data_access.metadata import METADATA_REGISTRY
@@ -8,11 +13,34 @@ from OceanDB.ocean_data.ocean_data import OceanDataField
 from OceanDB.ocean_data.dataset import Dataset
 
 
+SqlLike = Union[str, sql.Composable]
+
 K = TypeVar("K", bound=str)
 T = TypeVar("T")
 
 
-def log_query(conn, query, params):
+@dataclass(frozen=True)
+class QuerySpec:
+    """
+    Declarative specification for a query.
+
+    Contract:
+    - The SQL must SELECT expressions aliased to match keys in `schema`.
+      (i.e. SELECT ... AS <field_name>)
+    - The schema describes how to type/hydrate returned columns.
+    """
+    sql: SqlLike
+    schema: Mapping[str, OceanDataField]
+
+
+def _normalize_sql(q: SqlLike) -> sql.Composable:
+    """
+    Ensure we always pass a psycopg composable to cursor.execute().
+    """
+    return q if isinstance(q, sql.Composable) else sql.SQL(q)
+
+
+def log_query(conn: pg.Connection, query: sql.Composable, params: Any) -> None:
     print("\n--- SQL QUERY ---")
     print(query.as_string(conn))
     print("--- PARAMS ---")
@@ -24,33 +52,135 @@ class BaseQuery(OceanDB):
     """
     Base class for read-only query services.
 
-    Provides shared functionality for executing SQL queries and
-    constructing typed, schema-backed datasets from query result rows.
+    Supports:
+    (A) curated, first-class schemas (AlongTrackSchema, EddySchema, etc.)
+    (B) ad-hoc user-supplied queries + schemas via QuerySpec
+
+    The core contract is:
+    - SQL aliases == schema keys
+    - build_dataset hydrates a columnar Dataset from dict_row results
     """
 
     METADATA = METADATA_REGISTRY
+
+    def run_query(
+        self,
+        *,
+        query: QuerySpec,
+        params: Mapping[str, Any] | None = None,
+        dataset_name: str = "query_result",
+        debug_sql: bool = False,
+        require_all_fields: bool = True,
+    ) -> Dataset[str, Any] | None:
+        """
+        Execute a user-defined QuerySpec.
+
+        Returns:
+            Dataset if rows were returned, else None.
+
+        Args:
+            require_all_fields:
+                If True, ensures every schema key exists in the first returned row.
+                If False, silently skips missing fields (your original behavior).
+        """
+        return self.execute_query(
+            _normalize_sql(query.sql),
+            schema=query.schema,
+            params=params or {},
+            dataset_name=dataset_name,
+            debug_sql=debug_sql,
+            require_all_fields=require_all_fields,
+        )
+
+    def run_batch(
+        self,
+        *,
+        query: QuerySpec,
+        params_list: Iterable[Mapping[str, Any]],
+        dataset_name: str = "query_result",
+        debug_sql: bool = False,
+        require_all_fields: bool = True,
+    ) -> Iterable[Dataset[str, Any] | None]:
+        """
+        Execute the same QuerySpec repeatedly for a batch of parameter sets.
+
+        Note: this is intentionally implemented as a Python-side loop.
+        It's reliable across psycopg3 usage and keeps dataset hydration simple.
+        """
+        q = _normalize_sql(query.sql)
+        for params in params_list:
+            yield self.execute_query(
+                q,
+                schema=query.schema,
+                params=params,
+                dataset_name=dataset_name,
+                debug_sql=debug_sql,
+                require_all_fields=require_all_fields,
+            )
+
+
+    def execute_query(
+        self,
+        query: sql.Composable,
+        *,
+        schema: Mapping[K, OceanDataField],
+        params: Mapping[str, Any],
+        dataset_name: str = "query_result",
+        debug_sql: bool = False,
+        require_all_fields: bool = True,
+    ) -> Dataset[K, Any] | None:
+        """
+        Execute a single query and return a Dataset, or None if empty.
+        """
+
+        with pg.connect(self.config.postgres_dsn) as conn:
+            if debug_sql:
+                log_query(conn=conn, query=query, params=params)
+
+            with conn.cursor(row_factory=pg.rows.dict_row) as cur:
+                cur.execute(query, params)
+                rows: list[dict[str, Any]] = cur.fetchall()
+
+        if not rows:
+            return None
+
+        if require_all_fields:
+            missing = [k for k in schema.keys() if k not in rows[0]]
+            if missing:
+                raise ValueError(
+                    f"Query did not return expected fields: {missing}. "
+                    "Make sure your SELECT expressions are aliased to match schema keys."
+                )
+
+        return self.build_dataset(
+            schema=schema,
+            rows=rows,
+            dataset_name=dataset_name,
+        )
 
     def build_dataset(
         self,
         *,
         schema: Mapping[K, OceanDataField],
-        rows: list[dict[str, T]],
+        rows: list[Mapping[str, Any]],
         dataset_name: str = "query_result",
-    ) -> Dataset[K, T]:
+    ) -> Dataset[K, Any]:
         """
-        Given a schema and a nonempty list of rows, return a Dataset.
-        """
+        Given a schema and a nonempty list of dict rows, construct a Dataset.
 
+        Notes:
+        - Row keys are expected to match schema keys (SQL aliases).
+        - Missing keys are skipped unless `require_all_fields=True` is enforced upstream.
+        """
         if not rows:
             raise ValueError("rows must be nonempty")
 
         data: dict[K, np.ndarray] = {}
-        dtypes: dict[K, type] = {}
+        dtypes: dict[K, type | None] = {}
 
         row0 = rows[0]
 
         for name, field in schema.items():
-            # IMPORTANT: row keys are the SQL aliases → field.name
             if name not in row0:
                 continue
 
@@ -64,198 +194,9 @@ class BaseQuery(OceanDB):
             data[name] = arr
             dtypes[name] = field.python_type
 
-        return Dataset[K, T](
+        return Dataset(
             name=dataset_name,
             data=data,
             dtypes=dtypes,
             schema=schema,
         )
-
-    def execute_query(
-            self,
-            query,  # <- note: this is a psycopg.sql.SQL, not a str anymore
-            *,
-            schema: Mapping[K, OceanDataField],
-            params: Mapping[str, Any],
-            dataset_name: str = "query_result",
-    ) -> Dataset[K, T] | None:
-        """
-        Execute a single query and return a Dataset, or None if empty.
-        """
-
-        with pg.connect(self.config.postgres_dsn) as conn:
-            # 👇 THIS is the correct place to render SQL
-            log_query(conn=conn, query=query, params=params)
-
-
-            with conn.cursor(row_factory=pg.rows.dict_row) as cur:
-                cur.execute(query, params)
-                rows: list[dict[str, T]] = cur.fetchall()
-
-                if not rows:
-                    return None
-
-                return self.build_dataset(
-                    schema=schema,
-                    rows=rows,
-                    dataset_name=dataset_name,
-                )
-
-
-    # def execute_query(
-    #     self,
-    #     query: str,
-    #     *,
-    #     schema: Mapping[K, OceanDataField],
-    #     params: Mapping[str, Any],
-    #     dataset_name: str = "query_result",
-    # ) -> Dataset[K, T] | None:
-    #     """
-    #     Execute a single query and return a Dataset, or None if empty.
-    #     """
-    #
-    #     with pg.connect(self.config.postgres_dsn) as conn:
-    #         with conn.cursor(row_factory=pg.rows.dict_row) as cur:
-    #             cur.execute(query, params)
-    #             rows: list[dict[str, T]] = cur.fetchall()
-    #
-    #             if not rows:
-    #                 return None
-    #
-    #             return self.build_dataset(
-    #                 schema=schema,
-    #                 rows=rows,
-    #                 dataset_name=dataset_name,
-    #             )
-
-    def execute_batch_query(
-        self,
-        query: str,
-        *,
-        schema: Mapping[K, OceanDataField],
-        params: list[Mapping[str, Any]],
-        dataset_name: str = "query_result",
-    ) -> Iterable[Dataset[K, T] | None]:
-        """
-        Execute a batch query and yield Datasets per result set.
-        """
-
-        with pg.connect(self.config.postgres_dsn) as conn:
-            log_query(conn=conn, query=query, params=params)
-
-            with conn.cursor(row_factory=pg.rows.dict_row) as cur:
-                cur.executemany(query, params, returning=True)
-
-                while True:
-                    rows: list[dict[str, T]] = cur.fetchall()
-
-                    if not rows:
-                        yield None
-                    else:
-                        yield self.build_dataset(
-                            schema=schema,
-                            rows=rows,
-                            dataset_name=dataset_name,
-                        )
-
-                    if not cur.nextset():
-                        break
-
-
-
-# from OceanDB.OceanDB import OceanDB
-# from OceanDB.data_access.metadata import METADATA_REGISTRY
-# from OceanDB.ocean_data.ocean_data import OceanDataField
-# import numpy as np
-# import psycopg as pg
-#
-# from typing import Iterable, Any, Mapping, TypeVar
-#
-# from OceanDB.ocean_data.dataset import Dataset
-#
-# from typing import TypeVar
-#
-# K = TypeVar("K", bound=str)
-# T = TypeVar("T")
-#
-# class BaseQuery(OceanDB):
-#     """
-#     Base class for read-only query services.
-#
-#     Provides shared functionality for executing SQL queries and
-#     constructing typed, schema-backed datasets from query result rows.
-#     """
-#
-#     METADATA = METADATA_REGISTRY
-#
-#     def build_dataset(
-#         self,
-#             *,
-#             schema: Mapping[K, OceanDataField],
-#             rows: list[dict[str, T]]
-#     ) -> Dataset[K, T]:
-#         """
-#         Given a schema and a nonempty list of rows, return a dataset.
-#         """
-#         data = {}
-#         dtypes = {}
-#
-#         if len(rows) == 0:
-#             raise ValueError("rows must be nonempty")
-#
-#         for name, field in schema.items():
-#             fname =
-#             # fname = field.postgres_column_or_query_name
-#             if not fname in rows[0]:
-#                 continue
-#             values = [row[fname] for row in rows]
-#             data[name] = np.asarray(values, dtype=field.python_type)
-#             dtypes[name] = field.python_type
-#
-#         return Dataset[K, T](
-#             name="along_track_spatiotemporal",
-#             data=data, dtypes=dtypes, schema=schema
-#         )
-#
-#     def execute_query(
-#             self,
-#             query: str,
-#             schema: dict[K, OceanDataField],
-#             params: dict[str, Any]
-#     ) -> Dataset[K, T]:
-#         """
-#
-#         """
-#         with pg.connect(self.config.postgres_dsn) as conn:
-#             with conn.cursor(row_factory=pg.rows.dict_row) as cur:
-#                 cur.execute(query, params)
-#
-#                 rows : list[dict[str, T]]= cur.fetchall()
-#                 if not rows:
-#                     return None
-#                 else:
-#                     dataset = self.build_dataset(schema=schema, rows=rows)
-#                     return dataset
-#
-#     def execute_batch_query(
-#         self,
-#         query: str,
-#         schema: dict[K, OceanDataField],
-#         params: list[dict[str, Any]],
-#     ) -> Iterable[Dataset[K, T] | None]:
-#         """
-#
-#         """
-#         with pg.connect(self.config.postgres_dsn) as conn:
-#             with conn.cursor(row_factory=pg.rows.dict_row) as cur:
-#                 cur.executemany(query, params, returning=True)
-#
-#                 while True:
-#                     rows : list[dict[str, T]]= cur.fetchall()
-#                     if not rows:
-#                         yield None
-#                     else:
-#                         dataset = self.build_dataset(schema=schema, rows=rows)
-#                         yield dataset
-#                     if not cur.nextset():
-#                         break
