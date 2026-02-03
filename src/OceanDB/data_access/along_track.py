@@ -80,10 +80,10 @@ class AlongTrack(BaseQuery):
             fields=fields,
         )
 
-        query = QuerySpec(
-            sql=compiled_sql,
-            schema=AlongTrackSchema.A,
-        )
+        # query = QuerySpec(
+        #     sql=compiled_sql,
+        #     schema=AlongTrackSchema.A,
+        # )
 
         if not isinstance(radii, list):
             radii = [float(radii)] * len(latitudes)
@@ -106,71 +106,10 @@ class AlongTrack(BaseQuery):
             )
         ]
 
-        return self.run_batch(
-            query=query,
-            params_list=params,
-            dataset_name="along_track",
-        )
 
-    # def geographic_points_in_r_dt(
-    #     self,
-    #     fields: list,
-    #     latitudes: npt.NDArray,
-    #     longitudes: npt.NDArray,
-    #     dates: List[datetime],
-    #     radii: List[float] | float = 500_000.0,
-    #     time_window: timedelta = timedelta(days=10),
-    #     missions: list[Mission] = all_missions,
-    # ):
-    # # ) -> Iterable[Dataset[along_track_fields, npt.NDArray[np.floating]] | None]:
-    #     """
-    #     Query along-track points within spatial + temporal windows.
-    #
-    #     Yields one AlongTrackDataset per query point, or None if empty.
-    #     """
-    #
-    #     # format what parameters we want out of the query
-    #     query_string = self.load_sql_file(self.along_track_spatiotemporal_query)
-    #
-    #     compiler = ProjectionCompiler(schema=along_track_schema)
-    #
-    #     query_string = compiler.compile(
-    #         sql_template=query_string,
-    #         fields=fields,
-    #     )
-    #
-    #     query_spec = QuerySpec(
-    #         sql=query_string,
-    #         schema=along_track_schema,
-    #     )
-    #
-    #     if not isinstance(radii, list):
-    #         radii = [float(radii)] * len(latitudes)
-    #
-    #     # connected basins
-    #     basin_ids = self.basin_mask(latitudes, longitudes)
-    #     connected_basin_ids = list(map(self.basin_connection_map.get, basin_ids))
-    #
-    #     # format params
-    #     params = [
-    #         {
-    #             "longitude": lon,
-    #             "latitude": lat,
-    #             "distance": r,
-    #             "central_date_time": dt,
-    #             "time_delta": time_window,
-    #             "connected_basin_ids": basins,
-    #             "missions": missions,
-    #         }
-    #         for lat, lon, dt, basins, r in zip(
-    #             latitudes, longitudes, dates, connected_basin_ids, radii
-    #         )
-    #     ]
-    #     # execute the query
-    #     return self.ex(
-    #         query=query_string,
-    #         schema=along_track_schema,
-    #         params=params,
-    #         dataset_name="along_track"
-    #     )
+        # return self.run_batch(
+        #     query=query,
+        #     params_list=params,
+        #     dataset_name="along_track",
+        # )
 

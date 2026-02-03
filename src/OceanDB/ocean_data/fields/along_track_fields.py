@@ -1,7 +1,7 @@
 import numpy as np
 from datetime import datetime
-from OceanDB.ocean_data.ocean_data import OceanDataField
 
+from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 
 # -----------------
 # Core coordinates & identity
@@ -9,194 +9,143 @@ from OceanDB.ocean_data.ocean_data import OceanDataField
 
 atk_alias = "atk"
 
-
-latitude = OceanDataField(
+latitude = ColumnField(
     name="latitude",
-    postgres_table_name=atk_alias,  # ✅ alias
+    postgres_table_name=atk_alias,
     postgres_column_name="latitude",
     python_type=np.float64,
     postgres_type="double precision",
-    nc_name="latitude",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-longitude = OceanDataField(
+longitude = ColumnField(
     name="longitude",
     postgres_table_name=atk_alias,
     postgres_column_name="longitude",
     python_type=np.float64,
     postgres_type="double precision",
-    nc_name="longitude",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-date_time = OceanDataField(
+date_time = ColumnField(
     name="date_time",
     postgres_table_name=atk_alias,
     postgres_column_name="date_time",
     python_type=datetime,
     postgres_type="timestamp",
-    nc_name="time",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-file_name = OceanDataField(
+file_name = ColumnField(
     name="file_name",
     postgres_table_name=atk_alias,
     postgres_column_name="file_name",
     python_type=str,
     postgres_type="text",
-    nc_name="file_name",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-mission = OceanDataField(
+mission = ColumnField(
     name="mission",
     postgres_table_name=atk_alias,
     postgres_column_name="mission",
     python_type=str,
     postgres_type="text",
-    nc_name="mission",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-track = OceanDataField(
+track = ColumnField(
     name="track",
     postgres_table_name=atk_alias,
     postgres_column_name="track",
     python_type=int,
     postgres_type="smallint",
-    nc_name="track",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-cycle = OceanDataField(
+cycle = ColumnField(
     name="cycle",
     postgres_table_name=atk_alias,
     postgres_column_name="cycle",
     python_type=int,
     postgres_type="smallint",
-    nc_name="cycle",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-basin_id = OceanDataField(
+basin_id = ColumnField(
     name="basin_id",
     postgres_table_name=atk_alias,
     postgres_column_name="basin_id",
     python_type=int,
     postgres_type="smallint",
-    nc_name="basin_id",
-    nc_scale=1,
-    nc_offset=0,
 )
 
 # -----------------
 # Altimetry signals
 # -----------------
 
-sla_unfiltered = OceanDataField(
+sla_unfiltered = ColumnField(
     name="sla_unfiltered",
     postgres_table_name=atk_alias,
     postgres_column_name="sla_unfiltered",
     python_type=np.float64,
     postgres_type="smallint",
-    nc_name="sla_unfiltered",
-    nc_scale=1000,
-    nc_offset=0,
 )
 
-sla_filtered = OceanDataField(
+sla_filtered = ColumnField(
     name="sla_filtered",
     postgres_table_name=atk_alias,
     postgres_column_name="sla_filtered",
     python_type=np.float64,
     postgres_type="smallint",
-    nc_name="sla_filtered",
-    nc_scale=1000,
-    nc_offset=0,
 )
 
-dac = OceanDataField(
+dac = ColumnField(
     name="dac",
     postgres_table_name=atk_alias,
     postgres_column_name="dac",
     python_type=np.float64,
     postgres_type="smallint",
-    nc_name="dac",
-    nc_scale=1000,
-    nc_offset=0,
 )
 
-ocean_tide = OceanDataField(
+ocean_tide = ColumnField(
     name="ocean_tide",
     postgres_table_name=atk_alias,
     postgres_column_name="ocean_tide",
     python_type=np.float64,
     postgres_type="smallint",
-    nc_name="ocean_tide",
-    nc_scale=1000,
-    nc_offset=0,
 )
 
-internal_tide = OceanDataField(
+internal_tide = ColumnField(
     name="internal_tide",
     postgres_table_name=atk_alias,
     postgres_column_name="internal_tide",
     python_type=np.float64,
     postgres_type="smallint",
-    nc_name="internal_tide",
-    nc_scale=1000,
-    nc_offset=0,
 )
 
-lwe = OceanDataField(
+lwe = ColumnField(
     name="lwe",
     postgres_table_name=atk_alias,
     postgres_column_name="lwe",
     python_type=np.float64,
     postgres_type="smallint",
-    nc_name="lwe",
-    nc_scale=1000,
-    nc_offset=0,
 )
 
-mdt = OceanDataField(
+mdt = ColumnField(
     name="mdt",
     postgres_table_name=atk_alias,
     postgres_column_name="mdt",
     python_type=np.float64,
     postgres_type="smallint",
-    nc_name="mdt",
-    nc_scale=1000,
-    nc_offset=0,
 )
 
-tpa_correction = OceanDataField(
+tpa_correction = ColumnField(
     name="tpa_correction",
     postgres_table_name=atk_alias,
     postgres_column_name="tpa_correction",
     python_type=np.float64,
     postgres_type="smallint",
-    nc_name="tpa_correction",
-    nc_scale=1000,
-    nc_offset=0,
 )
 
-# -----------------
 # Derived / query-only fields
-# -----------------
 
-distance = OceanDataField(
+distance = DerivedField(
     name="distance",
-    custom_calculation=f"""
+    expression=f"""
         ST_Distance(
             ST_MakePoint(%(longitude)s, %(latitude)s),
             {atk_alias}.along_track_point
@@ -206,14 +155,15 @@ distance = OceanDataField(
     postgres_type="double precision",
 )
 
-delta_t = OceanDataField(
+delta_t = DerivedField(
     name="delta_t",
-    custom_calculation=f"""
+    expression=f"""
         EXTRACT(EPOCH FROM (%(central_date_time)s - {atk_alias}.date_time))
     """,
     python_type=np.float64,
     postgres_type="double precision",
 )
+
 
 
 # import numpy as np
@@ -225,9 +175,12 @@ delta_t = OceanDataField(
 # # Core coordinates & identity
 # # -----------------
 #
+# atk_alias = "atk"
+#
+#
 # latitude = OceanDataField(
 #     name="latitude",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,  # ✅ alias
 #     postgres_column_name="latitude",
 #     python_type=np.float64,
 #     postgres_type="double precision",
@@ -238,7 +191,7 @@ delta_t = OceanDataField(
 #
 # longitude = OceanDataField(
 #     name="longitude",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="longitude",
 #     python_type=np.float64,
 #     postgres_type="double precision",
@@ -248,8 +201,8 @@ delta_t = OceanDataField(
 # )
 #
 # date_time = OceanDataField(
-#     name="time",
-#     postgres_table_name="along_track",
+#     name="date_time",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="date_time",
 #     python_type=datetime,
 #     postgres_type="timestamp",
@@ -260,7 +213,7 @@ delta_t = OceanDataField(
 #
 # file_name = OceanDataField(
 #     name="file_name",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="file_name",
 #     python_type=str,
 #     postgres_type="text",
@@ -271,7 +224,7 @@ delta_t = OceanDataField(
 #
 # mission = OceanDataField(
 #     name="mission",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="mission",
 #     python_type=str,
 #     postgres_type="text",
@@ -282,7 +235,7 @@ delta_t = OceanDataField(
 #
 # track = OceanDataField(
 #     name="track",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="track",
 #     python_type=int,
 #     postgres_type="smallint",
@@ -293,7 +246,7 @@ delta_t = OceanDataField(
 #
 # cycle = OceanDataField(
 #     name="cycle",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="cycle",
 #     python_type=int,
 #     postgres_type="smallint",
@@ -304,7 +257,7 @@ delta_t = OceanDataField(
 #
 # basin_id = OceanDataField(
 #     name="basin_id",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="basin_id",
 #     python_type=int,
 #     postgres_type="smallint",
@@ -319,18 +272,18 @@ delta_t = OceanDataField(
 #
 # sla_unfiltered = OceanDataField(
 #     name="sla_unfiltered",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="sla_unfiltered",
 #     python_type=np.float64,
 #     postgres_type="smallint",
 #     nc_name="sla_unfiltered",
-#     nc_scale=1000,  # meters → millimeters
+#     nc_scale=1000,
 #     nc_offset=0,
 # )
 #
 # sla_filtered = OceanDataField(
 #     name="sla_filtered",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="sla_filtered",
 #     python_type=np.float64,
 #     postgres_type="smallint",
@@ -341,7 +294,7 @@ delta_t = OceanDataField(
 #
 # dac = OceanDataField(
 #     name="dac",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="dac",
 #     python_type=np.float64,
 #     postgres_type="smallint",
@@ -352,7 +305,7 @@ delta_t = OceanDataField(
 #
 # ocean_tide = OceanDataField(
 #     name="ocean_tide",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="ocean_tide",
 #     python_type=np.float64,
 #     postgres_type="smallint",
@@ -363,7 +316,7 @@ delta_t = OceanDataField(
 #
 # internal_tide = OceanDataField(
 #     name="internal_tide",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="internal_tide",
 #     python_type=np.float64,
 #     postgres_type="smallint",
@@ -374,7 +327,7 @@ delta_t = OceanDataField(
 #
 # lwe = OceanDataField(
 #     name="lwe",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="lwe",
 #     python_type=np.float64,
 #     postgres_type="smallint",
@@ -385,7 +338,7 @@ delta_t = OceanDataField(
 #
 # mdt = OceanDataField(
 #     name="mdt",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="mdt",
 #     python_type=np.float64,
 #     postgres_type="smallint",
@@ -396,7 +349,7 @@ delta_t = OceanDataField(
 #
 # tpa_correction = OceanDataField(
 #     name="tpa_correction",
-#     postgres_table_name="along_track",
+#     postgres_table_name=atk_alias,
 #     postgres_column_name="tpa_correction",
 #     python_type=np.float64,
 #     postgres_type="smallint",
@@ -411,10 +364,10 @@ delta_t = OceanDataField(
 #
 # distance = OceanDataField(
 #     name="distance",
-#     custom_calculation="""
+#     custom_calculation=f"""
 #         ST_Distance(
 #             ST_MakePoint(%(longitude)s, %(latitude)s),
-#             along_track_point
+#             {atk_alias}.along_track_point
 #         )
 #     """,
 #     python_type=np.float64,
@@ -423,9 +376,224 @@ delta_t = OceanDataField(
 #
 # delta_t = OceanDataField(
 #     name="delta_t",
-#     custom_calculation="""
-#         EXTRACT(EPOCH FROM (%(central_date_time)s - along_track.date_time))
+#     custom_calculation=f"""
+#         EXTRACT(EPOCH FROM (%(central_date_time)s - {atk_alias}.date_time))
 #     """,
 #     python_type=np.float64,
 #     postgres_type="double precision",
 # )
+#
+#
+# # import numpy as np
+# # from datetime import datetime
+# # from OceanDB.ocean_data.ocean_data import OceanDataField
+# #
+# #
+# # # -----------------
+# # # Core coordinates & identity
+# # # -----------------
+# #
+# # latitude = OceanDataField(
+# #     name="latitude",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="latitude",
+# #     python_type=np.float64,
+# #     postgres_type="double precision",
+# #     nc_name="latitude",
+# #     nc_scale=1,
+# #     nc_offset=0,
+# # )
+# #
+# # longitude = OceanDataField(
+# #     name="longitude",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="longitude",
+# #     python_type=np.float64,
+# #     postgres_type="double precision",
+# #     nc_name="longitude",
+# #     nc_scale=1,
+# #     nc_offset=0,
+# # )
+# #
+# # date_time = OceanDataField(
+# #     name="time",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="date_time",
+# #     python_type=datetime,
+# #     postgres_type="timestamp",
+# #     nc_name="time",
+# #     nc_scale=1,
+# #     nc_offset=0,
+# # )
+# #
+# # file_name = OceanDataField(
+# #     name="file_name",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="file_name",
+# #     python_type=str,
+# #     postgres_type="text",
+# #     nc_name="file_name",
+# #     nc_scale=1,
+# #     nc_offset=0,
+# # )
+# #
+# # mission = OceanDataField(
+# #     name="mission",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="mission",
+# #     python_type=str,
+# #     postgres_type="text",
+# #     nc_name="mission",
+# #     nc_scale=1,
+# #     nc_offset=0,
+# # )
+# #
+# # track = OceanDataField(
+# #     name="track",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="track",
+# #     python_type=int,
+# #     postgres_type="smallint",
+# #     nc_name="track",
+# #     nc_scale=1,
+# #     nc_offset=0,
+# # )
+# #
+# # cycle = OceanDataField(
+# #     name="cycle",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="cycle",
+# #     python_type=int,
+# #     postgres_type="smallint",
+# #     nc_name="cycle",
+# #     nc_scale=1,
+# #     nc_offset=0,
+# # )
+# #
+# # basin_id = OceanDataField(
+# #     name="basin_id",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="basin_id",
+# #     python_type=int,
+# #     postgres_type="smallint",
+# #     nc_name="basin_id",
+# #     nc_scale=1,
+# #     nc_offset=0,
+# # )
+# #
+# # # -----------------
+# # # Altimetry signals
+# # # -----------------
+# #
+# # sla_unfiltered = OceanDataField(
+# #     name="sla_unfiltered",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="sla_unfiltered",
+# #     python_type=np.float64,
+# #     postgres_type="smallint",
+# #     nc_name="sla_unfiltered",
+# #     nc_scale=1000,  # meters → millimeters
+# #     nc_offset=0,
+# # )
+# #
+# # sla_filtered = OceanDataField(
+# #     name="sla_filtered",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="sla_filtered",
+# #     python_type=np.float64,
+# #     postgres_type="smallint",
+# #     nc_name="sla_filtered",
+# #     nc_scale=1000,
+# #     nc_offset=0,
+# # )
+# #
+# # dac = OceanDataField(
+# #     name="dac",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="dac",
+# #     python_type=np.float64,
+# #     postgres_type="smallint",
+# #     nc_name="dac",
+# #     nc_scale=1000,
+# #     nc_offset=0,
+# # )
+# #
+# # ocean_tide = OceanDataField(
+# #     name="ocean_tide",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="ocean_tide",
+# #     python_type=np.float64,
+# #     postgres_type="smallint",
+# #     nc_name="ocean_tide",
+# #     nc_scale=1000,
+# #     nc_offset=0,
+# # )
+# #
+# # internal_tide = OceanDataField(
+# #     name="internal_tide",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="internal_tide",
+# #     python_type=np.float64,
+# #     postgres_type="smallint",
+# #     nc_name="internal_tide",
+# #     nc_scale=1000,
+# #     nc_offset=0,
+# # )
+# #
+# # lwe = OceanDataField(
+# #     name="lwe",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="lwe",
+# #     python_type=np.float64,
+# #     postgres_type="smallint",
+# #     nc_name="lwe",
+# #     nc_scale=1000,
+# #     nc_offset=0,
+# # )
+# #
+# # mdt = OceanDataField(
+# #     name="mdt",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="mdt",
+# #     python_type=np.float64,
+# #     postgres_type="smallint",
+# #     nc_name="mdt",
+# #     nc_scale=1000,
+# #     nc_offset=0,
+# # )
+# #
+# # tpa_correction = OceanDataField(
+# #     name="tpa_correction",
+# #     postgres_table_name="along_track",
+# #     postgres_column_name="tpa_correction",
+# #     python_type=np.float64,
+# #     postgres_type="smallint",
+# #     nc_name="tpa_correction",
+# #     nc_scale=1000,
+# #     nc_offset=0,
+# # )
+# #
+# # # -----------------
+# # # Derived / query-only fields
+# # # -----------------
+# #
+# # distance = OceanDataField(
+# #     name="distance",
+# #     custom_calculation="""
+# #         ST_Distance(
+# #             ST_MakePoint(%(longitude)s, %(latitude)s),
+# #             along_track_point
+# #         )
+# #     """,
+# #     python_type=np.float64,
+# #     postgres_type="double precision",
+# # )
+# #
+# # delta_t = OceanDataField(
+# #     name="delta_t",
+# #     custom_calculation="""
+# #         EXTRACT(EPOCH FROM (%(central_date_time)s - along_track.date_time))
+# #     """,
+# #     python_type=np.float64,
+# #     postgres_type="double precision",
+# # )

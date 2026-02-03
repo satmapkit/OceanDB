@@ -1,17 +1,21 @@
-from OceanDB.data_access.base_query import QuerySpec
+from datetime import datetime, timedelta
+
+from OceanDB.data_access.base_query import QuerySpec, BaseQuery
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
+import numpy as np
 
 query = QuerySpec(
-    sql="""
+    sql_template="""
         SELECT
-            atk.latitude   AS latitude,
-            atk.longitude  AS longitude,
-            ST_Distance(
-                ST_MakePoint(%(lon)s, %(lat)s),
-                atk.along_track_point
-            ) AS distance
+            {fields}
         FROM along_track atk
-        WHERE atk.date_time BETWEEN %(t0)s AND %(t1)s
+        WHERE ST_DWithin(
+            along_track_point::geography,
+            ST_SetSRID(ST_MakePoint(%(longitude)s, %(latitude)s), 4326)::geography,
+            %(distance)s
+        )
+        AND date_time BETWEEN %(central_date_time)s - %(time_delta)s::interval
+                  AND %(central_date_time)s + %(time_delta)s::interval
     """,
     schema={
         "latitude": ColumnField(
@@ -28,9 +32,34 @@ query = QuerySpec(
         ),
         "distance": DerivedField(
             name="distance",
-            expression="ST_Distance(...)",
-            python_type=float,
+            expression=f"""
+                ST_Distance(
+                    ST_MakePoint(%(longitude)s, %(latitude)s),
+                    atk.along_track_point
+                )
+            """,
+            python_type=np.float64,
+            postgres_type="double precision",
         ),
     },
+)
+
+base_query = BaseQuery()
+base_query.execute_query(
+    query_spec=query,
+    params={
+        'longitude': 28.1,
+        'latitude': -69,
+        'central_date_time': datetime(year=2013, month=3, day=14, hour=23),
+        'time_delta':timedelta(days=10),
+        'distance': 500_000
+    },
+    fields=[
+        'latitude',
+        'distance',
+        'sla_unfiltered'
+    ],
+    debug_sql=True,
+    require_all_fields=False
 )
 

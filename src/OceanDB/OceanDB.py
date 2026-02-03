@@ -2,12 +2,9 @@ from functools import cached_property
 import netCDF4 as nc
 from psycopg import sql
 import psycopg as pg
-from psycopg.rows import dict_row
 from importlib import resources
 import time
-import pandas as pd
 from typing import IO
-from typing import Any, List, Dict, Optional
 import numpy as np
 from sqlalchemy import create_engine
 
@@ -25,7 +22,6 @@ class OceanDB:
     def __init__(
         self,
     ):
-
         self.config = Config()
         self.connection_string = self.config.postgres_dsn
         self.host = self.config.postgres_host

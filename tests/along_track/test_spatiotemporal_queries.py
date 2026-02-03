@@ -2,7 +2,7 @@ import numpy as np
 import numpy.typing as npt
 from datetime import datetime, timedelta
 from OceanDB.data_access.along_track import AlongTrack
-from OceanDB.data_access.schema.along_track_schema import along_track_schema
+# from OceanDB.data_access.schema.along_track_schema import along_track_schema
 
 
 def test_geographic_points_in_r_dt():
@@ -47,7 +47,7 @@ import numpy as np
 import numpy.typing as npt
 from datetime import datetime, timedelta
 from OceanDB.data_access.along_track import AlongTrack
-from OceanDB.data_access.schema.along_track_schema import along_track_schema
+# from OceanDB.data_access.schema.along_track_schema import along_track_schema
 along_track = AlongTrack()
 latitude = -69
 longitude = 28.1
@@ -57,13 +57,13 @@ radius = 500_000
 time_window = timedelta(days=10)
 
 # fields = list(AlongTrack.schema.keys())
-fields = list(along_track_schema.keys())
+# fields = list(along_track_schema.keys())
 
 along_track_query_result_iterator = along_track.geographic_points_in_r_dt(
     latitudes=np.array([latitude]),
     longitudes=np.array([longitude]),
     dates=[date],
-    fields=fields,
+    fields=['latitude'],
     radii=radius,
     time_window=time_window,
 )
