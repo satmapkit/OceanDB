@@ -126,7 +126,8 @@ class BaseQuery(OceanDB):
         print(sql_query)
 
         with pg.connect(self.config.postgres_dsn) as conn:
-            log_query(conn=conn, query=sql_query, params=params)
+            if debug_sql:
+                log_query(conn=conn, query=sql_query, params=params)
 
             with conn.cursor(row_factory=pg.rows.dict_row) as cur:
                 cur.execute(sql_query, params)
