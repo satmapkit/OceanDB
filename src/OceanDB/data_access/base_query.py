@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping, TypeVar, Optional, Union
+from typing import Any, Iterable, Mapping, Union, Generic
 
 import numpy as np
 import psycopg as pg
@@ -10,17 +10,14 @@ from psycopg import sql
 from OceanDB.OceanDB import OceanDB
 from OceanDB.data_access.metadata import METADATA_REGISTRY
 from OceanDB.ocean_data.ocean_data import OceanDataField
-from OceanDB.ocean_data.dataset import Dataset
+from OceanDB.ocean_data.dataset import Dataset, K, T
 
 
 SqlLike = Union[str, sql.Composable]
 
-K = TypeVar("K", bound=str)
-T = TypeVar("T")
-
 
 @dataclass(frozen=True)
-class QuerySpec:
+class QuerySpec(Generic[K]):
     """
     Declarative specification for a query.
 
@@ -30,10 +27,10 @@ class QuerySpec:
     - The schema describes how to type/hydrate returned columns.
     """
     sql_template: SqlLike
-    schema: Mapping[str, OceanDataField]
+    schema: Mapping[K, OceanDataField]
 
     def sql_projection_compiler(self,
-                                fields: Iterable[str]
+                                fields: Iterable[K]
 
                                 ):
         field_sql = sql.SQL(", ").join(
@@ -105,7 +102,7 @@ class BaseQuery(OceanDB):
 
             with conn.cursor(row_factory=pg.rows.dict_row) as cur:
                 cur.execute(sql_query, params)
-                rows: list[dict[str, Any]] = cur.fetchall()
+                rows: list[Mapping[str, Any]] = cur.fetchall()
 
         if not rows:
             return None
@@ -142,7 +139,7 @@ class BaseQuery(OceanDB):
             raise ValueError("rows must be nonempty")
 
         data: dict[K, np.ndarray] = {}
-        dtypes: dict[K, type | None] = {}
+        dtypes: dict[K, type] = {}
 
         row0 = rows[0]
 
@@ -158,7 +155,8 @@ class BaseQuery(OceanDB):
                 arr = np.asarray(values)
 
             data[name] = arr
-            dtypes[name] = field.python_type
+            if field.python_type is not None:
+                dtypes[name] = field.python_type
 
         return Dataset(
             name=dataset_name,
