@@ -17,15 +17,56 @@ class QuerySpec(Generic[K]):
     """
     Declarative specification for a query.
 
-    Contract:
-    - The SQL must SELECT expressions aliased to match keys in `schema`.
-      (i.e. SELECT ... AS <field_name>)
-    - The schema describes how to type/hydrate returned columns.
+    :param sql_template:
+        See :attr:`sql_template`
+
+    :param schema:
+        See :attr:`schema`
+
+    :param mandatory_fields:
+        See :attr:`mandatory_fields`
     """
 
     sql_template: LiteralString
+    """
+    The template string for the sql query, typically read from a file. The
+    template format admits *parameters* and *fields* to be generic. For
+    generic fields, add :code:`{fields}` to the select statement, and for
+    parameters, each parameter should be included as per psycopg's parsing,
+    e.g. :code:`%(basin_ids)s::int[]`.
+
+    For example::
+
+        SELECT {fields}
+        FROM eddy
+        WHERE eddy.track * eddy.cyclonic_type = %(track_id)s;
+
+    Here, there is only one parameter, :code:`track_id`, but potentially many
+    fields (see :attr:`schema`)
+    """
+
     schema: Mapping[K, OceanDataField]
+    """
+    Schema for field validation, in the form of a mapping from
+    field names to an :class:`OceanDataField <OceanDB.ocean_data.ocean_data.OceanDataField>`
+    (which contains details on how to extract a field from a column)
+    """
+
     mandatory_fields: list[K] = field(default_factory=list)
+    """
+    In case a particular query must always SELECT one or more fields, these fields should be
+    included in this list. By default, no queries are mandatory.
+
+    For example, in the following query, the :code:`distance` field must always be computed::
+
+        SELECT
+            {fields}
+            atk.along_track_point <-> ST_SetSRID(ST_MakePoint(%(longitude)s, %(latitude)s), 4326)
+            AS distance
+        FROM along_track atk
+        ORDER BY distance
+        LIMIT 3;
+    """
 
     def sql_projection_compiler(self, fields: Iterable[K]) -> sql.Composed:
         extra_fields = filter(lambda field: field not in self.mandatory_fields, fields)
