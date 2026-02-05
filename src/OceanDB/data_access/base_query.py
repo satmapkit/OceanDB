@@ -10,7 +10,7 @@ from psycopg import sql
 from OceanDB.OceanDB import OceanDB
 from OceanDB.data_access.metadata import METADATA_REGISTRY
 from OceanDB.ocean_data.ocean_data import OceanDataField
-from OceanDB.ocean_data.dataset import Dataset, K, T
+from OceanDB.ocean_data.dataset import Dataset, K
 
 
 SqlLike = Union[str, sql.Composable]

@@ -1,7 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Iterable, List, Literal, get_args, Any
-import numpy.typing as npt
-import numpy as np
+from typing import Literal, get_args, Any
 
 from OceanDB.data_access.base_query import BaseQuery, QuerySpec
 from OceanDB.ocean_data.dataset import Dataset
