@@ -44,7 +44,9 @@ class Eddy(BaseQuery):
     ) -> list[int]:
         """
         Retrieve distinct eddy track identifiers observed within a given time range.
-        This is executing a query -> but not going through our base execute query method quite yet,
+
+        :return:
+            Eddy track ids ( - = cyclonic, + = anticyclonic )
         """
         query = """
         SELECT DISTINCT track
@@ -70,10 +72,19 @@ class Eddy(BaseQuery):
         track_id: int,
     ) -> Dataset[eddy_fields, npt.NDArray[np.floating]] | None:
         """
-        Retrieve all observations for a single eddy track.
-        Returns
-        -------
-        OceanData[EddyDataset] | None
+        Retrieve observations for a single eddy track.
+
+        :param fields:
+            Requested fields to output
+
+        :param track_id:
+            Query eddy track id ( - = cyclonic, + = anticyclonic )
+
+        :return:
+            If no eddy found with the specified track id,
+            :code:`None` is returned.
+            Otherwise, a :class:`Dataset <OceanDB.ocean_data.dataset.Dataset>`
+            of eddy data with requested fields is returned.
         """
         query_spec = QuerySpec(
             sql_template=self.load_sql_file(self._eddy_with_id_query),
@@ -90,14 +101,18 @@ class Eddy(BaseQuery):
     ) -> Dataset[envelope_fields, Any] | None:
         """
         Compute the spatiotemporal envelope for a single eddy track.
+        Specifically, extracts
 
-        This query aggregates all observations belonging to the given eddy
-        (`track * cyclonic_type`) and returns:
-        - the minimum and maximum observation timestamps, and
-        - the set of basin identifiers intersecting the eddy over its lifetime.
+        - the minimum and maximum observation timestamps surrounding
+          the eddy
+        - the set of basins intersecting the eddy over its lifetime.
 
-        The result is a single-row dataset used to parameterize downstream
-        along-track queries (time window and basin filtering).
+        :param track_id:
+            Query eddy track id ( - = cyclonic, + = anticyclonic )
+
+        :return:
+            Single-row dataset used to parameterize downstream
+            along-track queries (time window and basin filtering).
         """
 
         query_spec = QuerySpec(
@@ -124,8 +139,22 @@ class Eddy(BaseQuery):
         Retrieve along-track altimetry points spatially and temporally
         associated with a given eddy track.
 
+        If no eddy of the given id exists, will raise a :code:`ValueError`
+
         The eddy envelope (time range and basin membership) is computed
         first and used to parameterize the along-track query.
+
+        :param track_id:
+            Query eddy track id ( - = cyclonic, + = anticyclonic )
+
+        :param fields:
+            Requested along track fields to output.
+            If none are specified, defaults to :attr:`default_along_track_fields <Eddy.default_along_track_fields>`
+
+        :return:
+            If no along track data is found surrounding the eddy, :code:`None` is returned.
+            Otherwise, a :class:`Dataset <OceanDB.ocean_data.dataset.Dataset>`
+            of along track data with requested fields is returned.
         """
 
         if fields is None:
