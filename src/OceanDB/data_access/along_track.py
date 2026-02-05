@@ -95,3 +95,44 @@ class AlongTrack(BaseQuery):
             params=params,
             dataset_name="along_track",
         )
+
+    def geographic_nearest_neighbors(
+            self,
+            fields: list,
+            latitude: float,
+            longitude: float,
+            date: datetime,
+            time_window: timedelta = timedelta(days=10),
+            missions: list[Mission] = all_missions,
+    ) -> Dataset[along_track_fields, Any] | None:
+        """
+        Query along-track points within spatial + temporal windows.
+
+        Yields one Dataset per query point, or None if empty.
+        """
+
+        query_spec = QuerySpec(
+            sql_template=self.load_sql_file(self.along_track_nearest_neighbor_query),
+            schema=along_track_schema,
+            mandatory_fields=["distance"]
+        )
+
+        basin_ids = self.basin_mask(latitude, longitude)
+        connected_basin_ids = self.basin_connection_map[basin_ids]
+
+        params = {
+                "longitude": longitude,
+                "latitude": latitude,
+                "central_date_time": date,
+                "time_delta": time_window,
+                "connected_basin_ids": connected_basin_ids,
+                "missions": missions,
+            }
+
+
+        return self.execute_query(
+            query_spec=query_spec,
+            fields=fields,
+            params=params,
+            dataset_name="along_track",
+        )

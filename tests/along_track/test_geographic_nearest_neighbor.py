@@ -1,11 +1,10 @@
-import numpy as np
-import numpy.typing as npt
 from datetime import datetime, timedelta
 from OceanDB.data_access.along_track import AlongTrack
-from OceanDB.data_access.schema.along_track_schema import along_track_schema
+from OceanDB.schemas.along_track_schema import along_track_schema
+import numpy as np
 
 
-def test_geographic_points_in_r_dt():
+def test_geographic_nearest_neighbor():
     """
     TEST single point spatiotemporal query
     """
@@ -17,18 +16,23 @@ def test_geographic_points_in_r_dt():
     time_window = timedelta(days=10)
 
     fields = list(along_track_schema.keys())
-    along_track_query_result_iterator = along_track.geographic_nearest_neighbors_dt(
-        latitudes=np.array([latitude]),
-        longitudes=np.array([longitude]),
-        dates=[date],
+
+    result = along_track.geographic_nearest_neighbors(
+        latitude=latitude,
+        longitude=longitude,
+        date=date,
         fields=fields,
         time_window=time_window,
     )
 
-    along_track_output_list = list(along_track_query_result_iterator)
-    result = along_track_output_list[0]
+    # result should have been gotten
     assert result is not None
+
+    # all requested fields should exist and be identical shape
+    shape = result[fields[0]].shape
     for field in fields:
         assert field in result
-    assert ((result["date_time"] - date) <= time_window).all()
-    assert not ((result["date_time"] - date) <= timedelta(seconds=10)).all()
+        assert result[field].shape == shape
+
+    # distance should be monotonically increasing
+    assert np.all(result["distance"][:-1] <= result["distance"][1:])
