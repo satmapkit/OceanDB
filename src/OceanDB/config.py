@@ -6,14 +6,14 @@ class Config(BaseSettings):
 
     postgres_host: str = Field(default="localhost")
     postgres_port: int = Field(default=5432)
-    postgres_username: str = ''
-    postgres_password: str = ''
+    postgres_username: str = ""
+    postgres_password: str = ""
     postgres_database: str = Field(default="ocean")
 
-    along_track_data_directory: str = ''
-    eddy_data_directory: str = ''
-    copernicus_password: str = ''
-    copernicus_username: str = ''
+    along_track_data_directory: str = ""
+    eddy_data_directory: str = ""
+    copernicus_password: str = ""
+    copernicus_username: str = ""
 
     model_config = SettingsConfigDict(
         env_prefix="",  # no prefix (POSTGRES_HOST, etc.)

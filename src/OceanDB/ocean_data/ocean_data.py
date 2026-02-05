@@ -41,6 +41,7 @@ class OceanDataField(ABC):
             return np.array(values)
         return np.array(values, dtype=self.python_type)
 
+
 @dataclass(frozen=True)
 class ColumnField(OceanDataField):
     postgres_table_name: str
@@ -67,4 +68,3 @@ class DerivedField(OceanDataField):
 
     def sql_expression(self) -> sql.Composable:
         return sql.SQL(self.expression)
-

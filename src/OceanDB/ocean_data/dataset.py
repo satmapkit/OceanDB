@@ -8,6 +8,7 @@ from typing import TypeVar, Generic, Mapping
 K = TypeVar("K", bound=str)
 T = TypeVar("T")
 
+
 class Dataset(Mapping[K, T], Generic[K, T]):
     """
     Immutable, column-oriented dataset.

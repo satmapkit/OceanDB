@@ -35,7 +35,11 @@ class OceanDB:
         self.logger = get_logger()
 
     def load_module_file(
-            self, module: str, filename: str, encoding="utf-8", mode: Literal["r", "rb"]="rb"
+        self,
+        module: str,
+        filename: str,
+        encoding="utf-8",
+        mode: Literal["r", "rb"] = "rb",
     ) -> IO:
         """
         Open a resource file bundled within a Python package.
@@ -108,7 +112,6 @@ class OceanDB:
                 cur.execute(query_truncate_table)
                 conn.commit()
         print(f"All data removed from table '{name} in database.'{self.db_name}'.")
-
 
     @cached_property
     def basin_mask_data(self):

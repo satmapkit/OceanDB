@@ -12,13 +12,11 @@ table_definitions = [
         "filepath": "tables/basins/create_basin_table.sql",
         "params": {"table_name": "basin"},
     },
-
     {
         "name": "basin_connection",
         "filepath": "tables/basins/create_basin_connection_table.sql",
         "params": {"table_name": "basin_connection"},
     },
-
     {
         "name": "along_track_metadata",
         "filepath": "tables/along_track/create_along_track_metadata_table.sql",
@@ -342,12 +340,14 @@ class OceanDBInit(OceanDB):
 
             with engine.connect() as conn:
                 rows = conn.execute(
-                    text("""
+                    text(
+                        """
                         SELECT indexname, indexdef
                         FROM pg_indexes
                         WHERE schemaname = :schema AND tablename = :table
                         ORDER BY indexname
-                    """),
+                    """
+                    ),
                     {"schema": schema_name, "table": table_name},
                 ).fetchall()
                 actual_indexes = {row[0] for row in rows}

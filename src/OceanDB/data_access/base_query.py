@@ -12,8 +12,6 @@ from OceanDB.ocean_data.ocean_data import OceanDataField
 from OceanDB.ocean_data.dataset import Dataset, K
 
 
-
-
 @dataclass(frozen=True)
 class QuerySpec(Generic[K]):
     """
@@ -24,23 +22,20 @@ class QuerySpec(Generic[K]):
       (i.e. SELECT ... AS <field_name>)
     - The schema describes how to type/hydrate returned columns.
     """
+
     sql_template: LiteralString
     schema: Mapping[K, OceanDataField]
-    mandatory_fields : list[K] = field(default_factory=list)
+    mandatory_fields: list[K] = field(default_factory=list)
 
-    def sql_projection_compiler(self,
-                                fields: Iterable[K]
-                                ) -> sql.Composed:
+    def sql_projection_compiler(self, fields: Iterable[K]) -> sql.Composed:
         extra_fields = filter(lambda field: field not in self.mandatory_fields, fields)
         field_sql = sql.SQL(", ").join(
-                self.schema[field].to_sql_query()
-                for field in extra_fields
-            )
+            self.schema[field].to_sql_query() for field in extra_fields
+        )
         if self.mandatory_fields and extra_fields:
             field_sql += sql.SQL(",")
 
         return sql.SQL(self.sql_template).format(fields=field_sql)
-
 
 
 def _normalize_sql(q: SqlLike) -> sql.Composable:
@@ -48,7 +43,6 @@ def _normalize_sql(q: SqlLike) -> sql.Composable:
     Ensure we always pass a psycopg composable to cursor.execute().
     """
     return q if isinstance(q, sql.Composable) else sql.SQL(q)
-
 
 
 def log_query(conn: pg.Connection, query: sql.Composable, params: Any) -> None:
@@ -72,13 +66,12 @@ class BaseQuery(OceanDB):
     - build_dataset hydrates a columnar Dataset from dict_row results
     """
 
-
     def execute_query(
         self,
         query_spec: QuerySpec,
         # query: sql.Composable,
         *,
-        fields: Iterable[K] ,
+        fields: Iterable[K],
         params: Mapping[str, Any],
         dataset_name: str = "query_result",
         debug_sql: bool = False,
@@ -87,17 +80,12 @@ class BaseQuery(OceanDB):
         Execute a single query and return a Dataset, or None if empty.
         """
 
-
         sql_query = query_spec.sql_projection_compiler(fields)
 
         print(sql_query)
 
         with pg.connect(self.config.postgres_dsn) as conn:
-            log_query(
-                conn=conn,
-                query=sql_query,
-                params=params
-            )
+            log_query(conn=conn, query=sql_query, params=params)
 
             with conn.cursor(row_factory=pg.rows.dict_row) as cur:
                 cur.execute(sql_query, params)
@@ -155,4 +143,3 @@ class BaseQuery(OceanDB):
             dtypes=dtypes,
             schema=schema,
         )
-

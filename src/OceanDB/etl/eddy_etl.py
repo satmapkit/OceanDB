@@ -210,10 +210,12 @@ class EddyETL(BaseETL):
 
             return val
 
-        insert_query = sql.SQL("""
+        insert_query = sql.SQL(
+            """
                INSERT INTO {} ({})
                VALUES ({})
-           """).format(
+           """
+        ).format(
             sql.Identifier("public", "eddy"),
             sql.SQL(", ").join(map(sql.Identifier, COLUMNS)),
             sql.SQL(", ").join(sql.Placeholder() * len(COLUMNS)),

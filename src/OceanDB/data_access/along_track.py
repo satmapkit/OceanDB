@@ -39,7 +39,9 @@ class AlongTrack(BaseQuery):
     # Domain key used by BaseQuery metadata registry
     # ALONG_TRACK_DOMAIN = "along_track"
 
-    along_track_nearest_neighbor_query = "queries/along_track/geographic_nearest_neighbor.sql"
+    along_track_nearest_neighbor_query = (
+        "queries/along_track/geographic_nearest_neighbor.sql"
+    )
     along_track_spatiotemporal_query = (
         "queries/along_track/geographic_points_in_spatialtemporal_window.sql"
     )
@@ -53,14 +55,14 @@ class AlongTrack(BaseQuery):
         super().__init__()
 
     def geographic_point_in_r_dt(
-            self,
-            fields: list,
-            latitude: float,
-            longitude: float,
-            date: datetime,
-            radius: float = 500_000.0,
-            time_window: timedelta = timedelta(days=10),
-            missions: list[Mission] = all_missions,
+        self,
+        fields: list,
+        latitude: float,
+        longitude: float,
+        date: datetime,
+        radius: float = 500_000.0,
+        time_window: timedelta = timedelta(days=10),
+        missions: list[Mission] = all_missions,
     ) -> Dataset[along_track_fields, Any] | None:
         """
         Query along-track points within spatial + temporal windows.
@@ -70,22 +72,21 @@ class AlongTrack(BaseQuery):
 
         query_spec = QuerySpec(
             sql_template=self.load_sql_file(self.along_track_spatiotemporal_query),
-            schema=along_track_schema
+            schema=along_track_schema,
         )
 
         basin_ids = self.basin_mask(latitude, longitude)
         connected_basin_ids = self.basin_connection_map[basin_ids]
 
         params = {
-                "longitude": longitude,
-                "latitude": latitude,
-                "distance": radius,
-                "central_date_time": date,
-                "time_delta": time_window,
-                "connected_basin_ids": connected_basin_ids,
-                "missions": missions,
-            }
-
+            "longitude": longitude,
+            "latitude": latitude,
+            "distance": radius,
+            "central_date_time": date,
+            "time_delta": time_window,
+            "connected_basin_ids": connected_basin_ids,
+            "missions": missions,
+        }
 
         return self.execute_query(
             query_spec=query_spec,
@@ -95,13 +96,13 @@ class AlongTrack(BaseQuery):
         )
 
     def geographic_nearest_neighbors(
-            self,
-            fields: list,
-            latitude: float,
-            longitude: float,
-            date: datetime,
-            time_window: timedelta = timedelta(days=10),
-            missions: list[Mission] = all_missions,
+        self,
+        fields: list,
+        latitude: float,
+        longitude: float,
+        date: datetime,
+        time_window: timedelta = timedelta(days=10),
+        missions: list[Mission] = all_missions,
     ) -> Dataset[along_track_fields, Any] | None:
         """
         Query along-track points within spatial + temporal windows.
@@ -112,21 +113,20 @@ class AlongTrack(BaseQuery):
         query_spec = QuerySpec(
             sql_template=self.load_sql_file(self.along_track_nearest_neighbor_query),
             schema=along_track_schema,
-            mandatory_fields=["distance"]
+            mandatory_fields=["distance"],
         )
 
         basin_ids = self.basin_mask(latitude, longitude)
         connected_basin_ids = self.basin_connection_map[basin_ids]
 
         params = {
-                "longitude": longitude,
-                "latitude": latitude,
-                "central_date_time": date,
-                "time_delta": time_window,
-                "connected_basin_ids": connected_basin_ids,
-                "missions": missions,
-            }
-
+            "longitude": longitude,
+            "latitude": latitude,
+            "central_date_time": date,
+            "time_delta": time_window,
+            "connected_basin_ids": connected_basin_ids,
+            "missions": missions,
+        }
 
         return self.execute_query(
             query_spec=query_spec,
