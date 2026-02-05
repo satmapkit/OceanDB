@@ -1,19 +1,20 @@
+from typing import get_args
+import numpy as np
 
-from OceanDB.data_access import Eddy
+from OceanDB.data_access.eddy import Eddy, envelope_fields
 
-eddy = Eddy()
+def test_eddy_envelope_basic():
+    eddy = Eddy()
 
-# along_track_result_iterator = eddy.eddy_envelope_query(track_id=4)
-# print(along_track_result_iterator._data)
+    fields = get_args(envelope_fields)
 
-result = eddy.eddy_envelope_query(
-    track_id=4
-)
+    result = eddy.eddy_envelope_query(
+        track_id=-4
+    )
+    assert result is not None
 
-min_date = result["min_date"][0]
-max_date = result["max_date"][0]
-basin_ids = result["basin_ids"]
+    for field in fields:
+        assert field in result
 
-print(min_date)
-print(max_date)
-print(basin_ids)
+    assert np.all(result["min_date"] <= result["max_date"])
+    assert all(len(ids) > 0 for ids in result["basin_ids"])

@@ -1,23 +1,23 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 import psycopg as pg
 import numpy.typing as npt
 import numpy as np
+from typing import Any, Literal, Iterable
 
-from OceanDB.data_access.base_query import BaseQuery
-from OceanDB.data_access.projection_compiler import ProjectionCompiler
-from OceanDB.data_access.schema.along_track_schema import along_track_fields, along_track_schema
-from OceanDB.data_access.schema.eddy_schema import eddy_schema, eddy_fields
+from OceanDB.data_access.along_track import BaseQuery
+from OceanDB.schemas.along_track_schema import along_track_fields
+from OceanDB.schemas.eddy_schema import eddy_schema, eddy_fields, along_track_eddy_schema 
 from OceanDB.ocean_data.dataset import Dataset
-# from OceanDB.ocean_data.fields.eddy_fields import eddy_schema
+from OceanDB.data_access.base_query import QuerySpec
 
-
+envelope_fields = Literal["max_date", "min_date", "basin_ids"]
 
 
 class Eddy(BaseQuery):
     along_track_near_eddy_query = "queries/eddy/along_near_eddy.sql"
     eddy_with_id_query = "queries/eddy/eddy_from_track_id.sql"
     envelope_query = "queries/eddy/eddy_envelope.sql"
-    default_along_track_fields = DEFAULT_ALONG_TRACK_FIELDS = [
+    default_along_track_fields: list[along_track_fields] = [
         "file_name",
         "track",
         "cycle",
@@ -36,7 +36,6 @@ class Eddy(BaseQuery):
 
     def __init__(self):
         super().__init__()
-
 
     def get_eddy_tracks_from_times(
         self,
@@ -65,32 +64,30 @@ class Eddy(BaseQuery):
                 cur.execute(query, params)
                 return [row[0] for row in cur.fetchall()]
 
-
     def eddy_with_track_id(
         self,
         fields: list[eddy_fields],
         track_id: int,
-    ) -> Dataset[eddy_fields, npt.NDArray[np.floating]]:
+    ) -> Dataset[eddy_fields, npt.NDArray[np.floating]] | None:
         """
         Retrieve all observations for a single eddy track.
         Returns
         -------
         OceanData[EddyDataset] | None
         """
-        compiler = ProjectionCompiler(schema=eddy_schema)
-        query_string = compiler.compile(
+        query_spec = QuerySpec(
             sql_template=self.load_sql_file(self.eddy_with_id_query),
-            fields=fields,
+            schema=eddy_schema,
         )
         params = {"track_id": track_id}
 
         return self.execute_query(
-            query=query_string,
-            schema=eddy_schema,
-            params=params
+            query_spec=query_spec, fields=fields, params=params, dataset_name="eddy"
         )
 
-    def eddy_envelope_query(self, track_id: int):
+    def eddy_envelope_query(
+        self, track_id: int
+    ) -> Dataset[envelope_fields, Any] | None:
         """
         Compute the spatiotemporal envelope for a single eddy track.
 
@@ -103,28 +100,25 @@ class Eddy(BaseQuery):
         along-track queries (time window and basin filtering).
         """
 
-        compiler = ProjectionCompiler(schema=eddy_schema)
-        query_string = compiler.compile(
+        query_spec = QuerySpec(
             sql_template=self.load_sql_file(self.envelope_query),
-            fields=[
-                "max_date",
-                "min_date",
-                "basin_ids"
-            ],
+            schema=eddy_schema,
         )
         params = {"track_id": track_id}
+        fields: list[envelope_fields] = ["max_date", "min_date", "basin_ids"]
 
         return self.execute_query(
-            query=query_string,
-            schema=eddy_schema,
-            params=params
+            query_spec=query_spec,
+            fields=fields,
+            params=params,
+            dataset_name="eddy",
         )
 
     def along_track_points_near_eddy(
-            self,
-            *,
-            track_id: int,
-            fields: list[along_track_fields] | None = None,
+        self,
+        *,
+        track_id: int,
+        fields: Iterable[along_track_fields] | None = None,
     ):
         """
         Retrieve along-track altimetry points spatially and temporally
@@ -134,23 +128,22 @@ class Eddy(BaseQuery):
         first and used to parameterize the along-track query.
         """
 
+        if fields is None:
+            fields = self.default_along_track_fields
+
         # --- Phase 1: eddy envelope ---
         eddy_track = self.eddy_envelope_query(track_id=track_id)
+        if eddy_track is None:
+            raise ValueError("Could not find eddy track")
 
         min_date = eddy_track["min_date"][0]
         max_date = eddy_track["max_date"][0]
         basin_ids = list(eddy_track["basin_ids"][0])
 
-        print(f"envelope for eddy with track id {track_id} is {min_date} {max_date} {basin_ids}")
-
         # --- Phase 2: along-track projection ---
-        compiler = ProjectionCompiler(schema=along_track_schema)
-
-        raw_query = self.load_sql_file(self.along_track_near_eddy_query)
-        print(raw_query)
-        query = compiler.compile(
-            sql_template=raw_query,
-            fields=fields or self.default_along_track_fields,
+        query_spec = QuerySpec(
+            sql_template=self.load_sql_file(self.along_track_near_eddy_query),
+            schema=along_track_eddy_schema,
         )
 
         params = {
@@ -162,8 +155,8 @@ class Eddy(BaseQuery):
         }
 
         return self.execute_query(
-            query=query,
-            schema=along_track_schema,
+            query_spec=query_spec,
+            fields=fields,
             params=params,
             dataset_name="along_track_near_eddy",
         )
@@ -194,9 +187,6 @@ class Eddy(BaseQuery):
                                AND basin_id = ANY( ARRAY[{connected_basin_ids}] );"""
         values = {"track_id": track_id}
 
-
-
-
         with pg.connect(self.config.postgres_dsn) as connection:
             with connection.cursor(row_factory=pg.rows.dict_row) as cursor:
                 cursor.execute(eddy_query, values)
@@ -204,12 +194,11 @@ class Eddy(BaseQuery):
 
                 along_query = along_query.format(
                     speed_radius_scale_factor=100,
-                    min_date=data[0]['min_date'],
-                    max_date=data[0]['max_date'],
-                    connected_basin_ids=data[0]['basin_ids'],
+                    min_date=data[0]["min_date"],
+                    max_date=data[0]["max_date"],
+                    connected_basin_ids=data[0]["basin_ids"],
                 )
                 cursor.execute(along_query, values)
                 data = cursor.fetchall()
 
         return data
-

@@ -1,142 +1,110 @@
 import numpy as np
 from datetime import datetime
-from OceanDB.ocean_data.ocean_data import OceanDataField
+from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 
-
+atk_alias = "atk"
+eddy_alias = "eddy"
 # -----------------
 # Core identity & position
 # -----------------
 
-latitude = OceanDataField(
+latitude = ColumnField(
     name="latitude",
     postgres_table_name="eddy",
     postgres_column_name="latitude",
-    python_type=np.floating,
+    python_type=np.float64,
     postgres_type="real",
-    nc_name="latitude",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-longitude = OceanDataField(
+longitude = ColumnField(
     name="longitude",
     postgres_table_name="eddy",
     postgres_column_name="longitude",
-    python_type=np.floating,
+    python_type=np.float64,
     postgres_type="real",
-    nc_name="longitude",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-date_time = OceanDataField(
+date_time = ColumnField(
     name="time",
     postgres_table_name="eddy",
     postgres_column_name="date_time",
     python_type=datetime,
     postgres_type="timestamp",
-    nc_name="time",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-track = OceanDataField(
+track = ColumnField(
     name="track",
     postgres_table_name="eddy",
     postgres_column_name="track",
     python_type=int,
     postgres_type="integer",
-    nc_name="track",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-cyclonic_type = OceanDataField(
+cyclonic_type = ColumnField(
     name="cyclonic_type",
     postgres_table_name="eddy",
     postgres_column_name="cyclonic_type",
     python_type=int,
     postgres_type="smallint",
-    nc_name="cyclonic_type",
-    nc_scale=1,
-    nc_offset=0,
 )
 
 # -----------------
 # Physical properties
 # -----------------
 
-amplitude = OceanDataField(
+amplitude = ColumnField(
     name="amplitude",
     postgres_table_name="eddy",
     postgres_column_name="amplitude",
-    python_type=np.floating,
+    python_type=np.float64,
     postgres_type="smallint",
-    nc_name="amplitude",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-effective_radius = OceanDataField(
+effective_radius = ColumnField(
     name="effective_radius",
     postgres_table_name="eddy",
     postgres_column_name="effective_radius",
-    python_type=np.floating,
+    python_type=np.float64,
     postgres_type="smallint",
-    nc_name="effective_radius",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-effective_area = OceanDataField(
+effective_area = ColumnField(
     name="effective_area",
     postgres_table_name="eddy",
     postgres_column_name="effective_area",
-    python_type=np.floating,
+    python_type=np.float64,
     postgres_type="real",
-    nc_name="effective_area",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-cost_association = OceanDataField(
+cost_association = ColumnField(
     name="cost_association",
     postgres_table_name="eddy",
     postgres_column_name="cost_association",
-    python_type=np.floating,
+    python_type=np.float64,
     postgres_type="real",
-    nc_name="cost_association",
-    nc_scale=1,
-    nc_offset=0,
 )
 
 # -----------------
 # Observation metadata
 # -----------------
 
-observation_flag = OceanDataField(
+observation_flag = ColumnField(
     name="observation_flag",
     postgres_table_name="eddy",
     postgres_column_name="observation_flag",
     python_type=bool,
     postgres_type="boolean",
-    nc_name="observation_flag",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-observation_number = OceanDataField(
+observation_number = ColumnField(
     name="observation_number",
     postgres_table_name="eddy",
     postgres_column_name="observation_number",
     python_type=int,
     postgres_type="smallint",
-    nc_name="observation_number",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-num_contours = OceanDataField(
+num_contours = ColumnField(
     name="num_contours",
     postgres_table_name="eddy",
     postgres_column_name="num_contours",
@@ -148,82 +116,98 @@ num_contours = OceanDataField(
 # Derived / query-only fields
 # -----------------
 
-distance = OceanDataField(
+distance = DerivedField(
     name="distance",
-    custom_calculation="""
+    expression="""
         ST_Distance(
             ST_MakePoint(%(longitude)s, %(latitude)s),
             eddy.eddy_point
         )
     """,
-    python_type=np.floating,
+    python_type=np.float64,
     postgres_type="double precision",
 )
 
-delta_t = OceanDataField(
+delta_t = DerivedField(
     name="delta_t",
-    custom_calculation="""
+    expression="""
         EXTRACT(EPOCH FROM (%(central_date_time)s - eddy.date_time))
     """,
-    python_type=np.floating,
+    python_type=np.float64,
     postgres_type="double precision",
 )
 
-speed_average = OceanDataField(
+speed_average = ColumnField(
     name="speed_average",
     postgres_table_name="eddy",
     postgres_column_name="speed_average",
     python_type=int,
     postgres_type="integer",
-    nc_name="speed_average",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-speed_radius = OceanDataField(
+speed_radius = ColumnField(
     name="speed_radius",
     postgres_table_name="eddy",
     postgres_column_name="speed_radius",
     python_type=int,
     postgres_type="smallint",
-    nc_name="speed_radius",
-    nc_scale=1,
-    nc_offset=0,
 )
 
-speed_area = OceanDataField(
+speed_area = ColumnField(
     name="speed_area",
     postgres_table_name="eddy",
     postgres_column_name="speed_area",
-    python_type=np.floating,
+    python_type=np.float64,
     postgres_type="real",
-    nc_name="speed_area",
-    nc_scale=1,
-    nc_offset=0,
 )
 
 # -----------------
 # Aggregates (eddy lifecycle)
 # -----------------
 
-min_date_time = OceanDataField(
+min_date_time = DerivedField(
     name="min_date",
-    custom_calculation="MIN(eddy.date_time)",
+    expression="MIN(eddy.date_time)",
     python_type=datetime,
 )
 
-max_date_time = OceanDataField(
+max_date_time = DerivedField(
     name="max_date",
-    custom_calculation="MAX(eddy.date_time)",
+    expression="MAX(eddy.date_time)",
     python_type=datetime,
 )
 
-basin_ids = OceanDataField(
+basin_ids = DerivedField(
     name="basin_ids",
-    custom_calculation="""
+    expression="""
         array_agg(DISTINCT basin_connections.connected_id)
         || array_agg(DISTINCT basin.id)
     """,
     python_type=list,          # important
     postgres_type="integer[]", # optional but useful
+)
+
+# -----------------
+# alongtrack computations
+# -----------------
+
+distance = DerivedField(
+    name="distance",
+    expression=f"""
+        ST_Distance(
+            ST_MakePoint({eddy_alias}.latitude,{eddy_alias}.longitude),
+            {atk_alias}.along_track_point
+        )
+    """,
+    python_type=np.float64,
+    postgres_type="double precision",
+)
+
+delta_t = DerivedField(
+    name="delta_t",
+    expression=f"""
+        EXTRACT(EPOCH FROM ({eddy_alias}.date_time - {atk_alias}.date_time))
+    """,
+    python_type=np.float64,
+    postgres_type="double precision",
 )

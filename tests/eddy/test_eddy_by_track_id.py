@@ -1,15 +1,11 @@
-from datetime import datetime
-
-from OceanDB.data_access import Eddy
-
-eddy = Eddy()
+from OceanDB.data_access.eddy import Eddy
 
 
-along_track_result_iterator = eddy.eddy_envelope_query(track_id=4)
-print(along_track_result_iterator._data)
+def test_eddy_by_track_id():
+    eddy = Eddy()
 
+    along_track_eddy_output = eddy.eddy_with_track_id(
+        fields=["latitude", "cyclonic_type"], track_id=-4
+    )
 
-along_track_eddy_output = eddy.along_track_points_near_eddy(
-    fields=["latitude", "ocean_tide", "delta_t"],
-    track_id=4
-)
+    assert along_track_eddy_output is not None

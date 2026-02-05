@@ -1,5 +1,6 @@
 from typing import Literal
 from OceanDB.ocean_data.fields import eddy_fields as edy_fields
+from OceanDB.schemas.along_track_schema import along_track_fields, along_track_schema
 from OceanDB.ocean_data.ocean_data import OceanDataField
 
 eddy_fields = Literal[
@@ -37,4 +38,10 @@ eddy_schema: dict[eddy_fields, OceanDataField] = {
     "max_date": edy_fields.max_date_time,
     "min_date": edy_fields.min_date_time,
     "basin_ids": edy_fields.basin_ids,
+}
+
+along_track_eddy_schema: dict[along_track_fields, OceanDataField] = {
+    **along_track_schema,
+    "distance": edy_fields.distance,
+    "delta_t": edy_fields.distance,
 }
