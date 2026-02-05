@@ -4,7 +4,7 @@ from psycopg import sql
 import psycopg as pg
 from importlib import resources
 import time
-from typing import IO
+from typing import IO, LiteralString, Literal
 import numpy as np
 from sqlalchemy import create_engine
 
@@ -35,7 +35,7 @@ class OceanDB:
         self.logger = get_logger()
 
     def load_module_file(
-        self, module: str, filename: str, encoding="utf-8", mode="rb"
+            self, module: str, filename: str, encoding="utf-8", mode: Literal["r", "rb"]="rb"
     ) -> IO:
         """
         Open a resource file bundled within a Python package.
@@ -46,11 +46,11 @@ class OceanDB:
         file_path = resources.files(module).joinpath(filename)
 
         # encoding is only valid for text mode
-        if "b" in mode:
+        if mode == "rb":
             return file_path.open(mode)
         return file_path.open(mode, encoding=encoding)
 
-    def load_sql_file(self, filename: str):
+    def load_sql_file(self, filename: str) -> LiteralString:
         """
         Load the contents of a SQL file
         """
