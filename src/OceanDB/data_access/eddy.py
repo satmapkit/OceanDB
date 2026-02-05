@@ -14,9 +14,9 @@ envelope_fields = Literal["max_date", "min_date", "basin_ids"]
 
 
 class Eddy(BaseQuery):
-    along_track_near_eddy_query = "queries/eddy/along_near_eddy.sql"
-    eddy_with_id_query = "queries/eddy/eddy_from_track_id.sql"
-    envelope_query = "queries/eddy/eddy_envelope.sql"
+    _along_track_near_eddy_query = "queries/eddy/along_near_eddy.sql"
+    _eddy_with_id_query = "queries/eddy/eddy_from_track_id.sql"
+    _envelope_query = "queries/eddy/eddy_envelope.sql"
     default_along_track_fields: list[along_track_fields] = [
         "file_name",
         "track",
@@ -76,7 +76,7 @@ class Eddy(BaseQuery):
         OceanData[EddyDataset] | None
         """
         query_spec = QuerySpec(
-            sql_template=self.load_sql_file(self.eddy_with_id_query),
+            sql_template=self.load_sql_file(self._eddy_with_id_query),
             schema=eddy_schema,
         )
         params = {"track_id": track_id}
@@ -101,7 +101,7 @@ class Eddy(BaseQuery):
         """
 
         query_spec = QuerySpec(
-            sql_template=self.load_sql_file(self.envelope_query),
+            sql_template=self.load_sql_file(self._envelope_query),
             schema=eddy_schema,
         )
         params = {"track_id": track_id}
@@ -142,7 +142,7 @@ class Eddy(BaseQuery):
 
         # --- Phase 2: along-track projection ---
         query_spec = QuerySpec(
-            sql_template=self.load_sql_file(self.along_track_near_eddy_query),
+            sql_template=self.load_sql_file(self._along_track_near_eddy_query),
             schema=along_track_eddy_schema,
         )
 
