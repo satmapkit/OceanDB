@@ -88,7 +88,7 @@ def _normalize_sql(q: SqlLike) -> sql.Composable:
     return q if isinstance(q, sql.Composable) else sql.SQL(q)
 
 
-def log_query(conn: pg.Connection, query: sql.Composable, params: Any) -> None:
+def _log_query(conn: pg.Connection, query: sql.Composable, params: Any) -> None:
     print("\n--- SQL QUERY ---")
     print(query.as_string(conn))
     print("--- PARAMS ---")
@@ -142,7 +142,7 @@ class BaseQuery(OceanDB):
 
         with pg.connect(self.config.postgres_dsn) as conn:
             if debug_sql:
-                log_query(conn=conn, query=sql_query, params=params)
+                _log_query(conn=conn, query=sql_query, params=params)
 
             with conn.cursor(row_factory=pg.rows.dict_row) as cur:
                 cur.execute(sql_query, params)
