@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Any
 from psycopg import sql
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,7 @@ class OceanDataField(ABC):
     """
 
     name: str
+    python_type: Optional[type]
 
     @abstractmethod
     def sql_expression(self) -> sql.Composable:
@@ -31,12 +33,19 @@ class OceanDataField(ABC):
             alias=sql.Identifier(self.name),
         )
 
+    def from_sql_query(self, values: list[Any]) -> Any:
+        """
+        Convert to a python type, most often a NDArray[np.float64].
+        """
+        if self.python_type is None:
+            return np.array(values)
+        return np.array(values, dtype=self.python_type)
+
 @dataclass(frozen=True)
 class ColumnField(OceanDataField):
     postgres_table_name: str
     postgres_column_name: str
 
-    python_type: Optional[type] = None
     postgres_type: Optional[str] = None
 
     def sql_expression(self) -> sql.Composable:
@@ -44,6 +53,7 @@ class ColumnField(OceanDataField):
             self.postgres_table_name,
             self.postgres_column_name,
         )
+
 
 @dataclass(frozen=True)
 class DerivedField(OceanDataField):
@@ -53,7 +63,6 @@ class DerivedField(OceanDataField):
 
     expression: str
 
-    python_type: Optional[type] = None
     postgres_type: Optional[str] = None
 
     def sql_expression(self) -> sql.Composable:
