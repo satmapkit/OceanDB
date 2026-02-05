@@ -85,7 +85,6 @@ class BaseQuery(OceanDB):
         params: Mapping[str, Any],
         dataset_name: str = "query_result",
         debug_sql: bool = False,
-        require_all_fields: bool = True,
     ) -> Dataset[K, Any] | None:
         """
         Execute a single query and return a Dataset, or None if empty.
@@ -110,14 +109,6 @@ class BaseQuery(OceanDB):
         if not rows:
             return None
 
-        if require_all_fields:
-            missing = [k for k in query_spec.schema.keys() if k not in rows[0]]
-            if missing:
-                raise ValueError(
-                    f"Query did not return expected fields: {missing}. "
-                    "Make sure your SELECT expressions are aliased to match schema keys."
-                )
-
         return self.build_dataset(
             schema=query_spec.schema,
             rows=rows,
@@ -136,7 +127,7 @@ class BaseQuery(OceanDB):
 
         Notes:
         - Row keys are expected to match schema keys (SQL aliases).
-        - Missing keys are skipped unless `require_all_fields=True` is enforced upstream.
+        - Missing keys are skipped.
         """
         if not rows:
             raise ValueError("rows must be nonempty")
