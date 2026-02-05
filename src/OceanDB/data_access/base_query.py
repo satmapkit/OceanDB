@@ -8,7 +8,6 @@ import psycopg as pg
 from psycopg import sql
 
 from OceanDB.OceanDB import OceanDB
-from OceanDB.data_access.metadata import METADATA_REGISTRY
 from OceanDB.ocean_data.ocean_data import OceanDataField
 from OceanDB.ocean_data.dataset import Dataset, K
 
@@ -73,7 +72,6 @@ class BaseQuery(OceanDB):
     - build_dataset hydrates a columnar Dataset from dict_row results
     """
 
-    METADATA = METADATA_REGISTRY
 
     def execute_query(
         self,
