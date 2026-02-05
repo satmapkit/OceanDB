@@ -41,15 +41,15 @@ class AlongTrack(BaseQuery):
     # Domain key used by BaseQuery metadata registry
     # ALONG_TRACK_DOMAIN = "along_track"
 
-    along_track_nearest_neighbor_query = (
+    _along_track_nearest_neighbor_query = (
         "queries/along_track/geographic_nearest_neighbor.sql"
     )
-    along_track_spatiotemporal_query = (
+    _along_track_spatiotemporal_query = (
         "queries/along_track/geographic_points_in_spatialtemporal_window.sql"
     )
 
-    projected_spatio_temporal_query_mask = "queries/along_track/geographic_points_in_spatialtemporal_projected_window_nomask.sql"
-    projected_spatio_temporal_query_no_mask = (
+    _projected_spatio_temporal_query_mask = "queries/along_track/geographic_points_in_spatialtemporal_projected_window_nomask.sql"
+    _projected_spatio_temporal_query_no_mask = (
         "queries/along_track/geographic_points_in_spatialtemporal_window.sql"
     )
 
@@ -73,7 +73,7 @@ class AlongTrack(BaseQuery):
         """
 
         query_spec = QuerySpec(
-            sql_template=self.load_sql_file(self.along_track_spatiotemporal_query),
+            sql_template=self.load_sql_file(self._along_track_spatiotemporal_query),
             schema=along_track_schema,
         )
 
@@ -113,7 +113,7 @@ class AlongTrack(BaseQuery):
         """
 
         query_spec = QuerySpec(
-            sql_template=self.load_sql_file(self.along_track_nearest_neighbor_query),
+            sql_template=self.load_sql_file(self._along_track_nearest_neighbor_query),
             schema=along_track_schema,
             mandatory_fields=["distance"],
         )
