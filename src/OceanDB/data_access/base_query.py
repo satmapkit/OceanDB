@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping, Union, Generic
 
 import numpy as np
@@ -28,15 +28,18 @@ class QuerySpec(Generic[K]):
     """
     sql_template: SqlLike
     schema: Mapping[K, OceanDataField]
+    mandatory_fields : list[K] = field(default_factory=list)
 
     def sql_projection_compiler(self,
                                 fields: Iterable[K]
-
-                                ):
+                                ) -> sql.SQL:
+        extra_fields = filter(lambda field: field not in self.mandatory_fields, fields)
         field_sql = sql.SQL(", ").join(
                 self.schema[field].to_sql_query()
-                for field in fields
+                for field in extra_fields
             )
+        if self.mandatory_fields and extra_fields:
+            field_sql += sql.SQL(",")
 
         return sql.SQL(self.sql_template).format(fields=field_sql)
 
