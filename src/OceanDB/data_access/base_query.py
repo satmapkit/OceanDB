@@ -69,6 +69,30 @@ class QuerySpec(Generic[K]):
     """
 
     def sql_projection_compiler(self, fields: Iterable[K]) -> sql.Composed:
+        """
+        Given a specific set of fields, project down the SQL query template
+        to an sql query template missing only parameters.
+
+        For example, if this is the main query template::
+
+            SELECT {fields}
+            FROM eddy
+            WHERE eddy.track * eddy.cyclonic_type = %(track_id)s;
+
+        Then invoking this function with fields :code:`['field1', 'field2']` might give
+        a query that looks like::
+
+            SELECT
+                eddy.field1 as field1,
+                eddy.field2 as field2
+            FROM eddy
+            WHERE eddy.track * eddy.cyclonic_type = %(track_id)s;
+
+        :param fields:
+            The requested fields
+
+        :return: SQL query template with all patterns removed other than parameters
+        """
         extra_fields = filter(lambda field: field not in self.mandatory_fields, fields)
         field_sql = sql.SQL(", ").join(
             self.schema[field].to_sql_query() for field in extra_fields
