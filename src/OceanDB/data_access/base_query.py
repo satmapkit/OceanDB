@@ -151,13 +151,13 @@ class BaseQuery(OceanDB):
         if not rows:
             return None
 
-        return self.build_dataset(
+        return self._build_dataset(
             schema=query_spec.schema,
             rows=rows,
             dataset_name=dataset_name,
         )
 
-    def build_dataset(
+    def _build_dataset(
         self,
         *,
         schema: Mapping[K, OceanDataField],
