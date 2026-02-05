@@ -95,37 +95,3 @@ class AlongTrack(BaseQuery):
             params=params,
             dataset_name="along_track",
         )
-
-        # query = QuerySpec(
-        #     sql=compiled_sql,
-        #     schema=AlongTrackSchema.A,
-        # )
-
-        if not isinstance(radii, list):
-            radii = [float(radii)] * len(latitudes)
-
-        basin_ids = self.basin_mask(latitudes, longitudes)
-        connected_basin_ids = list(map(self.basin_connection_map.get, basin_ids))
-
-        params = [
-            {
-                "longitude": lon,
-                "latitude": lat,
-                "distance": r,
-                "central_date_time": dt,
-                "time_delta": time_window,
-                "connected_basin_ids": basins,
-                "missions": missions,
-            }
-            for lat, lon, dt, basins, r in zip(
-                latitudes, longitudes, dates, connected_basin_ids, radii
-            )
-        ]
-
-
-        # return self.run_batch(
-        #     query=query,
-        #     params_list=params,
-        #     dataset_name="along_track",
-        # )
-
