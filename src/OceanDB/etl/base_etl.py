@@ -5,6 +5,7 @@ from psycopg import sql
 from OceanDB.OceanDB import OceanDB
 from pathlib import Path
 
+
 class BaseETL(OceanDB):
 
     def load_netcdf(self, file: Path) -> nc.Dataset:

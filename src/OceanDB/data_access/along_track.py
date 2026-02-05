@@ -1,160 +1,167 @@
-"""
-Projection-Aware Dataset Architecture
-
-"""
-
 from datetime import datetime, timedelta
-from typing import Iterable, List, Literal, get_args
-import psycopg as pg
-import numpy.typing as npt
-import numpy as np
+from typing import Literal, get_args, Any
 
-from OceanDB.data_access.base_query import BaseQuery
-from OceanDB.data_access.schema.along_track_schema import along_track_fields, along_track_schema
+from OceanDB.data_access.base_query import BaseQuery, QuerySpec
 from OceanDB.ocean_data.dataset import Dataset
+from OceanDB.schemas.along_track_schema import along_track_fields, along_track_schema
+
+
+Mission = Literal[
+    "al",
+    "alg",
+    "c2",
+    "c2n",
+    "e1g",
+    "e1",
+    "e2",
+    "en",
+    "enn",
+    "g2",
+    "h2a",
+    "h2b",
+    "j1g",
+    "j1",
+    "j1n",
+    "j2g",
+    "j2",
+    "j2n",
+    "j3",
+    "j3n",
+    "s3a",
+    "s3b",
+    "s6a",
+    "tp",
+    "tpn",
+]
+
 
 class AlongTrack(BaseQuery):
-    """
-    Query/Service object
-
-    Runs queries, returns datasets and bundles them into OceanData
-
-
-    Query service for along-track altimetry data.
-
-    Executes parameterized geospatial and spatiotemporal SQL queries and
-    returns domain-level AlongTrackDataset objects instead of raw rows.
-    """
-
-
-    Mission = Literal[
-        "al",
-        "alg",
-        "c2",
-        "c2n",
-        "e1g",
-        "e1",
-        "e2",
-        "en",
-        "enn",
-        "g2",
-        "h2a",
-        "h2b",
-        "j1g",
-        "j1",
-        "j1n",
-        "j2g",
-        "j2",
-        "j2n",
-        "j3",
-        "j3n",
-        "s3a",
-        "s3b",
-        "s6a",
-        "tp",
-        "tpn",
-    ]
     all_missions = list(get_args(Mission))
 
     # Domain key used by BaseQuery metadata registry
     # ALONG_TRACK_DOMAIN = "along_track"
 
-    nearest_neighbor_query = "queries/along_track/geographic_nearest_neighbor.sql"
-    along_track_spatiotemporal_query = (
+    _along_track_nearest_neighbor_query = (
+        "queries/along_track/geographic_nearest_neighbor.sql"
+    )
+    _along_track_spatiotemporal_query = (
         "queries/along_track/geographic_points_in_spatialtemporal_window.sql"
     )
 
-    projected_spatio_temporal_query_mask = "queries/along_track/geographic_points_in_spatialtemporal_projected_window_nomask.sql"
-    projected_spatio_temporal_query_no_mask = (
+    _projected_spatio_temporal_query_mask = "queries/along_track/geographic_points_in_spatialtemporal_projected_window_nomask.sql"
+    _projected_spatio_temporal_query_no_mask = (
         "queries/along_track/geographic_points_in_spatialtemporal_window.sql"
     )
 
     def __init__(self):
         super().__init__()
 
-    def geographic_points_in_r_dt(
+    def geographic_point_in_r_dt(
         self,
-        latitudes: npt.NDArray,
-        longitudes: npt.NDArray,
-        dates: List[datetime],
         fields: list[along_track_fields],
-        radii: List[float] | float = 500_000.0,
+        latitude: float,
+        longitude: float,
+        date: datetime,
+        radius: float = 500_000.0,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] = all_missions,
-    ) -> Iterable[Dataset[along_track_fields, npt.NDArray[np.floating]] | None]:
+    ) -> Dataset[along_track_fields, Any] | None:
         """
         Query along-track points within spatial + temporal windows.
 
-        Yields one AlongTrackDataset per query point, or None if empty.
+        Yields one Dataset, or None if empty.
+
+        :param fields:
+            List of requested along track fields to return
+
+        :param latitude:
+            Central latitude of the window
+
+        :param longitude:
+            Central longitude of the window
+
+        :param date:
+            Central date of the window
+
+        :param radius:
+            Radius of the spatial window in meters
+
+        :param time_window:
+            Radius of the temporal window
+            (meaning any point from [date - time_window, date + time_window]
+            could be include)
+
+        :param missions:
+            List of satellite missions to include in the query
+            (defaults to all available, see :attr:`AlongTrack.all_missions`)
+
+        :return:
+            If no points found in the window, :code:`None` is returned.
+            If points are found, then a :class:`Dataset <OceanDB.ocean_data.dataset.Dataset>`
+            of requested fields is returned.
         """
 
-        # format what parameters we want out of the query
-        query_string = self.load_sql_file(self.along_track_spatiotemporal_query)
-        query = pg.sql.SQL(query_string).format(
-            fields=pg.sql.SQL(', ').join([
-                along_track_schema[field].to_sql_query() for field in fields
-        ]))
+        query_spec = QuerySpec(
+            sql_template=self.load_sql_file(self._along_track_spatiotemporal_query),
+            schema=along_track_schema,
+        )
 
+        basin_ids = self.basin_mask(latitude, longitude)
+        connected_basin_ids = self.basin_connection_map[basin_ids]
 
-        # input niceties---allow users to specify one radius to be used for all query points
-        if not isinstance(radii, list):
-            radii = [float(radii)] * len(latitudes)
+        params = {
+            "longitude": longitude,
+            "latitude": latitude,
+            "distance": radius,
+            "central_date_time": date,
+            "time_delta": time_window,
+            "connected_basin_ids": connected_basin_ids,
+            "missions": missions,
+        }
 
-        # connected basins
-        basin_ids = self.basin_mask(latitudes, longitudes)
-        connected_basin_ids = list(map(self.basin_connection_map.get, basin_ids))
+        return self.execute_query(
+            query_spec=query_spec,
+            fields=fields,
+            params=params,
+            dataset_name="along_track",
+        )
 
-        # format params
-        params = [
-            {
-                "longitude": lon,
-                "latitude": lat,
-                "distance": r,
-                "central_date_time": dt,
-                "time_delta": time_window,
-                "connected_basin_ids": basins,
-                "missions": missions,
-            }
-            for lat, lon, dt, basins, r in zip(
-                latitudes, longitudes, dates, connected_basin_ids, radii
-            )
-        ]
-        # execute the query
-        return self.execute_query(query, along_track_schema, params)
-
-    def geographic_nearest_neighbors_dt(
+    def geographic_nearest_neighbors(
         self,
-        latitudes: npt.NDArray[np.floating],
-        longitudes: npt.NDArray[np.floating],
-        dates: List[datetime],
-        fields: list[along_track_fields],
-        time_window=timedelta(seconds=856710),
+        fields: list,
+        latitude: float,
+        longitude: float,
+        date: datetime,
+        time_window: timedelta = timedelta(days=10),
         missions: list[Mission] = all_missions,
-    ) -> Iterable[Dataset[along_track_fields, npt.NDArray[np.floating]] | None]:
+    ) -> Dataset[along_track_fields, Any] | None:
         """
-        Given an array of spatiotemporal points, returns the THREE closest data points to each
+        Query along-track points within spatial + temporal windows.
+
+        Yields one Dataset per query point, or None if empty.
         """
 
-        query_string = self.load_sql_file(self.nearest_neighbor_query)
-        query = pg.sql.SQL(query_string).format(
-            fields=pg.sql.SQL(', ').join([
-                along_track_schema[field].to_sql_query() for field in fields
-        ]))
+        query_spec = QuerySpec(
+            sql_template=self.load_sql_file(self._along_track_nearest_neighbor_query),
+            schema=along_track_schema,
+            mandatory_fields=["distance"],
+        )
 
-        basin_ids = self.basin_mask(latitudes, longitudes)
-        connected_basin_ids = list(map(self.basin_connection_map.get, basin_ids))
-        params = [
-            {
-                "latitude": latitude,
-                "longitude": longitude,
-                "central_date_time": date,
-                "connected_basin_ids": connected_basin_ids,
-                "time_delta": str(time_window / 2),
-                "missions": missions,
-            }
-            for latitude, longitude, date, connected_basin_ids in zip(
-                latitudes, longitudes, dates, connected_basin_ids
-            )
-        ]
+        basin_ids = self.basin_mask(latitude, longitude)
+        connected_basin_ids = self.basin_connection_map[basin_ids]
 
-        return self.execute_query(query, along_track_schema, params)
+        params = {
+            "longitude": longitude,
+            "latitude": latitude,
+            "central_date_time": date,
+            "time_delta": time_window,
+            "connected_basin_ids": connected_basin_ids,
+            "missions": missions,
+        }
+
+        return self.execute_query(
+            query_spec=query_spec,
+            fields=fields,
+            params=params,
+            dataset_name="along_track",
+        )

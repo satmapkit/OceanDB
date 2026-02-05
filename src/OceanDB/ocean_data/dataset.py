@@ -8,11 +8,19 @@ from typing import TypeVar, Generic, Mapping
 K = TypeVar("K", bound=str)
 T = TypeVar("T")
 
+
 class Dataset(Mapping[K, T], Generic[K, T]):
     """
     Immutable, column-oriented dataset.
 
     Represents the result of a query, ingestion step, or transformation.
+
+    Is used like a dictionary, e.g.
+
+    .. code-block:: python
+
+        if 'field' in my_dataset:
+            print(my_dataset['field'])
     """
 
     def __init__(
@@ -27,6 +35,10 @@ class Dataset(Mapping[K, T], Generic[K, T]):
         self._data = dict(data)
         self._dtypes = dict(dtypes)
         self.schema = schema
+
+    def __repr__(self) -> str:
+        cols = ", ".join(self._data.keys())
+        return f"Dataset(name='{self.name}', columns=[{cols}])"
 
     def __getitem__(self, key: K) -> T:
         return self._data[key]

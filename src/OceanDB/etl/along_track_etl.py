@@ -305,14 +305,14 @@ class AlongTrackETL(BaseETL):
         ]
 
         # 1. Define the INSERT query
-        insert_query = sql.SQL("""
+        insert_query = sql.SQL(
+            """
                                INSERT INTO {table} (file_name, mission, track, cycle, latitude, longitude,
                                                     sla_unfiltered, sla_filtered, date_time, dac,
                                                     ocean_tide, internal_tide, lwe, mdt, basin_id)
                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                               """).format(
-            table=sql.Identifier(self.along_track_table_name)
-        )
+                               """
+        ).format(table=sql.Identifier(self.along_track_table_name))
 
         # 2. Prepare the list of data tuples
         # Using .item() is still recommended to ensure native Python types
@@ -377,11 +377,13 @@ class AlongTrackETL(BaseETL):
             "title",
         ]
 
-        query = sql.SQL("""
+        query = sql.SQL(
+            """
             INSERT INTO {table} ({fields})
             VALUES ({placeholders})
             ON CONFLICT (file_name) DO NOTHING;
-        """).format(
+        """
+        ).format(
             table=sql.Identifier(self.along_track_metadata_table_name),
             fields=sql.SQL(", ").join(sql.Identifier(f) for f in fields),
             placeholders=sql.SQL(", ").join(sql.Placeholder() * len(fields)),

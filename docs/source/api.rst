@@ -1,3 +1,7 @@
+.. role:: sql(code)
+   :language: sql
+
+
 API
 ==========
 .. autosummary::
@@ -5,6 +9,8 @@ API
    :template: module-template.rst
 
    OceanDB.OceanDB
-   OceanDB.AlongTrack
-   OceanDB.utils.projections
-   OceanDB.EddyTrack
+   OceanDB.data_access.along_track
+   OceanDB.data_access.eddy
+   OceanDB.data_access.base_query
+   OceanDB.ocean_data.ocean_data
+   OceanDB.ocean_data.dataset

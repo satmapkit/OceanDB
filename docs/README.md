@@ -1,19 +1,14 @@
 # OceanDB Documentation
 
 ## Building
-To build this documentation, first install OceanDB from the root-level of this repository:
+To build this documentation, first install the OceanDB dev dependencies from the root-level of this repository:
 ```sh
-pip install .
+pip install .[dev]
 ```
 
-Subsequently, install the docs-specific dependencies:
+Next, build the docs
 ```sh
 cd docs/
-pip install -r requirements.txt
-```
-
-Lastly, build the docs
-```sh
 make html
 ```
 

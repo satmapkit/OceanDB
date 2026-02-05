@@ -2,12 +2,9 @@ from functools import cached_property
 import netCDF4 as nc
 from psycopg import sql
 import psycopg as pg
-from psycopg.rows import dict_row
 from importlib import resources
 import time
-import pandas as pd
-from typing import IO
-from typing import Any, List, Dict, Optional
+from typing import IO, LiteralString, Literal
 import numpy as np
 from sqlalchemy import create_engine
 
@@ -25,7 +22,6 @@ class OceanDB:
     def __init__(
         self,
     ):
-
         self.config = Config()
         self.connection_string = self.config.postgres_dsn
         self.host = self.config.postgres_host
@@ -39,7 +35,11 @@ class OceanDB:
         self.logger = get_logger()
 
     def load_module_file(
-        self, module: str, filename: str, encoding="utf-8", mode="rb"
+        self,
+        module: str,
+        filename: str,
+        encoding="utf-8",
+        mode: Literal["r", "rb"] = "rb",
     ) -> IO:
         """
         Open a resource file bundled within a Python package.
@@ -50,11 +50,11 @@ class OceanDB:
         file_path = resources.files(module).joinpath(filename)
 
         # encoding is only valid for text mode
-        if "b" in mode:
+        if mode == "rb":
             return file_path.open(mode)
         return file_path.open(mode, encoding=encoding)
 
-    def load_sql_file(self, filename: str):
+    def load_sql_file(self, filename: str) -> LiteralString:
         """
         Load the contents of a SQL file
         """
@@ -63,52 +63,6 @@ class OceanDB:
         ) as f:
             query = f.read()
             return query
-
-    def select_query(self, table: str, query: str) -> Optional[List[Dict[str, Any]]]:
-        """
-        Execute a SQL query and optionally return rows if the query produces results.
-
-        Parameters
-        ----------
-        table : str
-            Logical table name (for logging/debugging)
-        query : str
-            SQL query string (can be SELECT, INSERT, UPDATE, etc.)
-
-        Returns
-        -------
-        Optional[List[Dict[str, Any]]]
-            List of dictionaries (rows), or None if no results.
-        """
-        try:
-            with pg.connect(self.connection_string, row_factory=dict_row) as conn:
-                with conn.cursor() as cur:
-                    cur.execute(query)
-
-                    # Detect if the query returns rows (e.g. SELECT)
-                    if cur.description:
-                        rows = cur.fetchall()
-                        self.logger.info(f"✅ Retrieved {len(rows)} rows from {table}")
-                        return rows
-                    else:
-                        conn.commit()
-                        self.logger.info(f"✅ Executed non-returning query on {table}")
-                        return None
-
-        except Exception as ex:
-            self.logger.info(f"Error executing {table}")
-            self.logger.info(f"Error while Executing Query: {ex}")
-            return None
-
-    # def execute_query(self, table, query):
-    #     try:
-    #         with pg.connect(self.connection_string) as conn:
-    #             with conn.cursor() as cur:
-    #                 cur.execute(query)
-    #                 conn.commit()
-    #     except Exception as ex:
-    #         self.logger.info(f"Error executing {table}")
-    #         self.logger.info(f"Error while Executing Query {ex}")
 
     def get_engine(self, echo: bool = False):
         """Return a SQLAlchemy engine connected to the OceanDB Postgres database."""
@@ -157,66 +111,7 @@ class OceanDB:
             with conn.cursor() as cur:
                 cur.execute(query_truncate_table)
                 conn.commit()
-
         print(f"All data removed from table '{name} in database.'{self.db_name}'.")
-
-    ######################################################
-    #
-    # Convert to xarray
-    #
-    ######################################################
-    def data_as_xarray(self, data, header_array, row_metadata):
-        meta = dict()
-        encodings = dict()
-
-        try:
-            df = pd.DataFrame(data, columns=header_array)
-        except Exception as err:
-            print(err)
-            raise err
-
-        # We need to either assign the metadata to the 'attrs' of the variable, or the encoding. If we do the encoding,
-        # then xarray will actively transform the data. For the moment, I am only transforming the datatype.
-        # The other notable piece is time. Time data already has some default encoding associated with it, so we just
-        # need to override it.
-
-        # encoding_keys = ['dtype', 'scale_factor', 'add_offset', '_FillValue']
-        encoding_keys = ["dtype"]
-        disallowed_time_keys = [
-            "dtype",
-            "units",
-            "calendar",
-            "scale_factor",
-            "add_offset",
-        ]
-
-        xrdata = df.to_xarray()
-        for record in row_metadata:
-            if record["var_name"] in header_array:
-                # Remove empty items from dictionary. Xarray will throw an error is an item is None
-                if "time" in record["var_name"]:
-                    xrdata[record["var_name"]].attrs = {
-                        k: v
-                        for k, v in record.items()
-                        if v is not None and k not in disallowed_time_keys
-                    }
-                    xrdata[record["var_name"]].encoding["dtype"] = "float64"
-                    xrdata[record["var_name"]].encoding[
-                        "units"
-                    ] = "days since 1950-01-01 00:00:00"
-                    xrdata[record["var_name"]].encoding["calendar"] = "gregorian"
-                else:
-                    xrdata[record["var_name"]].attrs = {
-                        k: v
-                        for k, v in record.items()
-                        if v is not None and k not in encoding_keys
-                    }
-                    encodings[record["var_name"]] = {
-                        k: v
-                        for k, v in record.items()
-                        if v is not None and k in encoding_keys
-                    }
-        return xrdata, encodings
 
     @cached_property
     def basin_mask_data(self):
@@ -275,56 +170,3 @@ class OceanDB:
                     if not cursor.nextset():
                         break
         return basin_id_connection_dict
-
-    def data_as_xarray(self, data, header_array, row_metadata):
-        meta = dict()
-        encodings = dict()
-
-        try:
-            df = pd.DataFrame(data, columns=header_array)
-        except Exception as err:
-            print(err)
-            raise Exception
-
-        # We need to either assign the metadata to the 'attrs' of the variable, or the encoding. If we do the encoding,
-        # then xarray will actively transform the data. For the moment, I am only transforming the datatype.
-        # The other notable piece is time. Time data already has some default encoding associated with it, so we just
-        # need to override it.
-
-        # encoding_keys = ['dtype', 'scale_factor', 'add_offset', '_FillValue']
-        encoding_keys = ["dtype"]
-        disallowed_time_keys = [
-            "dtype",
-            "units",
-            "calendar",
-            "scale_factor",
-            "add_offset",
-        ]
-
-        xrdata = df.to_xarray()
-        for record in row_metadata:
-            if record["var_name"] in header_array:
-                # Remove empty items from dictionary. Xarray will throw an error is an item is None
-                if "time" in record["var_name"]:
-                    xrdata[record["var_name"]].attrs = {
-                        k: v
-                        for k, v in record.items()
-                        if v is not None and k not in disallowed_time_keys
-                    }
-                    xrdata[record["var_name"]].encoding["dtype"] = "float64"
-                    xrdata[record["var_name"]].encoding[
-                        "units"
-                    ] = "days since 1950-01-01 00:00:00"
-                    xrdata[record["var_name"]].encoding["calendar"] = "gregorian"
-                else:
-                    xrdata[record["var_name"]].attrs = {
-                        k: v
-                        for k, v in record.items()
-                        if v is not None and k not in encoding_keys
-                    }
-                    encodings[record["var_name"]] = {
-                        k: v
-                        for k, v in record.items()
-                        if v is not None and k in encoding_keys
-                    }
-        return xrdata, encodings
