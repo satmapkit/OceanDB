@@ -82,6 +82,8 @@ class QuerySpec(Generic[K]):
 def _normalize_sql(q: SqlLike) -> sql.Composable:
     """
     Ensure we always pass a psycopg composable to cursor.execute().
+
+    CURRENTLY UNUSED.
     """
     return q if isinstance(q, sql.Composable) else sql.SQL(q)
 
