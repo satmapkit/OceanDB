@@ -165,10 +165,10 @@ class BaseQuery(OceanDB):
         row0 = rows[0]
 
         for name, field in schema.items():
-            if name not in row0:
+            if field.name not in row0:
                 continue
 
-            values = [row[name] for row in rows]
+            values = [row[field.name] for row in rows]
 
             if field.python_type is not None:
                 arr = np.asarray(values, dtype=field.python_type)
