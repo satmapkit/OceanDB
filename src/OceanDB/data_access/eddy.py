@@ -119,7 +119,7 @@ class Eddy(BaseQuery):
         *,
         track_id: int,
         fields: Iterable[along_track_fields] | None = None,
-    ):
+    ) -> Dataset[along_track_fields, Any] | None:
         """
         Retrieve along-track altimetry points spatially and temporally
         associated with a given eddy track.
