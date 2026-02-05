@@ -58,7 +58,7 @@ class AlongTrack(BaseQuery):
 
     def geographic_point_in_r_dt(
         self,
-        fields: list,
+        fields: list[along_track_fields],
         latitude: float,
         longitude: float,
         date: datetime,
@@ -69,7 +69,36 @@ class AlongTrack(BaseQuery):
         """
         Query along-track points within spatial + temporal windows.
 
-        Yields one Dataset per query point, or None if empty.
+        Yields one Dataset, or None if empty.
+
+        :param fields:
+            List of requested along track fields to return
+
+        :param latitude:
+            Central latitude of the window
+
+        :param longitude:
+            Central longitude of the window
+
+        :param date:
+            Central date of the window
+
+        :param radius:
+            Radius of the spatial window in meters
+
+        :param time_window:
+            Radius of the temporal window
+            (meaning any point from [date - time_window, date + time_window]
+            could be include)
+
+        :param missions:
+            List of satellite missions to include in the query
+            (defaults to all available, see :attr:`AlongTrack.all_missions`)
+
+        :return:
+            If no points found in the window, :code:`None` is returned.
+            If points are found, then a :class:`Dataset <OceanDB.ocean_data.dataset.Dataset>`
+            of requested fields is returned.
         """
 
         query_spec = QuerySpec(

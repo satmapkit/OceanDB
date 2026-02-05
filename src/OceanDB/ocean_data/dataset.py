@@ -14,6 +14,13 @@ class Dataset(Mapping[K, T], Generic[K, T]):
     Immutable, column-oriented dataset.
 
     Represents the result of a query, ingestion step, or transformation.
+
+    Is used like a dictionary, e.g.
+
+    .. code-block:: python
+
+        if 'field' in my_dataset:
+            print(my_dataset['field'])
     """
 
     def __init__(

@@ -13,3 +13,4 @@ API
    OceanDB.data_access.eddy
    OceanDB.data_access.base_query
    OceanDB.ocean_data.ocean_data
+   OceanDB.ocean_data.dataset
