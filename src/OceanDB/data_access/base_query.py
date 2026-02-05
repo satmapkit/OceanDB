@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping, Union, Generic
+from typing import Any, Iterable, Mapping, Generic, LiteralString
 
 import numpy as np
 import psycopg as pg
@@ -13,7 +13,6 @@ from OceanDB.ocean_data.ocean_data import OceanDataField
 from OceanDB.ocean_data.dataset import Dataset, K
 
 
-SqlLike = Union[str, sql.Composable]
 
 
 @dataclass(frozen=True)
@@ -26,13 +25,13 @@ class QuerySpec(Generic[K]):
       (i.e. SELECT ... AS <field_name>)
     - The schema describes how to type/hydrate returned columns.
     """
-    sql_template: SqlLike
+    sql_template: LiteralString
     schema: Mapping[K, OceanDataField]
     mandatory_fields : list[K] = field(default_factory=list)
 
     def sql_projection_compiler(self,
                                 fields: Iterable[K]
-                                ) -> sql.SQL:
+                                ) -> sql.Composed:
         extra_fields = filter(lambda field: field not in self.mandatory_fields, fields)
         field_sql = sql.SQL(", ").join(
                 self.schema[field].to_sql_query()
