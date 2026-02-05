@@ -101,18 +101,18 @@ class BaseQuery(OceanDB):
     Base class for read-only query services.
 
     Supports:
-    (A) curated, first-class schemas (AlongTrackSchema, EddySchema, etc.)
-    (B) ad-hoc user-supplied queries + schemas via QuerySpec
+
+    * ad-hoc user-supplied queries + schemas via QuerySpec
+    * output processed into arbitrary schemas
 
     The core contract is:
-    - SQL aliases == schema keys
-    - build_dataset hydrates a columnar Dataset from dict_row results
+
+    * SQL aliases == schema keys
     """
 
     def execute_query(
         self,
         query_spec: QuerySpec,
-        # query: sql.Composable,
         *,
         fields: Iterable[K],
         params: Mapping[str, Any],
@@ -121,6 +121,19 @@ class BaseQuery(OceanDB):
     ) -> Dataset[K, Any] | None:
         """
         Execute a single query and return a Dataset, or None if empty.
+
+        :param query_spec:
+            The specification for the query to be made
+
+        :param fields:
+            Set of fields to be extracted from the query
+
+        :param params:
+            Set of parameters to be passed to the query
+
+        :param dataset_name:
+            Name to give to the resulting dataset
+            (this is mostly used for output to NETCDF)
         """
 
         sql_query = query_spec.sql_projection_compiler(fields)
@@ -155,8 +168,21 @@ class BaseQuery(OceanDB):
         Given a schema and a nonempty list of dict rows, construct a Dataset.
 
         Notes:
-        - Row keys are expected to match schema keys (SQL aliases).
         - Missing keys are skipped.
+
+        :param schema:
+            Schema to be used when parsing the input data (rows) into the output dataset
+
+        :param rows:
+            Input data, as retrieved from:
+
+            .. code-block:: python
+
+                with conn.cursor(row_factory=pg.rows.dict_row) as cur:
+                    cur.execute(sql_query, params)
+                    rows = cur.fetchall()
+
+
         """
         if not rows:
             raise ValueError("rows must be nonempty")
