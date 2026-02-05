@@ -6,34 +6,36 @@ from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas.along_track_schema import along_track_fields, along_track_schema
 
 
+Mission = Literal[
+    "al",
+    "alg",
+    "c2",
+    "c2n",
+    "e1g",
+    "e1",
+    "e2",
+    "en",
+    "enn",
+    "g2",
+    "h2a",
+    "h2b",
+    "j1g",
+    "j1",
+    "j1n",
+    "j2g",
+    "j2",
+    "j2n",
+    "j3",
+    "j3n",
+    "s3a",
+    "s3b",
+    "s6a",
+    "tp",
+    "tpn",
+]
+
+
 class AlongTrack(BaseQuery):
-    Mission = Literal[
-        "al",
-        "alg",
-        "c2",
-        "c2n",
-        "e1g",
-        "e1",
-        "e2",
-        "en",
-        "enn",
-        "g2",
-        "h2a",
-        "h2b",
-        "j1g",
-        "j1",
-        "j1n",
-        "j2g",
-        "j2",
-        "j2n",
-        "j3",
-        "j3n",
-        "s3a",
-        "s3b",
-        "s6a",
-        "tp",
-        "tpn",
-    ]
     all_missions = list(get_args(Mission))
 
     # Domain key used by BaseQuery metadata registry
