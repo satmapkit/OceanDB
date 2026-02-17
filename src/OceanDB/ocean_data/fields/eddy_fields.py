@@ -9,7 +9,7 @@ eddy_alias = "eddy"
 # -----------------
 
 latitude = ColumnField(
-    name="latitude",
+    export_name="latitude",
     postgres_table_name="eddy",
     postgres_column_name="latitude",
     python_type=np.float64,
@@ -17,7 +17,7 @@ latitude = ColumnField(
 )
 
 longitude = ColumnField(
-    name="longitude",
+    export_name="longitude",
     postgres_table_name="eddy",
     postgres_column_name="longitude",
     python_type=np.float64,
@@ -25,7 +25,7 @@ longitude = ColumnField(
 )
 
 date_time = ColumnField(
-    name="time",
+    export_name="time",
     postgres_table_name="eddy",
     postgres_column_name="date_time",
     python_type=datetime,
@@ -33,7 +33,7 @@ date_time = ColumnField(
 )
 
 track = ColumnField(
-    name="track",
+    export_name="track",
     postgres_table_name="eddy",
     postgres_column_name="track",
     python_type=int,
@@ -41,7 +41,7 @@ track = ColumnField(
 )
 
 cyclonic_type = ColumnField(
-    name="cyclonic_type",
+    export_name="cyclonic_type",
     postgres_table_name="eddy",
     postgres_column_name="cyclonic_type",
     python_type=int,
@@ -53,7 +53,7 @@ cyclonic_type = ColumnField(
 # -----------------
 
 amplitude = ColumnField(
-    name="amplitude",
+    export_name="amplitude",
     postgres_table_name="eddy",
     postgres_column_name="amplitude",
     python_type=np.float64,
@@ -61,7 +61,7 @@ amplitude = ColumnField(
 )
 
 effective_radius = ColumnField(
-    name="effective_radius",
+    export_name="effective_radius",
     postgres_table_name="eddy",
     postgres_column_name="effective_radius",
     python_type=np.float64,
@@ -69,7 +69,7 @@ effective_radius = ColumnField(
 )
 
 effective_area = ColumnField(
-    name="effective_area",
+    export_name="effective_area",
     postgres_table_name="eddy",
     postgres_column_name="effective_area",
     python_type=np.float64,
@@ -77,7 +77,7 @@ effective_area = ColumnField(
 )
 
 cost_association = ColumnField(
-    name="cost_association",
+    export_name="cost_association",
     postgres_table_name="eddy",
     postgres_column_name="cost_association",
     python_type=np.float64,
@@ -89,7 +89,7 @@ cost_association = ColumnField(
 # -----------------
 
 observation_flag = ColumnField(
-    name="observation_flag",
+    export_name="observation_flag",
     postgres_table_name="eddy",
     postgres_column_name="observation_flag",
     python_type=bool,
@@ -97,7 +97,7 @@ observation_flag = ColumnField(
 )
 
 observation_number = ColumnField(
-    name="observation_number",
+    export_name="observation_number",
     postgres_table_name="eddy",
     postgres_column_name="observation_number",
     python_type=int,
@@ -105,7 +105,7 @@ observation_number = ColumnField(
 )
 
 num_contours = ColumnField(
-    name="num_contours",
+    export_name="num_contours",
     postgres_table_name="eddy",
     postgres_column_name="num_contours",
     python_type=int,
@@ -117,7 +117,7 @@ num_contours = ColumnField(
 # -----------------
 
 distance = DerivedField(
-    name="distance",
+    export_name="distance",
     expression="""
         ST_Distance(
             ST_MakePoint(%(longitude)s, %(latitude)s),
@@ -129,7 +129,7 @@ distance = DerivedField(
 )
 
 delta_t = DerivedField(
-    name="delta_t",
+    export_name="delta_t",
     expression="""
         EXTRACT(EPOCH FROM (%(central_date_time)s - eddy.date_time))
     """,
@@ -138,7 +138,7 @@ delta_t = DerivedField(
 )
 
 speed_average = ColumnField(
-    name="speed_average",
+    export_name="speed_average",
     postgres_table_name="eddy",
     postgres_column_name="speed_average",
     python_type=int,
@@ -146,7 +146,7 @@ speed_average = ColumnField(
 )
 
 speed_radius = ColumnField(
-    name="speed_radius",
+    export_name="speed_radius",
     postgres_table_name="eddy",
     postgres_column_name="speed_radius",
     python_type=int,
@@ -154,7 +154,7 @@ speed_radius = ColumnField(
 )
 
 speed_area = ColumnField(
-    name="speed_area",
+    export_name="speed_area",
     postgres_table_name="eddy",
     postgres_column_name="speed_area",
     python_type=np.float64,
@@ -166,19 +166,19 @@ speed_area = ColumnField(
 # -----------------
 
 min_date_time = DerivedField(
-    name="min_date",
+    export_name="min_date",
     expression="MIN(eddy.date_time)",
     python_type=datetime,
 )
 
 max_date_time = DerivedField(
-    name="max_date",
+    export_name="max_date",
     expression="MAX(eddy.date_time)",
     python_type=datetime,
 )
 
 basin_ids = DerivedField(
-    name="basin_ids",
+    export_name="basin_ids",
     expression="""
         array_agg(DISTINCT basin_connections.connected_id)
         || array_agg(DISTINCT basin.id)
@@ -192,7 +192,7 @@ basin_ids = DerivedField(
 # -----------------
 
 distance = DerivedField(
-    name="distance",
+    export_name="distance",
     expression=f"""
         ST_Distance(
             ST_MakePoint({eddy_alias}.latitude,{eddy_alias}.longitude),
@@ -204,7 +204,7 @@ distance = DerivedField(
 )
 
 delta_t = DerivedField(
-    name="delta_t",
+    export_name="delta_t",
     expression=f"""
         EXTRACT(EPOCH FROM ({eddy_alias}.date_time - {atk_alias}.date_time))
     """,

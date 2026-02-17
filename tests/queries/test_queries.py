@@ -20,19 +20,19 @@ def test_execute_query():
         """,
         schema={
             "latitude": ColumnField(
-                name="latitude",
+                export_name="latitude",
                 postgres_table_name="atk",
                 postgres_column_name="latitude",
                 python_type=float,
             ),
             "longitude": ColumnField(
-                name="longitude",
+                export_name="longitude",
                 postgres_table_name="atk",
                 postgres_column_name="longitude",
                 python_type=float,
             ),
             "distance": DerivedField(
-                name="distance",
+                export_name="distance",
                 expression=f"""
                     ST_Distance(
                         ST_MakePoint(%(longitude)s, %(latitude)s),

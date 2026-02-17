@@ -10,7 +10,7 @@ from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 atk_alias = "atk"
 
 latitude = ColumnField(
-    name="latitude",
+    export_name="latitude",
     postgres_table_name=atk_alias,
     postgres_column_name="latitude",
     python_type=np.float64,
@@ -18,7 +18,7 @@ latitude = ColumnField(
 )
 
 longitude = ColumnField(
-    name="longitude",
+    export_name="longitude",
     postgres_table_name=atk_alias,
     postgres_column_name="longitude",
     python_type=np.float64,
@@ -26,7 +26,7 @@ longitude = ColumnField(
 )
 
 date_time = ColumnField(
-    name="date_time",
+    export_name="date_time",
     postgres_table_name=atk_alias,
     postgres_column_name="date_time",
     python_type=datetime,
@@ -34,7 +34,7 @@ date_time = ColumnField(
 )
 
 file_name = ColumnField(
-    name="file_name",
+    export_name="file_name",
     postgres_table_name=atk_alias,
     postgres_column_name="file_name",
     python_type=str,
@@ -42,7 +42,7 @@ file_name = ColumnField(
 )
 
 mission = ColumnField(
-    name="mission",
+    export_name="mission",
     postgres_table_name=atk_alias,
     postgres_column_name="mission",
     python_type=str,
@@ -50,7 +50,7 @@ mission = ColumnField(
 )
 
 track = ColumnField(
-    name="track",
+    export_name="track",
     postgres_table_name=atk_alias,
     postgres_column_name="track",
     python_type=int,
@@ -58,7 +58,7 @@ track = ColumnField(
 )
 
 cycle = ColumnField(
-    name="cycle",
+    export_name="cycle",
     postgres_table_name=atk_alias,
     postgres_column_name="cycle",
     python_type=int,
@@ -66,7 +66,7 @@ cycle = ColumnField(
 )
 
 basin_id = ColumnField(
-    name="basin_id",
+    export_name="basin_id",
     postgres_table_name=atk_alias,
     postgres_column_name="basin_id",
     python_type=int,
@@ -78,7 +78,7 @@ basin_id = ColumnField(
 # -----------------
 
 sla_unfiltered = ColumnField(
-    name="sla_unfiltered",
+    export_name="sla_unfiltered",
     postgres_table_name=atk_alias,
     postgres_column_name="sla_unfiltered",
     python_type=np.float64,
@@ -86,7 +86,7 @@ sla_unfiltered = ColumnField(
 )
 
 sla_filtered = ColumnField(
-    name="sla_filtered",
+    export_name="sla_filtered",
     postgres_table_name=atk_alias,
     postgres_column_name="sla_filtered",
     python_type=np.float64,
@@ -94,7 +94,7 @@ sla_filtered = ColumnField(
 )
 
 dac = ColumnField(
-    name="dac",
+    export_name="dac",
     postgres_table_name=atk_alias,
     postgres_column_name="dac",
     python_type=np.float64,
@@ -102,7 +102,7 @@ dac = ColumnField(
 )
 
 ocean_tide = ColumnField(
-    name="ocean_tide",
+    export_name="ocean_tide",
     postgres_table_name=atk_alias,
     postgres_column_name="ocean_tide",
     python_type=np.float64,
@@ -110,7 +110,7 @@ ocean_tide = ColumnField(
 )
 
 internal_tide = ColumnField(
-    name="internal_tide",
+    export_name="internal_tide",
     postgres_table_name=atk_alias,
     postgres_column_name="internal_tide",
     python_type=np.float64,
@@ -118,7 +118,7 @@ internal_tide = ColumnField(
 )
 
 lwe = ColumnField(
-    name="lwe",
+    export_name="lwe",
     postgres_table_name=atk_alias,
     postgres_column_name="lwe",
     python_type=np.float64,
@@ -126,7 +126,7 @@ lwe = ColumnField(
 )
 
 mdt = ColumnField(
-    name="mdt",
+    export_name="mdt",
     postgres_table_name=atk_alias,
     postgres_column_name="mdt",
     python_type=np.float64,
@@ -134,7 +134,7 @@ mdt = ColumnField(
 )
 
 tpa_correction = ColumnField(
-    name="tpa_correction",
+    export_name="tpa_correction",
     postgres_table_name=atk_alias,
     postgres_column_name="tpa_correction",
     python_type=np.float64,
@@ -144,7 +144,7 @@ tpa_correction = ColumnField(
 # Derived / query-only fields
 
 distance = DerivedField(
-    name="distance",
+    export_name="distance",
     expression=f"""
         ST_Distance(
             ST_MakePoint(%(longitude)s, %(latitude)s),
@@ -156,7 +156,7 @@ distance = DerivedField(
 )
 
 delta_t = DerivedField(
-    name="delta_t",
+    export_name="delta_t",
     expression=f"""
         EXTRACT(EPOCH FROM (%(central_date_time)s - {atk_alias}.date_time))
     """,

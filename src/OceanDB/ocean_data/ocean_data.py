@@ -17,12 +17,9 @@ class OceanDataField(ABC):
         See :attr:`python_type`
     """
 
-    name: str
+    export_name: str
     """
-    Unique name of this field, as it appears in postgres, i.e. :code:`name` in::
-        
-        SELECT field AS name FROM ... WHERE ...
-                        ^
+    Unique name for this field, used in exporting
     """
 
     python_type: Optional[type]
@@ -43,7 +40,7 @@ class OceanDataField(ABC):
         """
         return sql.SQL("{expr} AS {alias}").format(
             expr=self.sql_expression(),
-            alias=sql.Identifier(self.name),
+            alias=sql.Identifier(self.export_name),
         )
 
     def from_sql_query(self, values: list[Any]) -> Any:
@@ -89,7 +86,11 @@ class ColumnField(OceanDataField):
 
     postgres_column_name: str
     """
-    Name of the column
+    Name of the column containing this field in a database,
+    i.e. :code:`name` in::
+        
+        SELECT field AS name FROM ... WHERE ...
+                        ^
     """
 
     postgres_type: Optional[str] = None
