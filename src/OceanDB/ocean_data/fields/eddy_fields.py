@@ -183,8 +183,8 @@ basin_ids = DerivedField(
         array_agg(DISTINCT basin_connections.connected_id)
         || array_agg(DISTINCT basin.id)
     """,
-    python_type=list,          # important
-    postgres_type="integer[]", # optional but useful
+    python_type=list,  # important
+    postgres_type="integer[]",  # optional but useful
 )
 
 # -----------------

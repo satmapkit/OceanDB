@@ -78,7 +78,6 @@ class ColumnField(OceanDataField):
         See :attr:`postgres_type`
     """
 
-
     postgres_table_name: str
     """
     Name (or alias) of the source table for this column

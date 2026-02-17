@@ -4,6 +4,7 @@ from OceanDB.data_access.base_query import QuerySpec, BaseQuery
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 import numpy as np
 
+
 def test_execute_query():
     query = QuerySpec(
         sql_template="""
@@ -49,19 +50,18 @@ def test_execute_query():
     res = base_query.execute_query(
         query_spec=query,
         params={
-            'longitude': 28.1,
-            'latitude': -69,
-            'central_date_time': datetime(year=2019, month=1, day=1, hour=1),
-            'time_delta':timedelta(days=10),
-            'distance': 500_000
+            "longitude": 28.1,
+            "latitude": -69,
+            "central_date_time": datetime(year=2019, month=1, day=1, hour=1),
+            "time_delta": timedelta(days=10),
+            "distance": 500_000,
         },
         fields=[
-            'latitude',
-            'distance',
+            "latitude",
+            "distance",
         ],
         debug_sql=True,
     )
     assert res is not None
-    assert 'latitude' in res
-    assert 'distance' in res
-
+    assert "latitude" in res
+    assert "distance" in res
