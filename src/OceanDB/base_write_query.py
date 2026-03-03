@@ -1,6 +1,10 @@
+from typing import Any, Iterable, Mapping
+
 import psycopg as pg
 
 from OceanDB.OceanDB import OceanDB
+from OceanDB.ocean_data.dataset import K
+from OceanDB.query_spec import QuerySpec, log_query
 
 class BaseWriteQuery(OceanDB):
     """
@@ -11,10 +15,10 @@ class BaseWriteQuery(OceanDB):
         self,
         query_spec: QuerySpec,
         *,
-        fields: Iterable[K],
-        params: Mapping[str, Any],
+        fields: Iterable[K] = [],
+        params: Mapping[str, Any] = {},
         debug_sql: bool = False,
-    ) -> Dataset[K, Any] | None:
+    ) -> None:
         """
         Execute a single query and return a Dataset, or None if empty.
 
@@ -32,7 +36,7 @@ class BaseWriteQuery(OceanDB):
 
         with pg.connect(self.config.postgres_dsn) as conn:
             if debug_sql:
-                _log_query(conn=conn, query=sql_query, params=params)
+                log_query(conn=conn, query=sql_query, params=params)
 
             with conn.cursor(row_factory=pg.rows.dict_row) as cur:
                 cur.execute(sql_query, params)
