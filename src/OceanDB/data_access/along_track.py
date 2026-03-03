@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Literal, get_args, Any
 
-from OceanDB.data_access.base_query import BaseQuery, QuerySpec
+from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas.along_track_schema import along_track_fields, along_track_schema
 
@@ -35,7 +35,7 @@ Mission = Literal[
 ]
 
 
-class AlongTrack(BaseQuery):
+class AlongTrack(BaseReadQuery):
     all_missions = list(get_args(Mission))
 
     # Domain key used by BaseQuery metadata registry
@@ -119,7 +119,7 @@ class AlongTrack(BaseQuery):
             "missions": missions,
         }
 
-        return self.execute_query(
+        return self.execute_read_query(
             query_spec=query_spec,
             fields=fields,
             params=params,
@@ -159,7 +159,7 @@ class AlongTrack(BaseQuery):
             "missions": missions,
         }
 
-        return self.execute_query(
+        return self.execute_read_query(
             query_spec=query_spec,
             fields=fields,
             params=params,

@@ -4,7 +4,7 @@ import numpy.typing as npt
 import numpy as np
 from typing import Any, Literal, Iterable
 
-from OceanDB.data_access.along_track import BaseQuery
+from OceanDB.data_access.along_track import BaseReadQuery
 from OceanDB.schemas.along_track_schema import along_track_fields
 from OceanDB.schemas.eddy_schema import eddy_schema, eddy_fields, along_track_eddy_schema 
 from OceanDB.ocean_data.dataset import Dataset
@@ -13,7 +13,7 @@ from OceanDB.data_access.base_query import QuerySpec
 envelope_fields = Literal["max_date", "min_date", "basin_ids"]
 
 
-class Eddy(BaseQuery):
+class Eddy(BaseReadQuery):
     _along_track_near_eddy_query = "queries/eddy/along_near_eddy.sql"
     _eddy_with_id_query = "queries/eddy/eddy_from_track_id.sql"
     _envelope_query = "queries/eddy/eddy_envelope.sql"
@@ -92,7 +92,7 @@ class Eddy(BaseQuery):
         )
         params = {"track_id": track_id}
 
-        return self.execute_query(
+        return self.execute_read_query(
             query_spec=query_spec, fields=fields, params=params, dataset_name="eddy"
         )
 
@@ -122,7 +122,7 @@ class Eddy(BaseQuery):
         params = {"track_id": track_id}
         fields: list[envelope_fields] = ["max_date", "min_date", "basin_ids"]
 
-        return self.execute_query(
+        return self.execute_read_query(
             query_spec=query_spec,
             fields=fields,
             params=params,
@@ -183,7 +183,7 @@ class Eddy(BaseQuery):
             "speed_radius_scale_factor": 100,
         }
 
-        return self.execute_query(
+        return self.execute_read_query(
             query_spec=query_spec,
             fields=fields,
             params=params,

@@ -4,7 +4,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import text
 
-from OceanDB.OceanDB import OceanDB
+from OceanDB.data_access.base_query import OceanDB
 
 table_definitions = [
     {
@@ -187,8 +187,6 @@ EXPECTED_TABLE_INDEXES = {
 
 
 class OceanDBInit(OceanDB):
-    def __init__(self):
-        super().__init__()
 
     def create_database(self):
         # Create the Database

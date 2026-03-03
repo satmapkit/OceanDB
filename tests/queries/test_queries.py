@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from OceanDB.data_access.base_query import QuerySpec, BaseQuery
+from OceanDB.data_access.base_query import QuerySpec, BaseReadQuery
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 import numpy as np
 
@@ -46,8 +46,8 @@ def test_execute_query():
         },
     )
 
-    base_query = BaseQuery()
-    res = base_query.execute_query(
+    base_query = BaseReadQuery()
+    res = base_query.execute_read_query(
         query_spec=query,
         params={
             "longitude": 28.1,
