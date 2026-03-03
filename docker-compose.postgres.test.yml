@@ -22,6 +22,6 @@ services:
 
 volumes:
   postgres_data_test:
-    name: oceandb_postgres_data
+    name: oceandb_postgres_data_test
 
 
