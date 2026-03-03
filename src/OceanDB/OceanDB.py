@@ -21,8 +21,9 @@ class OceanDB:
 
     def __init__(
         self,
+        config : Config|None = None
     ):
-        self.config = Config()
+        self.config = Config() if config is None else config
         self.connection_string = self.config.postgres_dsn
         self.host = self.config.postgres_host
         self.username = self.config.postgres_username
