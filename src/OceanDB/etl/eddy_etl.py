@@ -60,9 +60,6 @@ class EddyData:
 
 
 class EddyETL(BaseETL):
-    def __init__(self):
-        super().__init__()
-
     def ingest_eddy_data_file(self, file: Path, cyclonic_type):
         """
         Processes & Ingests Eddy Data NetCDF file
