@@ -4,7 +4,6 @@ config.yaml
 __pycache__/
 *.pyc
 *.html
-*.nc
 /python/OceanDB/__pycache__
 *.png
 python/OceanDB/__pycache__/AlongTrack.cpython-312.pyc
@@ -16,6 +15,7 @@ python/OceanDB/__pycache__/__init__.cpython-312.pyc
 /src/OceanDB.egg-info/
 /dist/
 /build/
+/data/
 
 # docs
 docs/build
