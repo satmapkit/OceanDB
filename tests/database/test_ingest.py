@@ -19,8 +19,6 @@ def test_ingest_eddy(db_with_basin_data):
     oceandb_etl = EddyETL(config=db_with_basin_data.config)
     eddy_directory = oceandb_etl.config.eddy_data_directory
 
-    print("Processing Ingesting cyclonic.nc")
-    print(eddy_directory)
     cyclonic_filepath = Path(
         f"{eddy_directory}/cyclonic.nc"
     )

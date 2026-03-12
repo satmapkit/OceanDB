@@ -1,6 +1,7 @@
 import numpy as np
-from datetime import datetime
+from datetime import timedelta, datetime, timezone
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
+from typing import Any
 
 atk_alias = "atk"
 eddy_alias = "eddy"
@@ -16,6 +17,15 @@ latitude = ColumnField(
     postgres_type="real",
 )
 
+latitude_max = ColumnField(
+    export_name="latitude_max",
+    postgres_table_name="eddy",
+    postgres_column_name="latitude_max",
+    python_type=np.float64,
+    postgres_type="float4",
+)
+
+
 longitude = ColumnField(
     export_name="longitude",
     postgres_table_name="eddy",
@@ -24,12 +34,27 @@ longitude = ColumnField(
     postgres_type="real",
 )
 
+longitude_max = ColumnField(
+    export_name="longitude_max",
+    postgres_table_name="eddy",
+    postgres_column_name="longitude_max",
+    python_type=np.float64,
+    postgres_type="float4",
+)
+
+def compute_date_time(var: Any) -> datetime:
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    # TODO: some input validation that the shape of var is 1d?
+    return epoch + timedelta(seconds=int(var.astype(np.int64)))
+
 date_time = ColumnField(
     export_name="time",
     postgres_table_name="eddy",
     postgres_column_name="date_time",
     python_type=datetime,
     postgres_type="timestamp",
+    netcdf_unique_name="time",
+    process_from_netcdf=compute_date_time,
 )
 
 track = ColumnField(
@@ -68,6 +93,15 @@ effective_radius = ColumnField(
     postgres_type="smallint",
 )
 
+inner_contour_height = ColumnField(
+    export_name="inner_contour_height",
+    postgres_table_name="eddy",
+    postgres_column_name="inner_contour_height",
+    python_type=np.float64,
+    postgres_type="float4",
+)
+
+
 effective_area = ColumnField(
     export_name="effective_area",
     postgres_table_name="eddy",
@@ -75,6 +109,38 @@ effective_area = ColumnField(
     python_type=np.float64,
     postgres_type="real",
 )
+
+effective_contour_height = ColumnField(
+    export_name="effective_contour_height",
+    postgres_table_name="eddy",
+    postgres_column_name="effective_contour_height",
+    python_type=np.float64,
+    postgres_type="float4",
+)
+
+effective_contour_latitude = ColumnField(
+    export_name="effective_contour_latitude",
+    postgres_table_name="eddy",
+    postgres_column_name="effective_contour_latitude",
+    python_type=np.int32,
+    postgres_type="int2",
+    )
+
+effective_contour_longitude = ColumnField(
+    export_name="effective_contour_longitude",
+    postgres_table_name="eddy",
+    postgres_column_name="effective_contour_longitude",
+    python_type=np.int32,
+    postgres_type="int2",
+    )
+
+effective_contour_shape_error = ColumnField(
+    export_name="effective_contour_shape_error",
+    postgres_table_name="eddy",
+    postgres_column_name="effective_contour_shape_error",
+    python_type=np.int32,
+    postgres_type="int2",
+    )
 
 cost_association = ColumnField(
     export_name="cost_association",
@@ -112,30 +178,26 @@ num_contours = ColumnField(
     postgres_type="smallint",
 )
 
+num_point_e = ColumnField(
+    export_name="num_point_e",
+    postgres_table_name="eddy",
+    postgres_column_name="num_point_e",
+    python_type=int,
+    postgres_type="int2",
+)
+
+num_point_s = ColumnField(
+    export_name="num_point_s",
+    postgres_table_name="eddy",
+    postgres_column_name="num_point_s",
+    python_type=int,
+    postgres_type="int2",
+)
+
+
 # -----------------
 # Derived / query-only fields
 # -----------------
-
-distance = DerivedField(
-    export_name="distance",
-    expression="""
-        ST_Distance(
-            ST_MakePoint(%(longitude)s, %(latitude)s),
-            eddy.eddy_point
-        )
-    """,
-    python_type=np.float64,
-    postgres_type="double precision",
-)
-
-delta_t = DerivedField(
-    export_name="delta_t",
-    expression="""
-        EXTRACT(EPOCH FROM (%(central_date_time)s - eddy.date_time))
-    """,
-    python_type=np.float64,
-    postgres_type="double precision",
-)
 
 speed_average = ColumnField(
     export_name="speed_average",
@@ -161,18 +223,42 @@ speed_area = ColumnField(
     postgres_type="real",
 )
 
+speed_contour_height = ColumnField(
+    export_name="speed_contour_height",
+    postgres_table_name="eddy",
+    postgres_column_name="speed_contour_height",
+    python_type=np.float64,
+    postgres_type="real",
+)
+
+speed_contour_shape = ColumnField(
+    export_name="speed_contour_shape",
+    postgres_table_name="eddy",
+    postgres_column_name="speed_contour_shape",
+    python_type=np.float64,
+    postgres_type="real",
+)
+
+speed_contour_shape_error = ColumnField(
+    export_name="speed_contour_shape_error",
+    postgres_table_name="eddy",
+    postgres_column_name="speed_contour_shape_error",
+    python_type=np.float64,
+    postgres_type="int2",
+)
+
 # -----------------
 # Aggregates (eddy lifecycle)
 # -----------------
 
 min_date_time = DerivedField(
-    export_name="min_date",
+    export_name="min_date_time",
     expression="MIN(eddy.date_time)",
     python_type=datetime,
 )
 
 max_date_time = DerivedField(
-    export_name="max_date",
+    export_name="max_date_time",
     expression="MAX(eddy.date_time)",
     python_type=datetime,
 )

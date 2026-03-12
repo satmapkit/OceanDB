@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Optional, Any, Callable, overload
 from psycopg import sql
 import numpy as np
+import netCDF4 as nc
 
 
 @dataclass(frozen=True)
@@ -97,11 +98,55 @@ class ColumnField(OceanDataField):
     Postgres type of this column (UNUSED)
     """
 
+    netcdf_unique_name: Optional[str] = None
+    """
+    Name of the parameter when importing from netcdf.
+    Defaults to same as postgres column name
+    """
+
+    process_from_netcdf: Optional[Callable[[Any], Any]] = None
+    """
+    When loading from netcdf, additional post-processing to perform
+    """
+
+    @property
+    def netcdf_name(self) -> str:
+        if self.netcdf_unique_name is None:
+            return self.postgres_column_name
+        return self.netcdf_unique_name
+
     def sql_expression(self) -> sql.Composable:
         return sql.Identifier(
             self.postgres_table_name,
             self.postgres_column_name,
         )
+
+    @overload
+    def from_netcdf(self, ds: nc.Dataset, rows: int) -> Any: ...
+    @overload
+    def from_netcdf(self, ds: nc.Dataset, rows: slice) -> Any: ...
+    def from_netcdf(self, ds, rows):
+        """
+        Read the value of this field from NetCDF
+
+        :param ds:
+            NetCDF dataset to read
+
+        :param rows:
+            Slice or index of rows to read
+
+        :returns:
+            The value corresponding to this field, as type :attr:`OceanDataField.python_type`
+        """
+
+        if not self.netcdf_name in ds.variables:
+            raise ValueError(f"Field not found in dataset: {self.netcdf_name}")
+
+        var = ds.variables[self.netcdf_name][rows]
+
+        if self.process_from_netcdf is None:
+            return var.astype(self.python_type)
+        return self.process_from_netcdf(var)
 
 
 @dataclass(frozen=True)
