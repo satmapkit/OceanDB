@@ -2,6 +2,9 @@ import netCDF4 as nc
 
 import psycopg as pg
 from psycopg import sql
+from psycopg.types import TypeInfo
+from psycopg.types.shapely import register_shapely
+from shapely.geometry import Point, Polygon
 import time
 from typing import Iterator, Any, TypeVar
 from pathlib import Path
