@@ -1,6 +1,6 @@
 import netCDF4 as nc
 import pandas as pd
-import psycopg
+import psycopg as pg
 from psycopg import sql
 from OceanDB.OceanDB import OceanDB
 from pathlib import Path
@@ -31,7 +31,7 @@ class BaseETL(OceanDB):
 
         data = df.to_records(index=False).tolist()
 
-        with psycopg.connect(self.config.postgres_dsn) as conn:
+        with pg.connect(self.config.postgres_dsn) as conn:
             with conn.cursor() as cur:
                 cur.executemany(query.as_string(conn), data)
                 conn.commit()
@@ -62,7 +62,7 @@ class BaseETL(OceanDB):
 
         data = df.to_records(index=False).tolist()
 
-        with psycopg.connect(self.config.postgres_dsn) as conn:
+        with pg.connect(self.config.postgres_dsn) as conn:
             with conn.cursor() as cur:
                 cur.executemany(query.as_string(conn), data)
                 conn.commit()
