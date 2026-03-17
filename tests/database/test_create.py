@@ -23,7 +23,10 @@ def test_create_database(db_with_db):
                 "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %(db_name)s);",
                 {"db_name": "ocean"},
             )
-            exists = cur.fetchone()[0]
+            res = cur.fetchone()
+            assert res is not None
+            assert len(res) > 0
+            exists = res[0]
             assert exists
 
 
