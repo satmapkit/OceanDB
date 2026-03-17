@@ -1,7 +1,8 @@
 import psycopg as pg
-from pathlib import Path
+import datetime
 
-from OceanDB.etl import EddyETL
+from OceanDB.data_access.eddy import Eddy
+from OceanDB.schemas.eddy_schema import eddy_columns_schema
 
 from .fixtures import *
 
@@ -21,13 +22,18 @@ def test_insert_basin_data(db_with_basin_data):
             # should have at least one entry in basin table
             assert res[0] > 0
 
+def test_ingest_eddy(db_with_eddy_data):
+    eddy = Eddy(db_with_eddy_data.config)
+    ids = eddy.get_eddy_tracks_from_times(
+        datetime.datetime(1900, 1, 1), datetime.datetime(2100, 1, 1)
+    )
+    assert tuple(sorted(ids)) == (-2, -1, 0)
 
-def test_ingest_eddy(db_with_basin_data):
-    oceandb_etl = EddyETL(config=db_with_basin_data.config)
-    eddy_directory = oceandb_etl.config.eddy_data_directory
+    fields = list(eddy_columns_schema.keys())
 
-    cyclonic_filepath = Path(f"{eddy_directory}/cyclonic.nc")
-    oceandb_etl.ingest_eddy_data_file(cyclonic_filepath, cyclonic_type=-1)
+    for i in ids:
+        res = eddy.eddy_with_track_id(fields=fields, track_id=i)
+        assert res is not None
 
     # print(
     #     "Processing Ingesting META3.2_DT_allsat_Anticyclonic_long_19930101_20220209.nc"

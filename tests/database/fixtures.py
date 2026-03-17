@@ -1,8 +1,10 @@
 import pytest
+from typing import Generator
+from pathlib import Path
 
 from OceanDB.config import Config
 from OceanDB.OceanDB_Initializer import OceanDBInit
-from OceanDB.etl import BaseETL
+from OceanDB.etl import BaseETL, EddyETL
 
 
 @pytest.fixture
@@ -11,7 +13,7 @@ def config():
 
 
 @pytest.fixture
-def fresh_db(config):
+def fresh_db(config: Config) -> Generator[OceanDBInit, None, None]:
     ocean_db_init = OceanDBInit(config=config)
     yield ocean_db_init
     ocean_db_init.drop_database()
@@ -47,4 +49,14 @@ def db_with_basin_data(db_with_tables):
     oceandb_etl = BaseETL(config=db.config)
     oceandb_etl.insert_basins_data()
     oceandb_etl.insert_basin_connections_data()
+    return oceandb_etl
+
+
+@pytest.fixture
+def db_with_eddy_data(db_with_basin_data: BaseETL) -> EddyETL:
+    oceandb_etl = EddyETL(config=db_with_basin_data.config)
+    eddy_directory = oceandb_etl.config.eddy_data_directory
+
+    cyclonic_filepath = Path(f"{eddy_directory}/cyclonic.nc")
+    oceandb_etl.ingest_eddy_data_file(cyclonic_filepath, cyclonic_type=-1)
     return oceandb_etl

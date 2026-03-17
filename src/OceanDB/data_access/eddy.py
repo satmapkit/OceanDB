@@ -34,9 +34,6 @@ class Eddy(BaseReadQuery):
         "tpa_correction",
     ]
 
-    def __init__(self):
-        super().__init__()
-
     def get_eddy_tracks_from_times(
         self,
         start_date: datetime,
@@ -49,11 +46,11 @@ class Eddy(BaseReadQuery):
             Eddy track ids ( - = cyclonic, + = anticyclonic )
         """
         query = """
-        SELECT DISTINCT track
+        SELECT DISTINCT (track * eddy.cyclonic_type) AS track_id
         FROM eddy
         WHERE date_time >= %(start_date)s
           AND date_time <  %(end_date)s
-        ORDER BY track;
+        ORDER BY track_id;
         """
 
         params = {

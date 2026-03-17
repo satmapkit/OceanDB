@@ -41,7 +41,7 @@ def test_create_tables(db_with_db):
         assert db_with_db.table_exists(table["name"])
 
     query = sql.SQL("SELECT {field} FROM eddy LIMIT 1;")
-    with pg.connect(db_with_db.connection_string()) as conn:
+    with pg.connect(db_with_db.connection_string) as conn:
         with conn.cursor() as cur:
             for field in eddy_columns_schema.values():
                 formatted = query.format(field=field.sql_expression())
