@@ -22,8 +22,8 @@ def test_insert_basin_data(db_with_basin_data):
             # should have at least one entry in basin table
             assert res[0] > 0
 
-def test_ingest_eddy(db_with_eddy_data):
-    eddy = Eddy(db_with_eddy_data.config)
+def test_ingest_cyclonic_eddy(db_with_cyclonic_eddy_data):
+    eddy = Eddy(db_with_cyclonic_eddy_data.config)
     ids = eddy.get_eddy_tracks_from_times(
         datetime.datetime(1900, 1, 1), datetime.datetime(2100, 1, 1)
     )

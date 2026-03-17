@@ -53,7 +53,7 @@ def db_with_basin_data(db_with_tables):
 
 
 @pytest.fixture
-def db_with_eddy_data(db_with_basin_data: BaseETL) -> EddyETL:
+def db_with_cyclonic_eddy_data(db_with_basin_data: BaseETL) -> EddyETL:
     oceandb_etl = EddyETL(config=db_with_basin_data.config)
     eddy_directory = oceandb_etl.config.eddy_data_directory
 
