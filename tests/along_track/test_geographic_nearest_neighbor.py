@@ -3,15 +3,16 @@ from OceanDB.data_access.along_track import AlongTrack
 from OceanDB.schemas.along_track_schema import along_track_schema
 import numpy as np
 
+from tests.database.fixtures import *
 
-def test_geographic_nearest_neighbor():
+def test_geographic_nearest_neighbor(db_with_alongtrack_data):
     """
     TEST single point spatiotemporal query
     """
-    along_track = AlongTrack()
+    along_track = AlongTrack(db_with_alongtrack_data.config)
     latitude = -69
     longitude = 28.1
-    date = datetime(year=2013, month=3, day=14, hour=23)
+    date = datetime(year=2013, month=1, day=4, hour=23)
 
     time_window = timedelta(days=10)
 

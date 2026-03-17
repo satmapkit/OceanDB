@@ -2,15 +2,17 @@ from datetime import datetime, timedelta
 from OceanDB.data_access.along_track import AlongTrack
 from OceanDB.schemas.along_track_schema import along_track_schema
 
+from tests.database.fixtures import *
 
-def test_geographic_point_in_r_dt():
+
+def test_geographic_point_in_r_dt(db_with_alongtrack_data):
     """
     TEST single point spatiotemporal query
     """
-    along_track = AlongTrack()
-    latitude = -69
-    longitude = 28.1
-    date = datetime(year=2013, month=3, day=14, hour=23)
+    along_track = AlongTrack(config=db_with_alongtrack_data.config)
+    latitude = -65.9
+    longitude = 58.9
+    date = datetime(year=2013, month=1, day=4, hour=23)
 
     radius = 500_000
     time_window = timedelta(days=10)

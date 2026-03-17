@@ -4,7 +4,7 @@ from pathlib import Path
 
 from OceanDB.config import Config
 from OceanDB.OceanDB_Initializer import OceanDBInit
-from OceanDB.etl import BaseETL, EddyETL
+from OceanDB.etl import BaseETL, EddyETL, AlongTrackETL
 
 
 @pytest.fixture
@@ -31,6 +31,7 @@ def db_with_tables(db_with_db):
     db = db_with_db
     db.create_tables()
     db.create_eddy_tables()
+    db.create_partitions("1990-01-01", "2025-11-01")
     return db
 
 
@@ -59,4 +60,17 @@ def db_with_cyclonic_eddy_data(db_with_basin_data: BaseETL) -> EddyETL:
 
     cyclonic_filepath = Path(f"{eddy_directory}/cyclonic.nc")
     oceandb_etl.ingest_eddy_data_file(cyclonic_filepath, cyclonic_type=-1)
+    return oceandb_etl
+
+
+@pytest.fixture
+def db_with_alongtrack_data(db_with_basin_data: BaseETL) -> AlongTrackETL:
+    oceandb_etl = AlongTrackETL(config=db_with_basin_data.config)
+    alongtrack_directory = oceandb_etl.config.along_track_data_directory
+
+    for i in range(1, 10):
+        print(f"ingesting {alongtrack_directory}/2013010{i}.nc")
+        oceandb_etl.process_along_track_file(
+            Path(f"{alongtrack_directory}/required_underscores_j2_2013010{i}.nc")
+        )
     return oceandb_etl
