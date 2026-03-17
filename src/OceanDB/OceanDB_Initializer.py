@@ -190,7 +190,13 @@ EXPECTED_TABLE_INDEXES = {
 
 class OceanDBInit(BaseWriteQuery):
 
-    @connect_to_db(BaseWriteQuery.connection_string)
+    def connection_string(self) -> str:
+        return super().connection_string()
+
+    def connection_string_admin(self) -> str:
+        return super().connection_string_admin()
+
+    @connect_to_db(connection_string)
     def table_exists(self, cur: pg.Cursor, table: str) -> bool:
         cur.execute(
             "SELECT EXISTS ( SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename  = %(tablename)s);",
@@ -203,7 +209,7 @@ class OceanDBInit(BaseWriteQuery):
         exists = res[0]
         return exists
 
-    @connect_to_db(BaseWriteQuery.connection_string_admin, autocommit=True)
+    @connect_to_db(connection_string_admin, autocommit=True)
     def _create_database(self, cur: pg.Cursor) -> None:
         cur.execute(
             "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %s)",
@@ -217,12 +223,10 @@ class OceanDBInit(BaseWriteQuery):
             print(f"Database '{self.db_name}' already exists.")
             return
 
-        cur.execute(
-            sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.db_name))
-        )
+        cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.db_name)))
         print(f"Database '{self.db_name}' created successfully.")
 
-    @connect_to_db(BaseWriteQuery.connection_string, commit=True)
+    @connect_to_db(connection_string, commit=True)
     def _enable_postgis_extensions(self, cur: pg.Cursor) -> None:
         cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS plpgsql;"))
         cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS postgis;"))
