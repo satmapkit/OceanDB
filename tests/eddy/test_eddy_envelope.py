@@ -3,14 +3,15 @@ import numpy as np
 
 from OceanDB.data_access.eddy import Eddy, envelope_fields
 
-def test_eddy_envelope_basic():
-    eddy = Eddy()
+from tests.database.fixtures import *
+
+
+def test_eddy_envelope_basic(db_with_cyclonic_eddy_data):
+    eddy = Eddy(config=db_with_cyclonic_eddy_data.config)
 
     fields = get_args(envelope_fields)
 
-    result = eddy.eddy_envelope_query(
-        track_id=-4
-    )
+    result = eddy.eddy_envelope_query(track_id=-1)
     assert result is not None
 
     for field in fields:
