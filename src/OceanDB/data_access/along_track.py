@@ -53,9 +53,6 @@ class AlongTrack(BaseReadQuery):
         "queries/along_track/geographic_points_in_spatialtemporal_window.sql"
     )
 
-    def __init__(self):
-        super().__init__()
-
     def geographic_point_in_r_dt(
         self,
         fields: list[along_track_fields],
