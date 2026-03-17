@@ -2,8 +2,9 @@ from datetime import datetime
 import psycopg as pg
 import numpy.typing as npt
 import numpy as np
-from typing import Any, Literal, Iterable
+from typing import Any, Literal, Iterable, Self
 
+from OceanDB.OceanDB import connect_to_db
 from OceanDB.data_access.along_track import BaseReadQuery
 from OceanDB.schemas.along_track_schema import along_track_fields
 from OceanDB.schemas.eddy_schema import eddy_schema, eddy_fields, along_track_eddy_schema 
@@ -12,7 +13,7 @@ from OceanDB.data_access.base_query import QuerySpec
 
 envelope_fields = Literal["max_date", "min_date", "basin_ids"]
 
-
+from typing import Callable
 class Eddy(BaseReadQuery):
     _along_track_near_eddy_query = "queries/eddy/along_near_eddy.sql"
     _eddy_with_id_query = "queries/eddy/eddy_from_track_id.sql"
@@ -37,8 +38,13 @@ class Eddy(BaseReadQuery):
     def __init__(self):
         super().__init__()
 
+    def connection_string(self):
+        return super().connection_string()
+
+    @connect_to_db(connection_string)
     def get_eddy_tracks_from_times(
         self,
+        cur: pg.Cursor,
         start_date: datetime,
         end_date: datetime,
     ) -> list[int]:
@@ -61,10 +67,8 @@ class Eddy(BaseReadQuery):
             "end_date": end_date,
         }
 
-        with pg.connect(self.config.postgres_dsn) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query, params)
-                return [row[0] for row in cur.fetchall()]
+        cur.execute(query, params)
+        return [row[0] for row in cur.fetchall()]
 
     def eddy_with_track_id(
         self,

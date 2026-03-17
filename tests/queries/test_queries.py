@@ -60,7 +60,6 @@ def test_execute_query():
             "latitude",
             "distance",
         ],
-        debug_sql=True,
     )
     assert res is not None
     assert "latitude" in res

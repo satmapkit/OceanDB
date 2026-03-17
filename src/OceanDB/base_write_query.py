@@ -1,23 +1,28 @@
 from typing import Any, Iterable, Mapping
 
 import psycopg as pg
+from psycopg.rows import dict_row, DictRow
 
-from OceanDB.OceanDB import OceanDB
+from OceanDB.OceanDB import OceanDB, connect_to_db
 from OceanDB.ocean_data.dataset import K
-from OceanDB.query_spec import QuerySpec, log_query
+from OceanDB.query_spec import QuerySpec
 
 class BaseWriteQuery(OceanDB):
     """
     Base class for write-only query services.
     """
 
+    def connection_string(self):
+        return super().connection_string()
+
+    @connect_to_db(connection_string, commit=True, row_factory=dict_row)
     def execute_write_query(
         self,
+        cur: pg.Cursor[DictRow],
         query_spec: QuerySpec,
         *,
         fields: Iterable[K] = [],
         params: Mapping[str, Any] = {},
-        debug_sql: bool = False,
     ) -> None:
         """
         Execute a single query and return a Dataset, or None if empty.
@@ -34,11 +39,4 @@ class BaseWriteQuery(OceanDB):
 
         sql_query = query_spec.sql_projection_compiler(fields)
 
-        with pg.connect(self.config.postgres_dsn) as conn:
-            if debug_sql:
-                log_query(conn=conn, query=sql_query, params=params)
-
-            with conn.cursor(row_factory=pg.rows.dict_row) as cur:
-                cur.execute(sql_query, params)
-                conn.commit()
-
+        cur.execute(sql_query, params)

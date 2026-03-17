@@ -1,9 +1,12 @@
 import netCDF4 as nc
 import pandas as pd
-import psycopg as pg
-from psycopg import sql
-from OceanDB.OceanDB import OceanDB
+
+from psycopg import sql, Cursor
+
+from OceanDB.OceanDB import OceanDB, connect_to_db
 from pathlib import Path
+
+from typing import Any
 
 
 class BaseETL(OceanDB):
@@ -11,6 +14,13 @@ class BaseETL(OceanDB):
     def load_netcdf(self, file: Path) -> nc.Dataset:
         ds = nc.Dataset(file, "r")
         return ds
+    
+    def connection_string(self):
+        return super().connection_string()
+
+    @connect_to_db(connection_string, commit=True)
+    def execute_write_query(self, cur: Cursor, query: sql.Composed, data: list[dict[str,Any]]):
+        cur.executemany(query, data)
 
     def insert_basins_data(self):
         with self.load_module_file(
@@ -31,11 +41,7 @@ class BaseETL(OceanDB):
 
         data = df.to_records(index=False).tolist()
 
-        with pg.connect(self.config.postgres_dsn) as conn:
-            with conn.cursor() as cur:
-                cur.executemany(query.as_string(conn), data)
-                conn.commit()
-
+        self.execute_write_query(query, data)
         print(f"Inserted {len(df)} rows in to the basins table")
 
     def insert_basin_connections_data(self):
@@ -62,9 +68,5 @@ class BaseETL(OceanDB):
 
         data = df.to_records(index=False).tolist()
 
-        with pg.connect(self.config.postgres_dsn) as conn:
-            with conn.cursor() as cur:
-                cur.executemany(query.as_string(conn), data)
-                conn.commit()
-
+        self.execute_write_query(query, data)
         print(f"Inserted {len(df)} rows in to the basins table")

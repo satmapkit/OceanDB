@@ -4,9 +4,10 @@ from typing import Any, Iterable, Mapping
 
 import numpy as np
 import psycopg as pg
+from psycopg.rows import dict_row, DictRow
 
-from OceanDB.OceanDB import OceanDB
-from OceanDB.query_spec import QuerySpec, log_query
+from OceanDB.OceanDB import OceanDB, connect_to_db
+from OceanDB.query_spec import QuerySpec
 from OceanDB.ocean_data.ocean_data import OceanDataField
 from OceanDB.ocean_data.dataset import Dataset, K
 
@@ -26,14 +27,18 @@ class BaseReadQuery(OceanDB):
     * SQL aliases == schema keys
     """
 
+    def connection_string(self):
+        return super().connection_string()
+
+    @connect_to_db(connection_string, commit=True, row_factory=dict_row)
     def execute_read_query(
         self,
+        cur: pg.Cursor[DictRow],
         query_spec: QuerySpec,
         *,
         fields: Iterable[K],
         params: Mapping[str, Any],
         dataset_name: str = "query_result",
-        debug_sql: bool = False,
     ) -> Dataset[K, Any] | None:
         """
         Execute a single query and return a Dataset, or None if empty.
@@ -54,15 +59,8 @@ class BaseReadQuery(OceanDB):
 
         sql_query = query_spec.sql_projection_compiler(fields)
 
-        print(sql_query)
-
-        with pg.connect(self.config.postgres_dsn) as conn:
-            if debug_sql:
-                log_query(conn=conn, query=sql_query, params=params)
-
-            with conn.cursor(row_factory=pg.rows.dict_row) as cur:
-                cur.execute(sql_query, params)
-                rows: list[Mapping[str, Any]] = cur.fetchall()
+        cur.execute(sql_query, params)
+        rows: list[dict[str, Any]] = cur.fetchall()
 
         if not rows:
             return None
@@ -77,7 +75,7 @@ class BaseReadQuery(OceanDB):
         self,
         *,
         schema: Mapping[K, OceanDataField],
-        rows: list[Mapping[str, Any]],
+        rows: list[dict[str, Any]],
         dataset_name: str = "query_result",
     ) -> Dataset[K, Any]:
         """

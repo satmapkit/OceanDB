@@ -2,9 +2,9 @@ from dataclasses import dataclass
 from dataclasses import asdict
 import netCDF4 as nc
 import pandas as pd
-import psycopg
 import psycopg as pg
 from psycopg import sql
+from psycopg.rows import dict_row, DictRow
 import time
 import numpy as np
 from functools import cached_property
@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from OceanDB.etl.base_etl import BaseETL
+from OceanDB.OceanDB import connect_to_db
 
 
 @dataclass
@@ -149,8 +150,8 @@ class AlongTrackETL(BaseETL):
         "tpn",
     ]
 
-    def __init__(self):
-        super().__init__()
+    def connection_string(self):
+        return super().connection_string()
 
     def extract_dataset_metadata(
         self, ds: nc.Dataset, file: Path
@@ -213,7 +214,8 @@ class AlongTrackETL(BaseETL):
         except Exception as ex:
             print(ex)
 
-    def insert_basins_data(self):
+    @connect_to_db(connection_string, commit=True)
+    def insert_basins_data(self, cur: pg.Cursor):
         with self.load_module_file(
             module="OceanDB.data", filename="basins/ocean_basins.csv", mode="r"
         ) as f:
@@ -232,14 +234,12 @@ class AlongTrackETL(BaseETL):
 
         data = df.to_records(index=False).tolist()
 
-        with psycopg.connect(self.config.postgres_dsn) as conn:
-            with conn.cursor() as cur:
-                cur.executemany(query.as_string(conn), data)
-                conn.commit()
+        cur.executemany(query, data)
 
         print(f"Inserted {len(df)} rows in to the basins table")
 
-    def insert_basin_connections_data(self):
+    @connect_to_db(connection_string, commit=True)
+    def insert_basin_connections_data(self, cur: pg.Cursor):
         with self.load_module_file(
             module="OceanDB.data",
             filename="basins/ocean_basin_connections.csv",
@@ -263,10 +263,7 @@ class AlongTrackETL(BaseETL):
 
         data = df.to_records(index=False).tolist()
 
-        with psycopg.connect(self.config.postgres_dsn) as conn:
-            with conn.cursor() as cur:
-                cur.executemany(query.as_string(conn), data)
-                conn.commit()
+        cur.executemany(query, data)
 
         print(f"Inserted {len(df)} rows in to the basins table")
 
@@ -294,7 +291,8 @@ class AlongTrackETL(BaseETL):
         basin_mask = mask_data[i, j]
         return basin_mask
 
-    def import_along_track_data_to_postgresql(self, along_track_data: AlongTrackData):
+    @connect_to_db(connection_string, commit=True)
+    def import_along_track_data_to_postgresql(self, cur: pg.Cursor, along_track_data: AlongTrackData):
         """
         Cast the AlongTrackData to a Pandas DataFrame
         """
@@ -339,12 +337,8 @@ class AlongTrackETL(BaseETL):
             )
 
         # 3. Execute the batch insert
-        with pg.connect(self.config.postgres_dsn) as connection:
-            with connection.cursor() as cursor:
-                print(f"Starting batch insert of {len(data_to_insert)} rows...")
-                cursor.executemany(insert_query, data_to_insert)
-            connection.commit()
-            print("Successfully inserted all rows.")
+        cur.executemany(insert_query, data_to_insert)
+        print("Successfully inserted all rows.")
 
     def import_metadata_to_psql(self, metadata: AlongTrackMetaData) -> None:
         """Insert metadata into along_track_metadata table, ignoring duplicates."""
@@ -389,19 +383,18 @@ class AlongTrackETL(BaseETL):
             placeholders=sql.SQL(", ").join(sql.Placeholder() * len(fields)),
         )
 
-        with pg.connect(self.connection_string) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query, tuple(metadata.__dict__.values()))
-            conn.commit()
+        self.execute_write_query(query, [metadata.__dict__])
         print(f"Inserted Metadata for {metadata.file_name}")
 
-    def query_metadata(self):
+    @connect_to_db(connection_string, row_factory=dict_row)
+    def query_metadata(self, cursor: pg.Cursor[DictRow]):
         query = "SELECT * FROM along_track_metadata;"
-        with pg.connect(self.connection_string) as connection:
-            with connection.cursor(row_factory=pg.rows.dict_row) as cursor:
-                cursor.execute(query)
-                rows = cursor.fetchall()
-        return set([metadata["file_name"] for metadata in rows])
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        try:
+            return set([metadata["file_name"] for metadata in rows])
+        except KeyError:
+            raise ValueError(f"Filename not in metadata when reading from database")
 
     def process_along_track_file(self, file: Path):
         """
