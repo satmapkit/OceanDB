@@ -77,6 +77,8 @@ class EddyETL(BaseETL):
         COPY implicitly casts 0/1 -> boolean
         INSERT Strict typing - smallint != boolean
 
+        ON CONFLICT DO NOTHING // Ignores rows that already exist
+
         """
 
         columns = [field.postgres_column_name for field in eddy_columns_schema.values()]
@@ -84,6 +86,7 @@ class EddyETL(BaseETL):
         insert_query = sql.SQL("""
                INSERT INTO {} ({})
                VALUES ({})
+               ON CONFLICT DO NOTHING
            """).format(
             sql.Identifier("public", "eddy"),
             sql.SQL(", ").join(map(sql.Identifier, columns)),
