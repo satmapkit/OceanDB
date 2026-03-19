@@ -3,15 +3,11 @@ import netCDF4 as nc
 import psycopg as pg
 from psycopg import sql
 import time
-from typing import Iterator, Any, TypeVar
+from typing import Iterator
 from pathlib import Path
 
-from OceanDB.etl import BaseETL
+from OceanDB.etl import BaseETL, batch
 from OceanDB.schemas.eddy_schema import eddy_columns, eddy_columns_schema
-
-
-K = TypeVar("K", bound=str)
-batch = list[dict[K, Any]]
 
 
 class EddyETL(BaseETL):
@@ -85,12 +81,10 @@ class EddyETL(BaseETL):
 
         columns = [field.postgres_column_name for field in eddy_columns_schema.values()]
 
-        insert_query = sql.SQL(
-            """
+        insert_query = sql.SQL("""
                INSERT INTO {} ({})
                VALUES ({})
-           """
-        ).format(
+           """).format(
             sql.Identifier("public", "eddy"),
             sql.SQL(", ").join(map(sql.Identifier, columns)),
             sql.SQL(", ").join(map(sql.Placeholder, columns)),

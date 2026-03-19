@@ -2,8 +2,13 @@ import netCDF4 as nc
 import pandas as pd
 import psycopg
 from psycopg import sql
-from OceanDB.OceanDB import OceanDB
+from typing import Iterator, Any, TypeVar
 from pathlib import Path
+
+from OceanDB.OceanDB import OceanDB
+
+K = TypeVar("K", bound=str)
+batch = list[dict[K, Any]]
 
 
 class BaseETL(OceanDB):
