@@ -74,3 +74,26 @@ def db_with_alongtrack_data(db_with_basin_data: BaseETL) -> AlongTrackETL:
             Path(f"{alongtrack_directory}/required_underscores_j2_2013010{i}.nc")
         )
     return oceandb_etl
+
+@pytest.fixture
+def db_with_all_eddy_data(db_with_cyclonic_eddy_data: EddyETL) -> EddyETL:
+    db = db_with_cyclonic_eddy_data
+    # do anticyclonic
+    return db
+
+
+@pytest.fixture
+def db_with_eddy_and_alongtrack_data(db_with_all_eddy_data: EddyETL) -> AlongTrackETL:
+    db = db_with_all_eddy_data
+
+    # add along track data
+    db = AlongTrackETL(config=db.config)
+    alongtrack_directory = db.config.along_track_data_directory
+
+    for i in range(1, 10):
+        print(f"ingesting {alongtrack_directory}/2013010{i}.nc")
+        db.process_along_track_file(
+            Path(f"{alongtrack_directory}/required_underscores_j2_2013010{i}.nc")
+        )
+    return db
+

@@ -10,8 +10,8 @@ def test_geographic_point_in_r_dt(db_with_alongtrack_data):
     TEST single point spatiotemporal query
     """
     along_track = AlongTrack(config=db_with_alongtrack_data.config)
-    latitude = -65.9
-    longitude = 58.9
+    latitude = -39.1
+    longitude = 54.7
     date = datetime(year=2013, month=1, day=4, hour=23)
 
     radius = 500_000
