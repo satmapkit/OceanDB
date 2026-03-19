@@ -54,8 +54,6 @@ class BaseReadQuery(OceanDB):
 
         sql_query = query_spec.sql_projection_compiler(fields)
 
-        print(sql_query)
-
         with pg.connect(self.config.postgres_dsn) as conn:
             if debug_sql:
                 log_query(conn=conn, query=sql_query, params=params)
