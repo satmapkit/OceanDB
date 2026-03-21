@@ -1,10 +1,13 @@
 from datetime import datetime, timedelta
 
-from OceanDB.data_access.base_query import QuerySpec, BaseQuery
+from OceanDB.data_access.base_query import QuerySpec, BaseReadQuery
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 import numpy as np
 
-def test_execute_query():
+from tests.database.fixtures import *
+
+
+def test_execute_query(db_with_alongtrack_data):
     query = QuerySpec(
         sql_template="""
             SELECT
@@ -20,19 +23,19 @@ def test_execute_query():
         """,
         schema={
             "latitude": ColumnField(
-                name="latitude",
+                export_name="latitude",
                 postgres_table_name="atk",
                 postgres_column_name="latitude",
                 python_type=float,
             ),
             "longitude": ColumnField(
-                name="longitude",
+                export_name="longitude",
                 postgres_table_name="atk",
                 postgres_column_name="longitude",
                 python_type=float,
             ),
             "distance": DerivedField(
-                name="distance",
+                export_name="distance",
                 expression=f"""
                     ST_Distance(
                         ST_MakePoint(%(longitude)s, %(latitude)s),
@@ -45,23 +48,22 @@ def test_execute_query():
         },
     )
 
-    base_query = BaseQuery()
-    res = base_query.execute_query(
+    base_query = BaseReadQuery(db_with_alongtrack_data.config)
+    res = base_query.execute_read_query(
         query_spec=query,
         params={
-            'longitude': 28.1,
-            'latitude': -69,
-            'central_date_time': datetime(year=2019, month=1, day=1, hour=1),
-            'time_delta':timedelta(days=10),
-            'distance': 500_000
+            "longitude": -65.9,
+            "latitude": 58.9,
+            "central_date_time": datetime(year=2013, month=1, day=4, hour=23),
+            "time_delta": timedelta(days=10),
+            "distance": 500_000,
         },
         fields=[
-            'latitude',
-            'distance',
+            "latitude",
+            "distance",
         ],
         debug_sql=True,
     )
     assert res is not None
-    assert 'latitude' in res
-    assert 'distance' in res
-
+    assert "latitude" in res
+    assert "distance" in res

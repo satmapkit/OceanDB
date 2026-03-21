@@ -4,17 +4,18 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import text
 
-from OceanDB.OceanDB import OceanDB
+from OceanDB.base_write_query import BaseWriteQuery
+from OceanDB.query_spec import RawSpec
 
 table_definitions = [
     {
         "name": "basin",
-        "filepath": "tables/basins/create_basin_table.sql",
+        "filepath": "tables/basin/create_basin_table.sql",
         "params": {"table_name": "basin"},
     },
     {
-        "name": "basin_connection",
-        "filepath": "tables/basins/create_basin_connection_table.sql",
+        "name": "basin_connections",
+        "filepath": "tables/basin/create_basin_connection_table.sql",
         "params": {"table_name": "basin_connection"},
     },
     {
@@ -186,9 +187,23 @@ EXPECTED_TABLE_INDEXES = {
 }
 
 
-class OceanDBInit(OceanDB):
-    def __init__(self):
-        super().__init__()
+class OceanDBInit(BaseWriteQuery):
+
+    def table_exists(self, table: str) -> bool:
+        with pg.connect(self.connection_string) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT EXISTS ( SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename  = %(tablename)s);",
+                    {"tablename": table},
+                )
+                res = cur.fetchone()
+                print('for', table, 'result is', res)
+                if not res:
+                    return False
+                exists = res[0]
+                if exists:
+                    return True
+        return False
 
     def create_database(self):
         # Create the Database
@@ -223,7 +238,7 @@ class OceanDBInit(OceanDB):
             try:
                 table_name = table["name"]
                 query = self.parametrize_sql_statements(table)
-                self.execute_query(table, query)
+                self.execute_write_query(query)
                 self.logger.info(f"Executing {table_name}")
             except Exception as ex:
                 self.logger.info(f"{table_name}")
@@ -234,7 +249,7 @@ class OceanDBInit(OceanDB):
             try:
                 table_name = table["name"]
                 query = self.parametrize_sql_statements(table)
-                self.execute_query(table, query)
+                self.execute_write_query(query)
                 self.logger.info(f"Executing {table_name}")
             except Exception as ex:
                 self.logger.info(f"{table}")
@@ -244,14 +259,14 @@ class OceanDBInit(OceanDB):
         for index in sql_index_files:
             table_name = index["name"]
             query = self.parametrize_sql_statements(index)
-            self.execute_query(index, query)
+            self.execute_write_query(query)
             self.logger.info(f"Executing {table_name}")
 
     def create_eddy_indices(self):
         for index in eddy_index_files:
             table_name = index["name"]
             query = self.parametrize_sql_statements(index)
-            self.execute_query(index, query)
+            self.execute_write_query(query)
             self.logger.info(f"Executing {table_name}")
 
     def create_partitions(self, min_date, max_date):
@@ -284,8 +299,8 @@ class OceanDBInit(OceanDB):
                 "max_partition_date": sql.Literal(next_month.strftime("%Y-%m-%d")),
             }
             # Safely construct SQL
-            query = sql.SQL(sql_statement).format(**safe_params)
-            self.execute_query(query=query, table=partition_name)
+            query = RawSpec(sql.SQL(sql_statement).format(**safe_params))
+            self.execute_write_query(query)
 
             print(f"Created partition {partition_name}")
             current = next_month
@@ -318,7 +333,7 @@ class OceanDBInit(OceanDB):
                 safe_params[key] = sql.Literal(value)
         # Render query safely
         query = sql.SQL(sql_statement).format(**safe_params)
-        return query
+        return RawSpec(query)
 
     def load_sql(self, filename: str) -> str:
         # with resources.files(self.sql_pkg).joinpath(filename).open("r", encoding="utf-8") as f:

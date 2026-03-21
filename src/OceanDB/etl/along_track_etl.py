@@ -149,9 +149,6 @@ class AlongTrackETL(BaseETL):
         "tpn",
     ]
 
-    def __init__(self):
-        super().__init__()
-
     def extract_dataset_metadata(
         self, ds: nc.Dataset, file: Path
     ) -> AlongTrackMetaData:

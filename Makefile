@@ -12,6 +12,9 @@ create_network:
 run_postgres: create_network
 	docker-compose -f docker-compose.postgres.yml up
 
+run_postgres_test: create_network
+	docker-compose -f docker-compose.postgres.test.yml up
+
 shell:
 	docker-compose run --rm -it ocean_db_client bash
 
