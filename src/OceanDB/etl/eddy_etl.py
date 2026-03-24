@@ -35,10 +35,6 @@ class EddyETL(BaseETL):
         """
         Yield batches of eddy data from a NetCDF dataset.
 
-        This function assumes the eddy time variable is stored as
-        Unix seconds (uint32), despite metadata claiming
-        'days since 1950-01-01'.
-
         :param ds:
             Open NetCDF dataset
         :param batch_size:
