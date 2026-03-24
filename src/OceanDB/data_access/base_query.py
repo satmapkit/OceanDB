@@ -11,7 +11,6 @@ from OceanDB.ocean_data.ocean_data import OceanDataField
 from OceanDB.ocean_data.dataset import Dataset, K
 
 
-
 class BaseReadQuery(OceanDB):
     """
     Base class for read-only query services.
