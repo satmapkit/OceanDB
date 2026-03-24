@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Any, Callable, overload
+from typing import Optional, Any, Callable
 from psycopg import sql
 import numpy as np
+import numpy.typing as npt
 import netCDF4 as nc
 
 
@@ -104,7 +105,7 @@ class ColumnField(OceanDataField):
     Defaults to same as postgres column name
     """
 
-    process_from_netcdf: Optional[Callable[[Any], Any]] = None
+    process_from_netcdf: Optional[Callable[[Any, slice], Any]] = None
     """
     When loading from netcdf, additional post-processing to perform
     """
@@ -121,11 +122,7 @@ class ColumnField(OceanDataField):
             self.postgres_column_name,
         )
 
-    @overload
-    def from_netcdf(self, ds: nc.Dataset, rows: int) -> Any: ...
-    @overload
-    def from_netcdf(self, ds: nc.Dataset, rows: slice) -> Any: ...
-    def from_netcdf(self, ds, rows):
+    def from_netcdf(self, ds: nc.Dataset, rows: slice) -> npt.NDArray[Any]:
         """
         Read the value of this field from NetCDF
 
@@ -142,11 +139,11 @@ class ColumnField(OceanDataField):
         if not self.netcdf_name in ds.variables:
             raise ValueError(f"Field not found in dataset: {self.netcdf_name}")
 
-        var = ds.variables[self.netcdf_name][rows]
+        var = ds.variables[self.netcdf_name]
 
         if self.process_from_netcdf is None:
-            return var.astype(self.python_type)
-        return self.process_from_netcdf(var)
+            return var[rows].astype(self.python_type)
+        return self.process_from_netcdf(var, rows)
 
 
 @dataclass(frozen=True)

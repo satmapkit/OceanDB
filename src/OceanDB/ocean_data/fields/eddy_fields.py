@@ -1,7 +1,9 @@
 import numpy as np
 from datetime import timedelta, datetime, timezone
-from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 from typing import Any
+
+from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
+from OceanDB.utils.date_time_conversion import compute_date_time
 
 atk_alias = "atk"
 eddy_alias = "eddy"
@@ -41,13 +43,6 @@ longitude_max = ColumnField(
     python_type=np.float64,
     postgres_type="float4",
 )
-
-
-def compute_date_time(var: Any) -> datetime:
-    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
-    # TODO: some input validation that the shape of var is 1d?
-    return epoch + timedelta(seconds=int(var.astype(np.int64)))
-
 
 date_time = ColumnField(
     export_name="time",
