@@ -75,6 +75,7 @@ def db_with_alongtrack_data(db_with_basin_data: BaseETL) -> AlongTrackETL:
         )
     return oceandb_etl
 
+
 @pytest.fixture
 def db_with_all_eddy_data(db_with_cyclonic_eddy_data: EddyETL) -> EddyETL:
     db = db_with_cyclonic_eddy_data
@@ -96,4 +97,3 @@ def db_with_eddy_and_alongtrack_data(db_with_all_eddy_data: EddyETL) -> AlongTra
             Path(f"{alongtrack_directory}/required_underscores_j2_2013010{i}.nc")
         )
     return db
-
