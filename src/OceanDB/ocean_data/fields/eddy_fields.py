@@ -42,10 +42,12 @@ longitude_max = ColumnField(
     postgres_type="float4",
 )
 
+
 def compute_date_time(var: Any) -> datetime:
     epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
     # TODO: some input validation that the shape of var is 1d?
     return epoch + timedelta(seconds=int(var.astype(np.int64)))
+
 
 date_time = ColumnField(
     export_name="time",
@@ -124,7 +126,7 @@ effective_contour_latitude = ColumnField(
     postgres_column_name="effective_contour_latitude",
     python_type=np.int32,
     postgres_type="int2",
-    )
+)
 
 effective_contour_longitude = ColumnField(
     export_name="effective_contour_longitude",
@@ -132,7 +134,7 @@ effective_contour_longitude = ColumnField(
     postgres_column_name="effective_contour_longitude",
     python_type=np.int32,
     postgres_type="int2",
-    )
+)
 
 effective_contour_shape_error = ColumnField(
     export_name="effective_contour_shape_error",
@@ -140,7 +142,7 @@ effective_contour_shape_error = ColumnField(
     postgres_column_name="effective_contour_shape_error",
     python_type=np.int32,
     postgres_type="int2",
-    )
+)
 
 cost_association = ColumnField(
     export_name="cost_association",

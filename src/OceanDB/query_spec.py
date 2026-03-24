@@ -98,6 +98,7 @@ class QuerySpec(Generic[K]):
 
         return sql.SQL(self.sql_template).format(fields=field_sql)
 
+
 class RawSpec(QuerySpec):
     def __init__(self, query_string: sql.Composed):
         self.query_string = query_string
@@ -112,4 +113,3 @@ def log_query(conn: pg.Connection, query: sql.Composable, params: Any) -> None:
     print("--- PARAMS ---")
     print(params)
     print("----------------\n")
-

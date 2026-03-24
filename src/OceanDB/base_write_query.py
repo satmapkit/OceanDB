@@ -6,6 +6,7 @@ from OceanDB.OceanDB import OceanDB
 from OceanDB.ocean_data.dataset import K
 from OceanDB.query_spec import QuerySpec, log_query
 
+
 class BaseWriteQuery(OceanDB):
     """
     Base class for write-only query services.
@@ -41,4 +42,3 @@ class BaseWriteQuery(OceanDB):
             with conn.cursor(row_factory=pg.rows.dict_row) as cur:
                 cur.execute(sql_query, params)
                 conn.commit()
-

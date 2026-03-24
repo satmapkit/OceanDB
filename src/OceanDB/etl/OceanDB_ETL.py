@@ -6,7 +6,6 @@ from OceanDB.OceanDB import OceanDB
 from typing import Optional
 from pathlib import Path
 
-
 NDArray = np.ndarray
 
 
