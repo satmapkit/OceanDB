@@ -12,13 +12,19 @@ from OceanDB.schemas.eddy_schema import eddy_columns, eddy_columns_schema
 
 
 class EddyETL(BaseETL):
-    def ingest_eddy_data_file(self, file: Path, cyclonic_type):
+    def ingest_eddy_data_file(
+        self,
+        file: Path,
+        cyclonic_type: int,
+        batch_size: int = 500000,
+    ):
         """
         Processes & Ingests Eddy Data NetCDF file
         """
         dataset = self.load_netcdf(file)
         for eddy_data_batch in self.extract_eddy_data_batches_from_netcdf(
-            dataset, batch_size=500000
+            dataset,
+            batch_size=batch_size,
         ):
             start = time.perf_counter()
             self.import_eddy_data_to_postgresql(
