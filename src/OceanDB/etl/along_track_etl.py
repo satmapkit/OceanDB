@@ -81,9 +81,6 @@ class AlongTrackMetaData:
         def get(attr: str):
             return getattr(ds, attr, None)
 
-        conventions = getattr(ds, "Conventions", None)
-
-        print(f"CONVENTIONS {conventions}")
         return cls(
             file_name=file_name,
             conventions=get("Conventions"),
@@ -153,6 +150,41 @@ class AlongTrackETL(BaseETL):
         self, ds: nc.Dataset, file: Path
     ) -> AlongTrackMetaData:
         return AlongTrackMetaData.from_netcdf(ds, file_name=file.name)
+
+    @staticmethod
+    def _copy_int_value(value):
+        if np.ma.is_masked(value):
+            return None
+
+        if isinstance(value, np.generic):
+            value = value.item()
+
+        if value is None:
+            return None
+
+        if isinstance(value, float):
+            if np.isnan(value):
+                return None
+            if not value.is_integer():
+                raise ValueError(f"Expected integer-compatible value, received {value}")
+
+        return int(value)
+
+    @staticmethod
+    def _copy_float_value(value):
+        if np.ma.is_masked(value):
+            return None
+
+        if isinstance(value, np.generic):
+            value = value.item()
+
+        if value is None:
+            return None
+
+        if isinstance(value, float) and np.isnan(value):
+            return None
+
+        return float(value)
 
     def extract_data_from_netcdf(self, ds: nc.Dataset, file: Path) -> AlongTrackData:
         """
@@ -302,52 +334,53 @@ class AlongTrackETL(BaseETL):
 
     def import_along_track_data_to_postgresql(self, along_track_data: AlongTrackData):
         """
-        Cast the AlongTrackData to a Pandas DataFrame
+        Bulk load along-track rows into Postgres using COPY.
         """
 
         EPOCH = datetime(2000, 1, 1)
-        date_times = [
-            EPOCH + timedelta(microseconds=int(t)) for t in along_track_data.time
-        ]
+        copy_query = sql.SQL("""
+            COPY {table} (
+                file_name,
+                mission,
+                track,
+                cycle,
+                latitude,
+                longitude,
+                sla_unfiltered,
+                sla_filtered,
+                date_time,
+                dac,
+                ocean_tide,
+                internal_tide,
+                lwe,
+                mdt,
+                basin_id
+            ) FROM STDIN
+        """).format(table=sql.Identifier(self.along_track_table_name))
 
-        # 1. Define the INSERT query
-        insert_query = sql.SQL("""
-                               INSERT INTO {table} (file_name, mission, track, cycle, latitude, longitude,
-                                                    sla_unfiltered, sla_filtered, date_time, dac,
-                                                    ocean_tide, internal_tide, lwe, mdt, basin_id)
-                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                               """).format(
-            table=sql.Identifier(self.along_track_table_name)
-        )
-
-        # 2. Prepare the list of data tuples
-        # Using .item() is still recommended to ensure native Python types
-        data_to_insert = []
-        for i in range(len(along_track_data.time)):
-            data_to_insert.append(
-                (
-                    along_track_data.file_name,
-                    along_track_data.mission,
-                    along_track_data.track[i].item(),
-                    along_track_data.cycle[i].item(),
-                    along_track_data.latitude[i].item(),
-                    along_track_data.longitude[i].item(),
-                    along_track_data.sla_unfiltered[i].item(),
-                    along_track_data.sla_filtered[i].item(),
-                    date_times[i],
-                    along_track_data.dac[i].item(),
-                    along_track_data.ocean_tide[i].item(),
-                    along_track_data.internal_tide[i].item(),
-                    along_track_data.lwe[i].item(),
-                    along_track_data.mdt[i].item(),
-                    along_track_data.basin_id[i].item(),
-                )
-            )
-
-        # 3. Execute the batch insert
         with pg.connect(self.config.postgres_dsn) as connection:
             with connection.cursor() as cursor:
-                cursor.executemany(insert_query, data_to_insert)
+                with cursor.copy(copy_query) as copy:
+                    for i, time_value in enumerate(along_track_data.time):
+                        copy.write_row(
+                            (
+                                along_track_data.file_name,
+                                along_track_data.mission,
+                                self._copy_int_value(along_track_data.track[i]),
+                                self._copy_int_value(along_track_data.cycle[i]),
+                                self._copy_float_value(along_track_data.latitude[i]),
+                                self._copy_float_value(along_track_data.longitude[i]),
+                                self._copy_int_value(along_track_data.sla_unfiltered[i]),
+                                self._copy_int_value(along_track_data.sla_filtered[i]),
+                                EPOCH + timedelta(microseconds=int(time_value)),
+                                self._copy_int_value(along_track_data.dac[i]),
+                                self._copy_int_value(along_track_data.ocean_tide[i]),
+                                self._copy_int_value(along_track_data.internal_tide[i]),
+                                self._copy_int_value(along_track_data.lwe[i]),
+                                self._copy_int_value(along_track_data.mdt[i]),
+                                self._copy_int_value(along_track_data.basin_id[i]),
+                            )
+                        )
             connection.commit()
 
     def import_metadata_to_psql(self, metadata: AlongTrackMetaData) -> None:

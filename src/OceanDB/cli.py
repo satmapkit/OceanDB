@@ -52,13 +52,17 @@ def init():
     ocean_db_init.create_database()
     ocean_db_init.create_tables()
     ocean_db_init.create_eddy_tables()
-
-    ocean_db_init.create_indices()
-    ocean_db_init.create_eddy_indices()
     ocean_db_init.create_partitions("1990-01-01", "2025-11-01")
     oceandb_etl = _create_base_etl()
     oceandb_etl.insert_basins_data()
     oceandb_etl.insert_basin_connections_data()
+
+
+@cli.command("create-indices")
+def create_indices():
+    ocean_db_init = OceanDBInit()
+    ocean_db_init.create_indices()
+    ocean_db_init.create_eddy_indices()
 
 
 @cli.command()
