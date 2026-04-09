@@ -13,11 +13,25 @@ batch = list[dict[K, Any]]
 
 class BaseETL(OceanDB):
 
+    def _table_has_rows(self, table_name: str) -> bool:
+        query = sql.SQL("SELECT EXISTS (SELECT 1 FROM {table} LIMIT 1)").format(
+            table=sql.Identifier(table_name)
+        )
+        with psycopg.connect(self.config.postgres_dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                result = cur.fetchone()
+        return bool(result and result[0])
+
     def load_netcdf(self, file: Path) -> nc.Dataset:
         ds = nc.Dataset(file, "r")
         return ds
 
     def insert_basins_data(self):
+        if self._table_has_rows("basin"):
+            print("Skipping basin seed data: basin table already contains rows")
+            return
+
         with self.load_module_file(
             module="OceanDB.data", filename="basins/ocean_basins.csv", mode="r"
         ) as f:
@@ -44,6 +58,12 @@ class BaseETL(OceanDB):
         print(f"Inserted {len(df)} rows in to the basins table")
 
     def insert_basin_connections_data(self):
+        if self._table_has_rows("basin_connections"):
+            print(
+                "Skipping basin connection seed data: basin_connections table already contains rows"
+            )
+            return
+
         with self.load_module_file(
             module="OceanDB.data",
             filename="basins/ocean_basin_connections.csv",

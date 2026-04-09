@@ -1,15 +1,39 @@
-from datetime import datetime
-import click
-from pathlib import Path
-from multiprocessing import Pool, cpu_count
 import time
+from datetime import datetime
+from multiprocessing import Pool
+from pathlib import Path
+
+import click
 
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.config import Config
 from OceanDB.utils.logging import get_logger
-from OceanDB.etl import BaseETL, EddyETL, AlongTrackETL, OceanDBCopernicusMarine
 
 logger = get_logger()
+
+
+def _create_base_etl():
+    from OceanDB.etl.base_etl import BaseETL
+
+    return BaseETL()
+
+
+def _create_along_track_etl():
+    from OceanDB.etl.along_track_etl import AlongTrackETL
+
+    return AlongTrackETL()
+
+
+def _create_eddy_etl():
+    from OceanDB.etl.eddy_etl import EddyETL
+
+    return EddyETL()
+
+
+def _create_copernicus_marine_client():
+    from OceanDB.etl.copernicus_marine import OceanDBCopernicusMarine
+
+    return OceanDBCopernicusMarine()
 
 
 @click.group()
@@ -32,8 +56,7 @@ def init():
     ocean_db_init.create_indices()
     ocean_db_init.create_eddy_indices()
     ocean_db_init.create_partitions("1990-01-01", "2025-11-01")
-    # ocean_db_init.validate_schema()
-    oceandb_etl = BaseETL()
+    oceandb_etl = _create_base_etl()
     oceandb_etl.insert_basins_data()
     oceandb_etl.insert_basin_connections_data()
 
@@ -59,7 +82,7 @@ def ingest_eddy():
     - Inserts use strict PostgreSQL typing (INSERT, not COPY).
     - Intended to be run once per database or during reinitialization.
     """
-    oceandb_etl = EddyETL()
+    oceandb_etl = _create_eddy_etl()
     eddy_directory = oceandb_etl.config.eddy_data_directory
 
     print("Processing Ingesting META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc")
@@ -113,25 +136,11 @@ def download():
             click.echo("Download canceled.")
             return
 
-    oceandb_cm = OceanDBCopernicusMarine()
+    oceandb_cm = _create_copernicus_marine_client()
     # click.echo("\n⬇️  Starting download... (this may take hours)")
     #
     oceandb_cm.sync_copernicus_along_track_data()
     # click.echo("✔ Download complete.")
-
-
-def parse_date(ctx, param, value) -> datetime:
-    """Parse date strings into datetime objects."""
-    if value is None:
-        return None
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        raise click.BadParameter(f"Invalid date format: {value}. Use YYYY-MM-DD.")
-
-
-from datetime import datetime
-
 EARLIEST_DATE = datetime(1990, 1, 1)
 
 
@@ -185,7 +194,7 @@ def get_netcdf4_files(
     If start_date and end_date are both None → return ALL files for those missions.
     """
 
-    oceandb_etl = AlongTrackETL()
+    oceandb_etl = _create_along_track_etl()
     missions = list(missions)
 
     # -----------------------
@@ -253,6 +262,16 @@ def get_netcdf4_files(
             all_netcdf_files.extend(nc_files)
 
     return all_netcdf_files
+
+
+def _format_duration(seconds: float) -> str:
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(int(minutes), 60)
+    if hours:
+        return f"{hours}h {minutes}m {seconds:.1f}s"
+    if minutes:
+        return f"{minutes}m {seconds:.1f}s"
+    return f"{seconds:.1f}s"
 
 
 @cli.command()
@@ -324,7 +343,7 @@ def ingest_along_track(missions, start_date, end_date):
         return
 
     # Query the ingested metadata so that we can skip processing files that have already been processed
-    oceandb_etl = AlongTrackETL()
+    oceandb_etl = _create_along_track_etl()
     metadata_filenames = oceandb_etl.query_metadata()
 
     start_ingest_time = time.perf_counter()
@@ -333,11 +352,33 @@ def ingest_along_track(missions, start_date, end_date):
         file for file in nc_files if file.name not in metadata_filenames
     ]
 
+    if not along_track_files:
+        click.echo("All matching files have already been ingested. Nothing to do.")
+        return
+
+    click.echo(
+        f"Processing {len(along_track_files)} new file(s); "
+        f"skipping {len(nc_files) - len(along_track_files)} already ingested file(s)."
+    )
+
     process_count = 6
     with Pool(process_count) as multiprocessing_pool:
-        multiprocessing_pool.map(
+        completed = 0
+        total = len(along_track_files)
+        for result in multiprocessing_pool.imap_unordered(
             oceandb_etl.process_along_track_file, along_track_files
-        )
+        ):
+            completed += 1
+            remaining = total - completed
+            click.echo(
+                f"[{completed}/{total}] {result['file_name']} | "
+                f"{result['size_mb']:.2f} MB | "
+                f"{_format_duration(result['duration_seconds'])} | "
+                f"{remaining} remaining"
+            )
 
     full_ingest_duration = time.perf_counter() - start_ingest_time
-    print(f"Full Ingest Time {full_ingest_duration:.2f} seconds")
+    click.echo(
+        f"Finished ingesting {len(along_track_files)} file(s) in "
+        f"{_format_duration(full_ingest_duration)}."
+    )

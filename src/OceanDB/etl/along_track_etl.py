@@ -211,6 +211,10 @@ class AlongTrackETL(BaseETL):
             print(ex)
 
     def insert_basins_data(self):
+        if self._table_has_rows("basin"):
+            print("Skipping basin seed data: basin table already contains rows")
+            return
+
         with self.load_module_file(
             module="OceanDB.data", filename="basins/ocean_basins.csv", mode="r"
         ) as f:
@@ -237,6 +241,12 @@ class AlongTrackETL(BaseETL):
         print(f"Inserted {len(df)} rows in to the basins table")
 
     def insert_basin_connections_data(self):
+        if self._table_has_rows("basin_connections"):
+            print(
+                "Skipping basin connection seed data: basin_connections table already contains rows"
+            )
+            return
+
         with self.load_module_file(
             module="OceanDB.data",
             filename="basins/ocean_basin_connections.csv",
@@ -337,10 +347,8 @@ class AlongTrackETL(BaseETL):
         # 3. Execute the batch insert
         with pg.connect(self.config.postgres_dsn) as connection:
             with connection.cursor() as cursor:
-                print(f"Starting batch insert of {len(data_to_insert)} rows...")
                 cursor.executemany(insert_query, data_to_insert)
             connection.commit()
-            print("Successfully inserted all rows.")
 
     def import_metadata_to_psql(self, metadata: AlongTrackMetaData) -> None:
         """Insert metadata into along_track_metadata table, ignoring duplicates."""
@@ -387,7 +395,6 @@ class AlongTrackETL(BaseETL):
             with conn.cursor() as cur:
                 cur.execute(query, tuple(metadata.__dict__.values()))
             conn.commit()
-        print(f"Inserted Metadata for {metadata.file_name}")
 
     def query_metadata(self):
         query = "SELECT * FROM along_track_metadata;"
@@ -414,4 +421,8 @@ class AlongTrackETL(BaseETL):
         self.import_metadata_to_psql(metadata=along_track_metadata)
         duration = time.perf_counter() - start
         size_mb = file.stat().st_size / (1024 * 1024)
-        print(f"✅ {file.name} | {size_mb:.2f} MB | {duration:.2f} seconds")
+        return {
+            "file_name": file.name,
+            "size_mb": size_mb,
+            "duration_seconds": duration,
+        }
