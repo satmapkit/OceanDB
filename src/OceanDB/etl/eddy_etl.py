@@ -3,7 +3,7 @@ import netCDF4 as nc
 import psycopg as pg
 from psycopg import sql
 import time
-from typing import Iterator, Any
+from typing import Iterator, Any, Mapping, cast
 from pathlib import Path
 
 from OceanDB.etl import BaseETL, batch
@@ -24,18 +24,18 @@ class EddyETL(BaseETL):
         dataset = self.load_netcdf(file)
         for eddy_data_batch in self.extract_eddy_data_batches_from_netcdf(
             dataset,
+            cyclonic_type=cyclonic_type,
             batch_size=batch_size,
         ):
             start = time.perf_counter()
-            self.import_eddy_data_to_postgresql(
-                eddy_data=eddy_data_batch, cyclonic_type=cyclonic_type
-            )
+            self.import_eddy_data_to_postgresql(eddy_data=eddy_data_batch)
             duration = time.perf_counter() - start
             print(f"✅ Ingested Eddy Data Points took {duration:.2f} seconds")
 
     def extract_eddy_data_batches_from_netcdf(
         self,
         ds: nc.Dataset,
+        cyclonic_type: int,
         batch_size: int,
     ) -> Iterator[batch[eddy_columns]]:
         """
@@ -69,6 +69,7 @@ class EddyETL(BaseETL):
                 name: field.from_netcdf(ds, slice(start, stop))
                 for name, field in fields_in_ds
             }
+            vars_slice["cyclonic_type"] = [cyclonic_type] * (stop - start)
 
             # get expected data from the netcdf. Certain fields
             # that are expected in the database (e.g. date_time)
@@ -78,9 +79,7 @@ class EddyETL(BaseETL):
                 for i in range(stop - start)
             ]
 
-    def import_eddy_data_to_postgresql(
-        self, eddy_data: batch[eddy_columns], cyclonic_type: int
-    ):
+    def import_eddy_data_to_postgresql(self, eddy_data: batch[eddy_columns]):
         """
         Insert eddy records into PostgreSQL using INSERT statements.
 
@@ -103,15 +102,7 @@ class EddyETL(BaseETL):
             sql.SQL(", ").join(map(sql.Placeholder, columns)),
         )
 
-        data = [
-            {
-                **row,
-                eddy_columns_schema[
-                    "cyclonic_type"
-                ].postgres_column_name: cyclonic_type,
-            }
-            for row in eddy_data
-        ]
+        data = cast(list[Mapping[str, Any]], eddy_data)
 
         try:
             with pg.connect(self.config.postgres_dsn) as conn:
