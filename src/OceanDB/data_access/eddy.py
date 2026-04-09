@@ -6,7 +6,13 @@ from typing import Any, Literal, Iterable
 
 from OceanDB.data_access.along_track import BaseReadQuery
 from OceanDB.schemas.along_track_schema import along_track_fields
-from OceanDB.schemas.eddy_schema import eddy_schema, eddy_fields, along_track_eddy_schema 
+from OceanDB.schemas.eddy_schema import (
+    eddy_schema,
+    eddy_fields,
+    eddy_columns,
+    eddy_columns_schema,
+    along_track_eddy_schema,
+)
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.data_access.base_query import QuerySpec
 
@@ -65,9 +71,9 @@ class Eddy(BaseReadQuery):
 
     def eddy_with_track_id(
         self,
-        fields: list[eddy_fields],
+        fields: list[eddy_columns],
         track_id: int,
-    ) -> Dataset[eddy_fields, npt.NDArray[np.floating]] | None:
+    ) -> Dataset[eddy_columns, npt.NDArray[np.floating]] | None:
         """
         Retrieve observations for a single eddy track.
 
@@ -85,7 +91,7 @@ class Eddy(BaseReadQuery):
         """
         query_spec = QuerySpec(
             sql_template=self.load_sql_file(self._eddy_with_id_query),
-            schema=eddy_schema,
+            schema=eddy_columns_schema,
         )
         params = {"track_id": track_id}
 
@@ -186,4 +192,3 @@ class Eddy(BaseReadQuery):
             params=params,
             dataset_name="along_track_near_eddy",
         )
-

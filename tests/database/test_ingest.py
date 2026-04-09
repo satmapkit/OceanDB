@@ -22,6 +22,7 @@ def test_insert_basin_data(db_with_basin_data):
             # should have at least one entry in basin table
             assert res[0] > 0
 
+
 def test_ingest_cyclonic_eddy(db_with_cyclonic_eddy_data):
     eddy = Eddy(db_with_cyclonic_eddy_data.config)
     ids = eddy.get_eddy_tracks_from_times(
@@ -42,6 +43,7 @@ def test_ingest_cyclonic_eddy(db_with_cyclonic_eddy_data):
     #     f"{eddy_directory}/META3.2_DT_allsat_AntiCyclonic_long_19930101_20220209.nc"
     # )
     # oceandb_etl.ingest_eddy_data_file(anticyclonic_filepath, cyclonic_type=1)
+
 
 def test_ingest_alongtrack(db_with_alongtrack_data):
     assert True

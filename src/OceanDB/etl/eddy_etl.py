@@ -3,10 +3,11 @@ import netCDF4 as nc
 import psycopg as pg
 from psycopg import sql
 import time
-from typing import Iterator
+from typing import Iterator, Any
 from pathlib import Path
 
 from OceanDB.etl import BaseETL, batch
+from OceanDB.ocean_data.ocean_data import ColumnField
 from OceanDB.schemas.eddy_schema import eddy_columns, eddy_columns_schema
 
 
@@ -34,10 +35,6 @@ class EddyETL(BaseETL):
         """
         Yield batches of eddy data from a NetCDF dataset.
 
-        This function assumes the eddy time variable is stored as
-        Unix seconds (uint32), despite metadata claiming
-        'days since 1950-01-01'.
-
         :param ds:
             Open NetCDF dataset
         :param batch_size:
@@ -53,18 +50,25 @@ class EddyETL(BaseETL):
         obs_var = ds.variables["observation_number"]
         n_total = obs_var.shape[0]
 
+        fields_in_ds: list[tuple[eddy_columns, ColumnField]] = [
+            (name, field)
+            for name, field in eddy_columns_schema.items()
+            if field.netcdf_name in ds.variables
+        ]
+
         for start in range(0, n_total, batch_size):
             stop = min(start + batch_size, n_total)
+
+            vars_slice: dict[eddy_columns, Any] = {
+                name: field.from_netcdf(ds, slice(start, stop))
+                for name, field in fields_in_ds
+            }
 
             # get expected data from the netcdf. Certain fields
             # that are expected in the database (e.g. date_time)
             # may not exist in the netcdf, and thus will not be returned.
             yield [
-                {
-                    name: field.from_netcdf(ds, i)
-                    for name, field in eddy_columns_schema.items()
-                    if field.netcdf_name in ds.variables
-                }
+                {name: values[i] for name, values in vars_slice.items()}
                 for i in range(start, stop)
             ]
 

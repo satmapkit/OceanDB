@@ -5,7 +5,6 @@ from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas.along_track_schema import along_track_fields, along_track_schema
 
-
 Mission = Literal[
     "al",
     "alg",

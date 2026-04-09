@@ -197,7 +197,7 @@ class OceanDBInit(BaseWriteQuery):
                     {"tablename": table},
                 )
                 res = cur.fetchone()
-                print('for', table, 'result is', res)
+                print("for", table, "result is", res)
                 if not res:
                     return False
                 exists = res[0]
@@ -355,14 +355,12 @@ class OceanDBInit(BaseWriteQuery):
 
             with engine.connect() as conn:
                 rows = conn.execute(
-                    text(
-                        """
+                    text("""
                         SELECT indexname, indexdef
                         FROM pg_indexes
                         WHERE schemaname = :schema AND tablename = :table
                         ORDER BY indexname
-                    """
-                    ),
+                    """),
                     {"schema": schema_name, "table": table_name},
                 ).fetchall()
                 actual_indexes = {row[0] for row in rows}

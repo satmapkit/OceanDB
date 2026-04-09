@@ -5,6 +5,7 @@ import numpy as np
 
 from tests.database.fixtures import *
 
+
 def test_geographic_nearest_neighbor(db_with_alongtrack_data):
     """
     TEST single point spatiotemporal query
