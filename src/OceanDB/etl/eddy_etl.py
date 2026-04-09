@@ -69,7 +69,7 @@ class EddyETL(BaseETL):
             # may not exist in the netcdf, and thus will not be returned.
             yield [
                 {name: values[i] for name, values in vars_slice.items()}
-                for i in range(start, stop)
+                for i in range(stop - start)
             ]
 
     def import_eddy_data_to_postgresql(
