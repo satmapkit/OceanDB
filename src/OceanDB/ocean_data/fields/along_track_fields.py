@@ -1,5 +1,7 @@
 import numpy as np
 from datetime import datetime
+import netCDF4 as nc
+from typing import Any
 
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 from OceanDB.utils.date_time_conversion import compute_date_time
@@ -143,6 +145,26 @@ mdt = ColumnField(
     netcdf_unique_name="mdt",
 )
 
+def _expand_if_low_dim(var: nc.Variable[Any], rows: slice) -> Any:
+    """
+    Given a datetime variable in a netcdf dataset
+    which may not have the desired dimension,
+    duplicate the variable to be the right shape.
+
+    :param var:
+        The netcdf variable to convert
+
+    :param rows:
+        expected output slice
+
+    :returns:
+        numpy array of the var, with the requested size
+    """
+    if len(var.shape) == 0 and rows.stop is not None:
+        return np.array([var[:] for _ in range(*rows.indices(rows.stop))])
+    return var[rows]
+
+
 tpa_correction = ColumnField(
     export_name="tpa_correction",
     postgres_table_name=atk_alias,
@@ -150,6 +172,7 @@ tpa_correction = ColumnField(
     python_type=np.float64,
     postgres_type="smallint",
     netcdf_unique_name="tpa_correction",
+    process_from_netcdf=_expand_if_low_dim,
 )
 
 # Derived / query-only fields
