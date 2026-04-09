@@ -31,6 +31,7 @@ psql:
 
 format:
 	black src/OceanDB
+	isort src/OceanDB
 
 lint:
 	flake8 src/OceanDB
