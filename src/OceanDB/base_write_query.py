@@ -1,6 +1,6 @@
 from typing import Any, Iterable, Mapping
 
-import psycopg as pg
+from psycopg.rows import dict_row
 
 from OceanDB.OceanDB import OceanDB
 from OceanDB.ocean_data.dataset import K
@@ -35,10 +35,8 @@ class BaseWriteQuery(OceanDB):
 
         sql_query = query_spec.sql_projection_compiler(fields)
 
-        with pg.connect(self.config.postgres_dsn) as conn:
+        with self.cursor(commit=True, row_factory=dict_row) as cur:
             if debug_sql:
-                log_query(conn=conn, query=sql_query, params=params)
+                log_query(conn=cur.connection, query=sql_query, params=params)
 
-            with conn.cursor(row_factory=pg.rows.dict_row) as cur:
-                cur.execute(sql_query, params)
-                conn.commit()
+            cur.execute(sql_query, params)

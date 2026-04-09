@@ -1,11 +1,16 @@
+from contextlib import contextmanager
 from functools import cached_property
-import netCDF4 as nc
-from psycopg import sql
-import psycopg as pg
 from importlib import resources
 import time
 from typing import IO, LiteralString, Literal
+
+import netCDF4 as nc
 import numpy as np
+import psycopg as pg
+from psycopg import sql
+from psycopg.rows import tuple_row
+from psycopg.types import TypeInfo
+from psycopg.types.shapely import register_shapely
 from sqlalchemy import create_engine
 
 from OceanDB.config import Config
@@ -34,6 +39,43 @@ class OceanDB:
         self.sql_pkg = "OceanDB.sql"
         self.data_pkg = "OceanDB.data"
         self.logger = get_logger()
+
+    @contextmanager
+    def cursor(
+        self,
+        *,
+        autocommit: bool = False,
+        commit: bool = False,
+        use_geometry: bool = False,
+        row_factory=tuple_row,
+        connection_string: str | None = None,
+    ):
+        """
+        Managed PostgreSQL cursor for all OceanDB database access.
+        """
+        if autocommit and commit:
+            raise ValueError("autocommit and commit cannot both be True")
+
+        dsn = self.connection_string if connection_string is None else connection_string
+
+        with pg.connect(dsn) as conn:
+            conn.autocommit = autocommit
+
+            if use_geometry:
+                info = TypeInfo.fetch(conn, "geometry")
+                if info is None:
+                    raise ValueError("Failed to fetch geometry")
+                register_shapely(info, conn)
+
+            try:
+                with conn.cursor(row_factory=row_factory) as cur:
+                    yield cur
+            except Exception:
+                conn.rollback()
+                raise
+            else:
+                if commit:
+                    conn.commit()
 
     def load_module_file(
         self,
@@ -80,26 +122,24 @@ class OceanDB:
     def vacuum_analyze(self):
         print(f"Starting VACUUM ANALYZE...")
         start = time.time()
-        with pg.connect(self.connection_string) as conn:
-            conn.autocommit = True
-            with conn.cursor() as cur:
-                cur.execute("VACUUM ANALYZE")
+        with self.cursor(autocommit=True) as cur:
+            cur.execute("VACUUM ANALYZE")
         end = time.time()
         print(f"Finished. Total time: {end - start}")
 
     def drop_database(self):
-        with pg.connect(
-            f"host={self.host} port={self.port} user={self.username} password={self.password}"
-        ) as conn:
-            conn.autocommit = (
-                True  # Enable autocommit to execute CREATE DATABASE command
-            )
-            with conn.cursor() as cur:
-                cur.execute(
-                    sql.SQL("DROP DATABASE {} WITH (FORCE)").format(
-                        sql.Identifier(self.db_name)
-                    )
+        with self.cursor(
+            autocommit=True,
+            connection_string=(
+                f"host={self.host} port={self.port} "
+                f"user={self.username} password={self.password}"
+            ),
+        ) as cur:
+            cur.execute(
+                sql.SQL("DROP DATABASE {} WITH (FORCE)").format(
+                    sql.Identifier(self.db_name)
                 )
+            )
 
         print(f"Database '{self.db_name}' dropped.")
 
@@ -108,10 +148,8 @@ class OceanDB:
             table_name=sql.Identifier(name)
         )
 
-        with pg.connect(self.connection_string) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query_truncate_table)
-                conn.commit()
+        with self.cursor(commit=True) as cur:
+            cur.execute(query_truncate_table)
         print(f"All data removed from table '{name} in database.'{self.db_name}'.")
 
     @cached_property
@@ -143,12 +181,11 @@ class OceanDB:
 
     @cached_property
     def basin_connection_map(self) -> dict:
-        with pg.connect(self.connection_string) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """SELECT DISTINCT basin_id FROM basin_connections ORDER BY basin_id"""
-                )
-                unique_ids = cursor.fetchall()
+        with self.cursor() as cur:
+            cur.execute(
+                """SELECT DISTINCT basin_id FROM basin_connections ORDER BY basin_id"""
+            )
+            unique_ids = cur.fetchall()
 
         uid = [data_i[0] for data_i in unique_ids]
         basin_id_dict = [{"basin_id": basin_id} for basin_id in uid]
@@ -159,15 +196,14 @@ class OceanDB:
         		GROUP BY basin_id"""
 
         basin_id_connection_dict = {}
-        with pg.connect(self.connection_string) as connection:
-            with connection.cursor() as cursor:
-                cursor.executemany(query, basin_id_dict, returning=True)
-                i = 0
-                while True:
-                    data = cursor.fetchall()
-                    basin_id_connection_dict[uid[i]] = data[0][0]
-                    basin_id_connection_dict[uid[i]].insert(0, uid[i])
-                    i = i + 1
-                    if not cursor.nextset():
-                        break
+        with self.cursor() as cur:
+            cur.executemany(query, basin_id_dict, returning=True)
+            i = 0
+            while True:
+                data = cur.fetchall()
+                basin_id_connection_dict[uid[i]] = data[0][0]
+                basin_id_connection_dict[uid[i]].insert(0, uid[i])
+                i = i + 1
+                if not cur.nextset():
+                    break
         return basin_id_connection_dict

@@ -1,16 +1,16 @@
 from dataclasses import dataclass
 from dataclasses import asdict
+from datetime import datetime, timedelta
+from functools import cached_property
+from pathlib import Path
+import time
+
 import netCDF4 as nc
 import pandas as pd
-import psycopg
-import psycopg as pg
-from psycopg import sql
-import time
 import numpy as np
-from functools import cached_property
+from psycopg import sql
+from psycopg.rows import dict_row
 from typing import Optional
-from datetime import datetime, timedelta
-from pathlib import Path
 
 from OceanDB.etl.base_etl import BaseETL
 
@@ -265,10 +265,8 @@ class AlongTrackETL(BaseETL):
 
         data = df.to_records(index=False).tolist()
 
-        with psycopg.connect(self.config.postgres_dsn) as conn:
-            with conn.cursor() as cur:
-                cur.executemany(query.as_string(conn), data)
-                conn.commit()
+        with self.cursor(commit=True) as cur:
+            cur.executemany(query.as_string(cur.connection), data)
 
         print(f"Inserted {len(df)} rows in to the basins table")
 
@@ -301,10 +299,8 @@ class AlongTrackETL(BaseETL):
 
         data = df.to_records(index=False).tolist()
 
-        with psycopg.connect(self.config.postgres_dsn) as conn:
-            with conn.cursor() as cur:
-                cur.executemany(query.as_string(conn), data)
-                conn.commit()
+        with self.cursor(commit=True) as cur:
+            cur.executemany(query.as_string(cur.connection), data)
 
         print(f"Inserted {len(df)} rows in to the basins table")
 
@@ -358,30 +354,28 @@ class AlongTrackETL(BaseETL):
             ) FROM STDIN
         """).format(table=sql.Identifier(self.along_track_table_name))
 
-        with pg.connect(self.config.postgres_dsn) as connection:
-            with connection.cursor() as cursor:
-                with cursor.copy(copy_query) as copy:
-                    for i, time_value in enumerate(along_track_data.time):
-                        copy.write_row(
-                            (
-                                along_track_data.file_name,
-                                along_track_data.mission,
-                                self._copy_int_value(along_track_data.track[i]),
-                                self._copy_int_value(along_track_data.cycle[i]),
-                                self._copy_float_value(along_track_data.latitude[i]),
-                                self._copy_float_value(along_track_data.longitude[i]),
-                                self._copy_int_value(along_track_data.sla_unfiltered[i]),
-                                self._copy_int_value(along_track_data.sla_filtered[i]),
-                                EPOCH + timedelta(microseconds=int(time_value)),
-                                self._copy_int_value(along_track_data.dac[i]),
-                                self._copy_int_value(along_track_data.ocean_tide[i]),
-                                self._copy_int_value(along_track_data.internal_tide[i]),
-                                self._copy_int_value(along_track_data.lwe[i]),
-                                self._copy_int_value(along_track_data.mdt[i]),
-                                self._copy_int_value(along_track_data.basin_id[i]),
-                            )
+        with self.cursor(commit=True) as cur:
+            with cur.copy(copy_query) as copy:
+                for i, time_value in enumerate(along_track_data.time):
+                    copy.write_row(
+                        (
+                            along_track_data.file_name,
+                            along_track_data.mission,
+                            self._copy_int_value(along_track_data.track[i]),
+                            self._copy_int_value(along_track_data.cycle[i]),
+                            self._copy_float_value(along_track_data.latitude[i]),
+                            self._copy_float_value(along_track_data.longitude[i]),
+                            self._copy_int_value(along_track_data.sla_unfiltered[i]),
+                            self._copy_int_value(along_track_data.sla_filtered[i]),
+                            EPOCH + timedelta(microseconds=int(time_value)),
+                            self._copy_int_value(along_track_data.dac[i]),
+                            self._copy_int_value(along_track_data.ocean_tide[i]),
+                            self._copy_int_value(along_track_data.internal_tide[i]),
+                            self._copy_int_value(along_track_data.lwe[i]),
+                            self._copy_int_value(along_track_data.mdt[i]),
+                            self._copy_int_value(along_track_data.basin_id[i]),
                         )
-            connection.commit()
+                    )
 
     def import_metadata_to_psql(self, metadata: AlongTrackMetaData) -> None:
         """Insert metadata into along_track_metadata table, ignoring duplicates."""
@@ -424,17 +418,14 @@ class AlongTrackETL(BaseETL):
             placeholders=sql.SQL(", ").join(sql.Placeholder() * len(fields)),
         )
 
-        with pg.connect(self.connection_string) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query, tuple(metadata.__dict__.values()))
-            conn.commit()
+        with self.cursor(commit=True) as cur:
+            cur.execute(query, tuple(metadata.__dict__.values()))
 
     def query_metadata(self):
-        query = "SELECT * FROM along_track_metadata;"
-        with pg.connect(self.connection_string) as connection:
-            with connection.cursor(row_factory=pg.rows.dict_row) as cursor:
-                cursor.execute(query)
-                rows = cursor.fetchall()
+        query = "SELECT file_name FROM along_track_metadata;"
+        with self.cursor(row_factory=dict_row) as cur:
+            cur.execute(query)
+            rows = cur.fetchall()
         return set([metadata["file_name"] for metadata in rows])
 
     def process_along_track_file(self, file: Path):

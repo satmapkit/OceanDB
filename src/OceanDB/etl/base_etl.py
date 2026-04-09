@@ -1,6 +1,5 @@
 import netCDF4 as nc
 import pandas as pd
-import psycopg
 from psycopg import sql
 from typing import Iterator, Any, TypeVar
 from pathlib import Path
@@ -17,10 +16,9 @@ class BaseETL(OceanDB):
         query = sql.SQL("SELECT EXISTS (SELECT 1 FROM {table} LIMIT 1)").format(
             table=sql.Identifier(table_name)
         )
-        with psycopg.connect(self.config.postgres_dsn) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query)
-                result = cur.fetchone()
+        with self.cursor() as cur:
+            cur.execute(query)
+            result = cur.fetchone()
         return bool(result and result[0])
 
     def load_netcdf(self, file: Path) -> nc.Dataset:
@@ -50,10 +48,8 @@ class BaseETL(OceanDB):
 
         data = df.to_records(index=False).tolist()
 
-        with psycopg.connect(self.config.postgres_dsn) as conn:
-            with conn.cursor() as cur:
-                cur.executemany(query.as_string(conn), data)
-                conn.commit()
+        with self.cursor(commit=True) as cur:
+            cur.executemany(query.as_string(cur.connection), data)
 
         print(f"Inserted {len(df)} rows in to the basins table")
 
@@ -74,7 +70,6 @@ class BaseETL(OceanDB):
             columns={"basinid": "basin_id", "connected_basin": "connected_id"},
             inplace=True,
         )
-        print(df.columns)
         columns = list(df.columns)
 
         query = sql.SQL(
@@ -87,9 +82,7 @@ class BaseETL(OceanDB):
 
         data = df.to_records(index=False).tolist()
 
-        with psycopg.connect(self.config.postgres_dsn) as conn:
-            with conn.cursor() as cur:
-                cur.executemany(query.as_string(conn), data)
-                conn.commit()
+        with self.cursor(commit=True) as cur:
+            cur.executemany(query.as_string(cur.connection), data)
 
         print(f"Inserted {len(df)} rows in to the basins table")
