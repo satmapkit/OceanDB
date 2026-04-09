@@ -1,9 +1,7 @@
 import netCDF4 as nc
 
-import psycopg as pg
-from psycopg import sql
 import time
-from typing import Iterator, Any, Mapping, cast
+from typing import Iterator, Any
 from pathlib import Path
 
 from OceanDB.etl import BaseETL, batch
@@ -90,24 +88,8 @@ class EddyETL(BaseETL):
 
         """
 
-        columns = [field.postgres_column_name for field in eddy_columns_schema.values()]
-
-        insert_query = sql.SQL("""
-               INSERT INTO {} ({})
-               VALUES ({})
-               ON CONFLICT DO NOTHING
-           """).format(
-            sql.Identifier("public", "eddy"),
-            sql.SQL(", ").join(map(sql.Identifier, columns)),
-            sql.SQL(", ").join(map(sql.Placeholder, columns)),
+        self.import_schema_rows_to_postgresql(
+            table_name="eddy",
+            schema=eddy_columns_schema,
+            data=eddy_data,
         )
-
-        data = cast(list[Mapping[str, Any]], eddy_data)
-
-        try:
-            with pg.connect(self.config.postgres_dsn) as conn:
-                with conn.cursor() as cur:
-                    cur.executemany(insert_query, data)
-        except Exception as e:
-            print("INSERT FAILED:", e)
-            raise

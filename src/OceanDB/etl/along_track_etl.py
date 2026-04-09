@@ -5,21 +5,19 @@ import pandas as pd
 import psycopg
 import psycopg as pg
 from psycopg import sql
+from psycopg.rows import dict_row
 import time
 import numpy as np
 from functools import cached_property
-from typing import Any, Optional, Iterator, TypeVar, Sequence, Mapping, cast
+from typing import Any, Optional, Iterator
 from pathlib import Path
 
-from OceanDB.etl.base_etl import BaseETL
+from OceanDB.etl.base_etl import BaseETL, batch
 from OceanDB.ocean_data.ocean_data import ColumnField
 from OceanDB.schemas.along_track_schema import (
     along_track_columns,
     along_track_columns_schema,
 )
-
-K = TypeVar("K", bound=str)
-batch = Sequence[Mapping[K, Any]]
 
 
 @dataclass
@@ -296,30 +294,11 @@ class AlongTrackETL(BaseETL):
         """
         Insert along-track records into PostgreSQL using INSERT statements.
         """
-
-        columns = [
-            field.postgres_column_name for field in along_track_columns_schema.values()
-        ]
-
-        insert_query = sql.SQL("""
-               INSERT INTO {} ({})
-               VALUES ({})
-               ON CONFLICT DO NOTHING
-           """).format(
-            sql.Identifier("public", self.along_track_table_name),
-            sql.SQL(", ").join(map(sql.Identifier, columns)),
-            sql.SQL(", ").join(map(sql.Placeholder, columns)),
+        self.import_schema_rows_to_postgresql(
+            table_name=self.along_track_table_name,
+            schema=along_track_columns_schema,
+            data=along_track_data,
         )
-
-        data = cast(list[Mapping[str, Any]], along_track_data)
-
-        try:
-            with pg.connect(self.config.postgres_dsn) as conn:
-                with conn.cursor() as cur:
-                    cur.executemany(insert_query, data)
-        except Exception as e:
-            print("INSERT FAILED:", e)
-            raise
 
     def import_metadata_to_psql(self, metadata: AlongTrackMetaData) -> None:
         """Insert metadata into along_track_metadata table, ignoring duplicates."""
@@ -371,7 +350,7 @@ class AlongTrackETL(BaseETL):
     def query_metadata(self):
         query = "SELECT * FROM along_track_metadata;"
         with pg.connect(self.connection_string) as connection:
-            with connection.cursor(row_factory=pg.rows.dict_row) as cursor:
+            with connection.cursor(row_factory=dict_row) as cursor:
                 cursor.execute(query)
                 rows = cursor.fetchall()
         return set([metadata["file_name"] for metadata in rows])
