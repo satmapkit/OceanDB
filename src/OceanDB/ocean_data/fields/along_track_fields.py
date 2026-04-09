@@ -2,6 +2,7 @@ import numpy as np
 from datetime import datetime
 
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
+from OceanDB.utils.date_time_conversion import compute_date_time
 
 # -----------------
 # Core coordinates & identity
@@ -31,6 +32,8 @@ date_time = ColumnField(
     postgres_column_name="date_time",
     python_type=datetime,
     postgres_type="timestamp",
+    netcdf_unique_name="time",
+    process_from_netcdf=compute_date_time,
 )
 
 file_name = ColumnField(
@@ -83,6 +86,7 @@ sla_unfiltered = ColumnField(
     postgres_column_name="sla_unfiltered",
     python_type=np.float64,
     postgres_type="smallint",
+    netcdf_unique_name="sla_unfiltered",
 )
 
 sla_filtered = ColumnField(
@@ -91,6 +95,7 @@ sla_filtered = ColumnField(
     postgres_column_name="sla_filtered",
     python_type=np.float64,
     postgres_type="smallint",
+    netcdf_unique_name="sla_filtered",
 )
 
 dac = ColumnField(
@@ -99,6 +104,7 @@ dac = ColumnField(
     postgres_column_name="dac",
     python_type=np.float64,
     postgres_type="smallint",
+    netcdf_unique_name="dac",
 )
 
 ocean_tide = ColumnField(
@@ -107,6 +113,7 @@ ocean_tide = ColumnField(
     postgres_column_name="ocean_tide",
     python_type=np.float64,
     postgres_type="smallint",
+    netcdf_unique_name="ocean_tide",
 )
 
 internal_tide = ColumnField(
@@ -115,6 +122,7 @@ internal_tide = ColumnField(
     postgres_column_name="internal_tide",
     python_type=np.float64,
     postgres_type="smallint",
+    netcdf_unique_name="internal_tide",
 )
 
 lwe = ColumnField(
@@ -123,6 +131,7 @@ lwe = ColumnField(
     postgres_column_name="lwe",
     python_type=np.float64,
     postgres_type="smallint",
+    netcdf_unique_name="lwe",
 )
 
 mdt = ColumnField(
@@ -131,6 +140,7 @@ mdt = ColumnField(
     postgres_column_name="mdt",
     python_type=np.float64,
     postgres_type="smallint",
+    netcdf_unique_name="mdt",
 )
 
 tpa_correction = ColumnField(
@@ -139,6 +149,7 @@ tpa_correction = ColumnField(
     postgres_column_name="tpa_correction",
     python_type=np.float64,
     postgres_type="smallint",
+    netcdf_unique_name="tpa_correction",
 )
 
 # Derived / query-only fields

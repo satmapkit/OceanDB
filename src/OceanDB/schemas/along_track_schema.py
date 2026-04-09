@@ -1,8 +1,8 @@
 from typing import Literal
 from OceanDB.ocean_data.fields import along_track_fields as atk_fields
-from OceanDB.ocean_data.ocean_data import OceanDataField
+from OceanDB.ocean_data.ocean_data import ColumnField, OceanDataField
 
-along_track_fields = Literal[
+along_track_columns = Literal[
     "latitude",
     "longitude",
     "date_time",
@@ -19,11 +19,9 @@ along_track_fields = Literal[
     "lwe",
     "mdt",
     "tpa_correction",
-    "distance",
-    "delta_t",
 ]
 
-along_track_schema: dict[along_track_fields, OceanDataField] = {
+along_track_columns_schema: dict[along_track_columns, ColumnField] = {
     "latitude": atk_fields.latitude,
     "longitude": atk_fields.longitude,
     "date_time": atk_fields.date_time,
@@ -40,6 +38,18 @@ along_track_schema: dict[along_track_fields, OceanDataField] = {
     "lwe": atk_fields.lwe,
     "mdt": atk_fields.mdt,
     "tpa_correction": atk_fields.tpa_correction,
+}
+
+along_track_fields = (
+    along_track_columns
+    | Literal[
+        "distance",
+        "delta_t",
+    ]
+)
+
+along_track_schema: dict[along_track_fields, OceanDataField] = {
+    **along_track_columns_schema,
     "distance": atk_fields.distance,
     "delta_t": atk_fields.delta_t,
 }

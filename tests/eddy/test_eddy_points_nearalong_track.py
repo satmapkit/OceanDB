@@ -9,7 +9,7 @@ from tests.database.fixtures import *
 def test_along_track_points_near_eddy(db_with_eddy_and_alongtrack_data):
     eddy = Eddy(config=db_with_eddy_and_alongtrack_data.config)
 
-    fields = get_args(along_track_fields)
+    fields = [f for l in get_args(along_track_fields) for f in get_args(l)]
 
     result = eddy.along_track_points_near_eddy(
         fields=fields,
