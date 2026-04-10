@@ -1,7 +1,7 @@
-import psycopg as pg
-from psycopg import sql
 from datetime import datetime
+
 from dateutil.relativedelta import relativedelta
+from psycopg import sql
 from sqlalchemy import text
 
 from OceanDB.base_write_query import BaseWriteQuery
@@ -190,47 +190,44 @@ EXPECTED_TABLE_INDEXES = {
 class OceanDBInit(BaseWriteQuery):
 
     def table_exists(self, table: str) -> bool:
-        with pg.connect(self.connection_string) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT EXISTS ( SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename  = %(tablename)s);",
-                    {"tablename": table},
-                )
-                res = cur.fetchone()
-                print("for", table, "result is", res)
-                if not res:
-                    return False
-                exists = res[0]
-                if exists:
-                    return True
+        with self.cursor() as cur:
+            cur.execute(
+                "SELECT EXISTS ( SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename  = %(tablename)s);",
+                {"tablename": table},
+            )
+            res = cur.fetchone()
+            print("for", table, "result is", res)
+            if not res:
+                return False
+            exists = res[0]
+            if exists:
+                return True
         return False
 
     def create_database(self):
         # Create the Database
-        with pg.connect(self.config.postgres_dsn_admin) as conn:
-            conn.autocommit = True
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %s)",
-                    (self.db_name,),
-                )
-                exists = cur.fetchone()[0]
-                if exists:
-                    print(f"Database '{self.db_name}' already exists.")
-                    return
+        with self.cursor(
+            autocommit=True, connection_string=self.config.postgres_dsn_admin
+        ) as cur:
+            cur.execute(
+                "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %s)",
+                (self.db_name,),
+            )
+            exists = cur.fetchone()[0]
+            if exists:
+                print(f"Database '{self.db_name}' already exists.")
+                return
 
-                cur.execute(
-                    sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.db_name))
-                )
-                print(f"Database '{self.db_name}' created successfully.")
+            cur.execute(
+                sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.db_name))
+            )
+            print(f"Database '{self.db_name}' created successfully.")
 
         ## Enable POSTGIS extensions
-        with pg.connect(self.config.postgres_dsn) as atdb_conn:
-            with atdb_conn.cursor() as atdb_cur:
-                atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS plpgsql;"))
-                atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS postgis;"))
-                atdb_cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS btree_gist;"))
-                atdb_conn.commit()
+        with self.cursor(commit=True) as cur:
+            cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS plpgsql;"))
+            cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS postgis;"))
+            cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS btree_gist;"))
         print(f"Database '{self.db_name}' POSTGIS enabled.")
 
     def create_tables(self):

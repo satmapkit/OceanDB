@@ -2,7 +2,7 @@ from typing import Any
 import netCDF4 as nc
 
 
-def compute_date_time(var: nc.Variable[Any], rows: slice) -> Any:
+def compute_date_time(var: nc.Variable, rows: slice) -> Any:
     """
     Given a datetime variable in a netcdf dataset,
     convert the datetime to a format suitable for

@@ -45,7 +45,8 @@ OceanDB is a python package for managing oceanic satellite data intelligently.  
 The OceanDB package provides a CLI for initializing the database and ingesting data.
 1. **Initializing the Database**
    ```bash
-   oceandb init // Creates the database tables 
+   oceandb init // Creates the database, tables, partitions, and reference data
+   oceandb create-indices // Build query indices after bulk ingest
    ```
 
 2. **Ingesting Data** 

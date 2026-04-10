@@ -1,6 +1,5 @@
 import netCDF4 as nc
 
-import psycopg as pg
 from psycopg import sql
 import time
 from typing import Iterator, Any
@@ -108,9 +107,8 @@ class EddyETL(BaseETL):
         ]
 
         try:
-            with pg.connect(self.config.postgres_dsn) as conn:
-                with conn.cursor() as cur:
-                    cur.executemany(insert_query, data)
+            with self.cursor(commit=True) as cur:
+                cur.executemany(insert_query, data)
         except Exception as e:
             print("INSERT FAILED:", e)
             raise

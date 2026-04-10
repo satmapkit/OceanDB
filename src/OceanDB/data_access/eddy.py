@@ -1,5 +1,4 @@
 from datetime import datetime
-import psycopg as pg
 import numpy.typing as npt
 import numpy as np
 from typing import Any, Literal, Iterable
@@ -64,10 +63,9 @@ class Eddy(BaseReadQuery):
             "end_date": end_date,
         }
 
-        with pg.connect(self.config.postgres_dsn) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query, params)
-                return [row[0] for row in cur.fetchall()]
+        with self.cursor() as cur:
+            cur.execute(query, params)
+            return [row[0] for row in cur.fetchall()]
 
     def eddy_with_track_id(
         self,
