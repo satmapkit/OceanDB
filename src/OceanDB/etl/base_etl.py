@@ -1,10 +1,11 @@
 import netCDF4 as nc
 import pandas as pd
 from psycopg import sql
-from typing import Iterator, Any, TypeVar
+from typing import Any, TypeVar, Mapping, Sequence, cast
 from pathlib import Path
 
 from OceanDB.OceanDB import OceanDB
+from OceanDB.ocean_data.ocean_data import ColumnField
 
 K = TypeVar("K", bound=str)
 batch = list[dict[K, Any]]
@@ -25,6 +26,33 @@ class BaseETL(OceanDB):
         ds = nc.Dataset(file, "r")
         return ds
 
+    def import_schema_rows_to_postgresql(
+        self,
+        *,
+        table_name: str,
+        schema: Mapping[K, ColumnField],
+        data: Sequence[Mapping[K, Any]],
+    ) -> None:
+        columns = [field.postgres_column_name for field in schema.values()]
+        rows = cast(Sequence[Mapping[str, Any]], data)
+
+        insert_query = sql.SQL("""
+               INSERT INTO {} ({})
+               VALUES ({})
+               ON CONFLICT DO NOTHING
+           """).format(
+            sql.Identifier("public", table_name),
+            sql.SQL(", ").join(map(sql.Identifier, columns)),
+            sql.SQL(", ").join(map(sql.Placeholder, columns)),
+        )
+
+        try:
+            with self.cursor(commit=True) as cur:
+                cur.executemany(insert_query, rows)
+        except Exception as e:
+            print("INSERT FAILED:", e)
+            raise
+
     def insert_basins_data(self):
         if self._table_has_rows("basin"):
             print("Skipping basin seed data: basin table already contains rows")
@@ -38,7 +66,7 @@ class BaseETL(OceanDB):
         df.rename(columns={"geom": "basin_geog"}, inplace=True)
 
         columns = list(df.columns)
-        query = sql.SQL(
+        query: sql.Composed = sql.SQL(
             "INSERT INTO {table} ({fields}) VALUES ({placeholders})"
         ).format(
             table=sql.Identifier("basin"),
@@ -49,7 +77,7 @@ class BaseETL(OceanDB):
         data = df.to_records(index=False).tolist()
 
         with self.cursor(commit=True) as cur:
-            cur.executemany(query.as_string(cur.connection), data)
+            cur.executemany(query, data)
 
         print(f"Inserted {len(df)} rows in to the basins table")
 
@@ -72,7 +100,7 @@ class BaseETL(OceanDB):
         )
         columns = list(df.columns)
 
-        query = sql.SQL(
+        query: sql.Composed = sql.SQL(
             "INSERT INTO {table} ({fields}) VALUES ({placeholders})"
         ).format(
             table=sql.Identifier("basin_connections"),
@@ -83,6 +111,6 @@ class BaseETL(OceanDB):
         data = df.to_records(index=False).tolist()
 
         with self.cursor(commit=True) as cur:
-            cur.executemany(query.as_string(cur.connection), data)
+            cur.executemany(query, data)
 
         print(f"Inserted {len(df)} rows in to the basins table")

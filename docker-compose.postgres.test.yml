@@ -4,10 +4,10 @@ networks:
     external: true
 
 services:
-  postgres:
+  postgres_test:
     image: postgis/postgis:16-3.4
-    hostname: postgres
-    container_name: postgres
+    hostname: postgres_test
+    container_name: postgres_test
     ports:
       - "5433:5432"
     environment:
@@ -23,5 +23,4 @@ services:
 volumes:
   postgres_data_test:
     name: oceandb_postgres_data_test
-
 
