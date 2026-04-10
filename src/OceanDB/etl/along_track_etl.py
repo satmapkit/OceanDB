@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from dataclasses import asdict
-from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
 import time
@@ -10,31 +9,14 @@ import pandas as pd
 import numpy as np
 from psycopg import sql
 from psycopg.rows import dict_row
-from typing import Optional
+from typing import Any, Optional, Iterator
 
-from OceanDB.etl.base_etl import BaseETL
-
-
-@dataclass
-class AlongTrackData:
-    """Structured container for extracted along-track variables."""
-
-    file_name: np.ndarray
-    mission: np.ndarray
-    time: np.ndarray
-    latitude: np.ndarray
-    longitude: np.ndarray
-    cycle: np.ndarray
-    track: np.ndarray
-    sla_unfiltered: np.ndarray
-    sla_filtered: np.ndarray
-    dac: np.ndarray
-    ocean_tide: np.ndarray
-    internal_tide: np.ndarray
-    lwe: np.ndarray
-    mdt: np.ndarray
-    tpa_correction: np.ndarray
-    basin_id: np.ndarray
+from OceanDB.etl.base_etl import BaseETL, batch
+from OceanDB.ocean_data.ocean_data import ColumnField
+from OceanDB.schemas.along_track_schema import (
+    along_track_columns,
+    along_track_columns_schema,
+)
 
 
 @dataclass
@@ -152,7 +134,7 @@ class AlongTrackETL(BaseETL):
         return AlongTrackMetaData.from_netcdf(ds, file_name=file.name)
 
     @staticmethod
-    def _copy_int_value(value):
+    def _coerce_smallint(value: Any) -> int | None:
         if np.ma.is_masked(value):
             return None
 
@@ -170,8 +152,11 @@ class AlongTrackETL(BaseETL):
 
         return int(value)
 
-    @staticmethod
-    def _copy_float_value(value):
+    @classmethod
+    def _copy_value(cls, field: ColumnField, value: Any) -> Any:
+        if field.postgres_type == "smallint":
+            return cls._coerce_smallint(value)
+
         if np.ma.is_masked(value):
             return None
 
@@ -184,63 +169,78 @@ class AlongTrackETL(BaseETL):
         if isinstance(value, float) and np.isnan(value):
             return None
 
-        return float(value)
+        return value
 
-    def extract_data_from_netcdf(self, ds: nc.Dataset, file: Path) -> AlongTrackData:
+    def extract_data_from_netcdf(
+        self,
+        ds: nc.Dataset,
+        batch_size: int,
+        file: Path,
+    ) -> Iterator[batch[along_track_columns]]:
         """
         Parse & transform NetCDF file
         """
-        mission = file.name.split("_")[2]
-        try:
-            ds.variables["sla_unfiltered"].set_auto_scale(False)
-            ds.variables["sla_filtered"].set_auto_scale(False)
-            ds.variables["ocean_tide"].set_auto_scale(False)
-            ds.variables["internal_tide"].set_auto_scale(False)
-            ds.variables["lwe"].set_auto_scale(False)
-            ds.variables["mdt"].set_auto_scale(False)
-            ds.variables["dac"].set_auto_scale(False)
-            ds.variables["tpa_correction"].set_auto_scale(False)
 
-            time_data = ds.variables[
-                "time"
-            ]  # Extract dates from the dataset and convert them to standard datetime
-            time_data = nc.num2date(
-                time_data[:],
-                time_data.units,
-                only_use_cftime_datetimes=False,
-                only_use_python_datetimes=False,
-            )
-            time_data = nc.date2num(
-                time_data[:], "microseconds since 2000-01-01 00:00:00"
-            )  # Convert the standard date back to the 8-byte integer PSQL uses
+        # Mask, but don't scale
+        ds.set_auto_mask(True)
+        ds.set_auto_maskandscale(False)
 
-            basin_id = self.basin_mask(
-                ds.variables["latitude"][:], ds.variables["longitude"][:]
-            )
+        # pull out mission
+        file_parts = file.name.split("_")
+        if len(file_parts) < 3:
+            raise ValueError(f"Could not parse mission from file name: {file.name}")
 
-            data = AlongTrackData(
-                time=time_data,
-                latitude=ds.variables["latitude"][:],
-                longitude=ds.variables["longitude"][:],
-                cycle=ds.variables["cycle"][:],
-                track=ds.variables["track"][:],
-                sla_unfiltered=ds.variables["sla_unfiltered"][:],
-                sla_filtered=ds.variables["sla_filtered"][:],
-                dac=ds.variables["dac"][:],
-                ocean_tide=ds.variables["ocean_tide"][:],
-                internal_tide=ds.variables["internal_tide"][:],
-                lwe=ds.variables["lwe"][:],
-                mdt=ds.variables["mdt"][:],
-                tpa_correction=ds.variables["tpa_correction"][:],
-                basin_id=basin_id,
-                mission=mission,
-                file_name=file.name,
-            )
-            ds.close()
-            return data
+        mission = file_parts[2]
+        if mission not in self.missions:
+            raise ValueError(f"Unsupported mission '{mission}' in file: {file.name}")
 
-        except Exception as ex:
-            print(ex)
+        # extract fields that are both expected and in the dataset
+        derived_fields = {"file_name", "mission", "basin_id"}
+        required_fields: list[tuple[along_track_columns, ColumnField]] = [
+            (name, field)
+            for name, field in along_track_columns_schema.items()
+            if name not in derived_fields
+        ]
+
+        missing_variables = [
+            field.netcdf_name
+            for _, field in required_fields
+            if field.netcdf_name not in ds.variables
+        ]
+        if missing_variables:
+            missing = ", ".join(sorted(missing_variables))
+            raise ValueError(f"Missing required variables in {file.name}: {missing}")
+
+        fields_in_ds: list[tuple[along_track_columns, ColumnField]] = [
+            (name, field)
+            for name, field in required_fields
+            if field.netcdf_name in ds.variables
+        ]
+
+        # certain fields have to be scaled
+        # TODO:
+        ds["latitude"].set_auto_scale(True)
+        ds["longitude"].set_auto_scale(True)
+
+        n_total = len(ds["latitude"])
+        for start in range(0, n_total, batch_size):
+            stop = min(start + batch_size, n_total)
+            vars_slice: dict[along_track_columns, Any] = {
+                name: field.from_netcdf(ds, slice(start, stop)) for name, field in fields_in_ds
+            }
+
+            # file_name, mission, and basin_id are part of the DB schema but derived here
+            # rather than read directly from the NetCDF dataset.
+            vars_slice["file_name"] = [file.name] * len(vars_slice["latitude"])
+            vars_slice["mission"] = [mission] * len(vars_slice["latitude"])
+            latitude = vars_slice["latitude"]
+            longitude = vars_slice["longitude"]
+            vars_slice["basin_id"] = self.basin_mask(latitude, longitude)
+
+            yield [
+                {name: values[i] for name, values in vars_slice.items()}
+                for i in range(stop - start)
+            ]
 
     def insert_basins_data(self):
         if self._table_has_rows("basin"):
@@ -266,7 +266,7 @@ class AlongTrackETL(BaseETL):
         data = df.to_records(index=False).tolist()
 
         with self.cursor(commit=True) as cur:
-            cur.executemany(query.as_string(cur.connection), data)
+            cur.executemany(query, data)
 
         print(f"Inserted {len(df)} rows in to the basins table")
 
@@ -300,7 +300,7 @@ class AlongTrackETL(BaseETL):
         data = df.to_records(index=False).tolist()
 
         with self.cursor(commit=True) as cur:
-            cur.executemany(query.as_string(cur.connection), data)
+            cur.executemany(query, data)
 
         print(f"Inserted {len(df)} rows in to the basins table")
 
@@ -328,52 +328,31 @@ class AlongTrackETL(BaseETL):
         basin_mask = mask_data[i, j]
         return basin_mask
 
-    def import_along_track_data_to_postgresql(self, along_track_data: AlongTrackData):
+    def import_along_track_data_to_postgresql(
+        self, along_track_data: batch[along_track_columns]
+    ):
         """
         Bulk load along-track rows into Postgres using COPY.
         """
-
-        EPOCH = datetime(2000, 1, 1)
+        columns = [
+            field.postgres_column_name for field in along_track_columns_schema.values()
+        ]
         copy_query = sql.SQL("""
             COPY {table} (
-                file_name,
-                mission,
-                track,
-                cycle,
-                latitude,
-                longitude,
-                sla_unfiltered,
-                sla_filtered,
-                date_time,
-                dac,
-                ocean_tide,
-                internal_tide,
-                lwe,
-                mdt,
-                basin_id
+                {columns}
             ) FROM STDIN
-        """).format(table=sql.Identifier(self.along_track_table_name))
+        """).format(
+            table=sql.Identifier(self.along_track_table_name),
+            columns=sql.SQL(", ").join(map(sql.Identifier, columns)),
+        )
 
         with self.cursor(commit=True) as cur:
             with cur.copy(copy_query) as copy:
-                for i, time_value in enumerate(along_track_data.time):
+                for row in along_track_data:
                     copy.write_row(
-                        (
-                            along_track_data.file_name,
-                            along_track_data.mission,
-                            self._copy_int_value(along_track_data.track[i]),
-                            self._copy_int_value(along_track_data.cycle[i]),
-                            self._copy_float_value(along_track_data.latitude[i]),
-                            self._copy_float_value(along_track_data.longitude[i]),
-                            self._copy_int_value(along_track_data.sla_unfiltered[i]),
-                            self._copy_int_value(along_track_data.sla_filtered[i]),
-                            EPOCH + timedelta(microseconds=int(time_value)),
-                            self._copy_int_value(along_track_data.dac[i]),
-                            self._copy_int_value(along_track_data.ocean_tide[i]),
-                            self._copy_int_value(along_track_data.internal_tide[i]),
-                            self._copy_int_value(along_track_data.lwe[i]),
-                            self._copy_int_value(along_track_data.mdt[i]),
-                            self._copy_int_value(along_track_data.basin_id[i]),
+                        tuple(
+                            self._copy_value(field, row[field_name])
+                            for field_name, field in along_track_columns_schema.items()
                         )
                     )
 
@@ -428,20 +407,20 @@ class AlongTrackETL(BaseETL):
             rows = cur.fetchall()
         return set([metadata["file_name"] for metadata in rows])
 
-    def process_along_track_file(self, file: Path):
+    def process_along_track_file(self, file: Path, batch_size: int = 500000):
         """
         Processes an along track netcdf file & inserts into Postgres
         """
         start = time.perf_counter()
 
         dataset: nc.Dataset = self.load_netcdf(file)
-        along_track_data: AlongTrackData = self.extract_data_from_netcdf(
-            ds=dataset, file=file
-        )
         along_track_metadata: AlongTrackMetaData = self.extract_dataset_metadata(
             ds=dataset, file=file
         )
-        self.import_along_track_data_to_postgresql(along_track_data=along_track_data)
+        for data_batch in self.extract_data_from_netcdf(
+            ds=dataset, file=file, batch_size=batch_size
+        ):
+            self.import_along_track_data_to_postgresql(data_batch)
         self.import_metadata_to_psql(metadata=along_track_metadata)
         duration = time.perf_counter() - start
         size_mb = file.stat().st_size / (1024 * 1024)

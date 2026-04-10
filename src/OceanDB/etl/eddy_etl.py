@@ -1,6 +1,5 @@
 import netCDF4 as nc
 
-from psycopg import sql
 import time
 from typing import Iterator, Any
 from pathlib import Path
@@ -11,24 +10,30 @@ from OceanDB.schemas.eddy_schema import eddy_columns, eddy_columns_schema
 
 
 class EddyETL(BaseETL):
-    def ingest_eddy_data_file(self, file: Path, cyclonic_type):
+    def ingest_eddy_data_file(
+        self,
+        file: Path,
+        cyclonic_type: int,
+        batch_size: int = 500000,
+    ):
         """
         Processes & Ingests Eddy Data NetCDF file
         """
         dataset = self.load_netcdf(file)
         for eddy_data_batch in self.extract_eddy_data_batches_from_netcdf(
-            dataset, batch_size=500000
+            dataset,
+            cyclonic_type=cyclonic_type,
+            batch_size=batch_size,
         ):
             start = time.perf_counter()
-            self.import_eddy_data_to_postgresql(
-                eddy_data=eddy_data_batch, cyclonic_type=cyclonic_type
-            )
+            self.import_eddy_data_to_postgresql(eddy_data=eddy_data_batch)
             duration = time.perf_counter() - start
             print(f"✅ Ingested Eddy Data Points took {duration:.2f} seconds")
 
     def extract_eddy_data_batches_from_netcdf(
         self,
         ds: nc.Dataset,
+        cyclonic_type: int,
         batch_size: int,
     ) -> Iterator[batch[eddy_columns]]:
         """
@@ -62,18 +67,17 @@ class EddyETL(BaseETL):
                 name: field.from_netcdf(ds, slice(start, stop))
                 for name, field in fields_in_ds
             }
+            vars_slice["cyclonic_type"] = [cyclonic_type] * (stop - start)
 
             # get expected data from the netcdf. Certain fields
             # that are expected in the database (e.g. date_time)
             # may not exist in the netcdf, and thus will not be returned.
             yield [
                 {name: values[i] for name, values in vars_slice.items()}
-                for i in range(start, stop)
+                for i in range(stop - start)
             ]
 
-    def import_eddy_data_to_postgresql(
-        self, eddy_data: batch[eddy_columns], cyclonic_type: int
-    ):
+    def import_eddy_data_to_postgresql(self, eddy_data: batch[eddy_columns]):
         """
         Insert eddy records into PostgreSQL using INSERT statements.
 
@@ -84,31 +88,8 @@ class EddyETL(BaseETL):
 
         """
 
-        columns = [field.postgres_column_name for field in eddy_columns_schema.values()]
-
-        insert_query = sql.SQL("""
-               INSERT INTO {} ({})
-               VALUES ({})
-               ON CONFLICT DO NOTHING
-           """).format(
-            sql.Identifier("public", "eddy"),
-            sql.SQL(", ").join(map(sql.Identifier, columns)),
-            sql.SQL(", ").join(map(sql.Placeholder, columns)),
+        self.import_schema_rows_to_postgresql(
+            table_name="eddy",
+            schema=eddy_columns_schema,
+            data=eddy_data,
         )
-
-        data = [
-            {
-                **row,
-                eddy_columns_schema[
-                    "cyclonic_type"
-                ].postgres_column_name: cyclonic_type,
-            }
-            for row in eddy_data
-        ]
-
-        try:
-            with self.cursor(commit=True) as cur:
-                cur.executemany(insert_query, data)
-        except Exception as e:
-            print("INSERT FAILED:", e)
-            raise
