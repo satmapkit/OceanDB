@@ -104,47 +104,128 @@ def ingest_eddy():
     oceandb_etl.ingest_eddy_data_file(anticyclonic_filepath, cyclonic_type=1)
 
 
-@cli.command
-def download():
+@cli.command()
+@click.argument("missions", nargs=-1)
+@click.option(
+    "--start-date",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    required=False,
+)
+@click.option(
+    "--end-date",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    required=False,
+)
+@click.option(
+    "--dataset-type",
+    default="my",
+    show_default=True,
+    help="Copernicus dataset type to download.",
+)
+@click.option(
+    "--dataset-version",
+    default="202411",
+    show_default=True,
+    help="Copernicus dataset version to download.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="List matching Copernicus files without downloading them.",
+)
+@click.option(
+    "--yes",
+    is_flag=True,
+    help="Skip the confirmation prompt.",
+)
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    help="Overwrite files that already exist locally.",
+)
+def download(
+    missions,
+    start_date,
+    end_date,
+    dataset_type,
+    dataset_version,
+    dry_run,
+    yes,
+    overwrite,
+):
+    """
+    Download Copernicus Marine along-track data.
+
+    If no missions are provided, all OceanDB-supported along-track missions are
+    selected. Date bounds are month-granular because Copernicus stores these
+    files under year/month directories.
+    """
     config = Config()
 
     along_track_directory = Path(config.along_track_data_directory)
 
-    # 2️⃣ Check contents
-    files = list(along_track_directory.glob("*"))
-
-    if not along_track_directory.exists():
-        click.echo(
-            f"Directory does not exist: {along_track_directory}\n"
-            f"Please create it or update ALONG_TRACK_DATA_DIRECTORY in your .env "
+    if not config.along_track_data_directory:
+        raise click.ClickException(
+            "ALONG_TRACK_DATA_DIRECTORY is not set. Add it to your .env file."
         )
+    if not along_track_directory.exists():
+        along_track_directory.mkdir(parents=True)
+
+    selected_missions = list(missions) or ["all"]
+    dry_run_prefix = "Checking" if dry_run else "Downloading"
+    click.echo(
+        f"{dry_run_prefix} Copernicus along-track data for missions: "
+        f"{', '.join(selected_missions)}"
+    )
+    click.echo(f"Output directory: {along_track_directory}")
+
+    oceandb_cm = _create_copernicus_marine_client()
+
+    preview_results = oceandb_cm.sync_copernicus_along_track_data(
+        missions=selected_missions,
+        output_directory=along_track_directory,
+        start_date=start_date,
+        end_date=end_date,
+        dataset_type=dataset_type,
+        version=dataset_version,
+        dry_run=True,
+        overwrite=overwrite,
+    )
+    summary = oceandb_cm.summarize_get_results(preview_results)
+    click.echo(
+        "\nCopernicus preview: "
+        f"{summary.file_count} file(s), "
+        f"{oceandb_cm.format_size(summary.total_size_mb)}, "
+        f"{summary.request_count} request(s)."
+    )
+
+    if dry_run:
         return
 
-    if not files:
-        click.echo(f"Found {len(files)} file(s) in directory. No need to download.")
-        click.echo("✔ Data already exists.")
-
-        # 3️⃣ Directory is empty — warn user
+    if not yes:
         click.echo(
-            "\n⚠️  No data found in the directory.\n"
-            f"The directory '{along_track_directory}' is empty.\n"
-            "Downloading the full dataset requires more than **20 GB** of storage.\n"
+            "\nCopernicus along-track downloads can require tens of GB of storage."
         )
-
-        # 4️⃣ Ask the user if they want to continue
         proceed = click.confirm(
-            "Do you want to proceed with downloading 20+ GB of data?", default=False
+            "Do you want to proceed with downloading data?", default=False
         )
-
         if not proceed:
             click.echo("Download canceled.")
             return
 
-    oceandb_cm = _create_copernicus_marine_client()
-    # click.echo("\n⬇️  Starting download... (this may take hours)")
-    #
-    oceandb_cm.sync_copernicus_along_track_data()
-    # click.echo("✔ Download complete.")
+    results = oceandb_cm.sync_copernicus_along_track_data(
+        missions=selected_missions,
+        output_directory=along_track_directory,
+        start_date=start_date,
+        end_date=end_date,
+        dataset_type=dataset_type,
+        version=dataset_version,
+        dry_run=False,
+        overwrite=overwrite,
+    )
+    click.echo(f"Finished {len(results)} Copernicus download request(s).")
+
+
 EARLIEST_DATE = datetime(1990, 1, 1)
 
 
@@ -214,8 +295,9 @@ def get_netcdf4_files(
             invalid_missions.append(mission)
     if invalid_missions:
 
-        raise Exception(
-            f"received invalid arguments {invalid_missions}.  Received missions must be from the following list {oceandb_etl.missions}"
+        raise ValueError(
+            f"received invalid arguments {invalid_missions}. "
+            f"Received missions must be from the following list {oceandb_etl.missions}"
         )
 
     click.echo(f"Ingesting missions: {missions}")

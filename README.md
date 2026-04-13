@@ -49,24 +49,74 @@ The OceanDB package provides a CLI for initializing the database and ingesting d
    oceandb create-indices // Build query indices after bulk ingest
    ```
 
-2. **Ingesting Data** 
+2. **Downloading Along-Track Data**
 
-With Copernicus Marine Service Along Track downloaded to your computer. ensure that the ALONG_TRACK_DATA_DIRECTORY is set correctly in
-the .env file.  ALONG_TRACK_DATA_DIRECTORY should be the file path to the directory at which the SEALEVEL_GLO existis.  so ALONG_TRACK_DATA_DIRECTORY=/path/../../copernicus   
+Use `oceandb download` to fetch Copernicus Marine Service along-track data.
+The command downloads files into `ALONG_TRACK_DATA_DIRECTORY`, which must be
+set in `.env`.
+
+```bash
+ALONG_TRACK_DATA_DIRECTORY=/path/to/copernicus
+COPERNICUS_USERNAME=copernicus_marine_service_username
+COPERNICUS_PASSWORD=copernicus_marine_service_password
+```
+
+The downloader first runs a Copernicus dry-run preview. For normal downloads,
+it prints the matching file count and total size, then asks whether to continue
+before downloading anything.
+
+Preview a download without fetching files:
+
+```bash
+oceandb download --dry-run j3 --start-date 2024-01-01 --end-date 2024-02-01
+```
+
+Download one mission. The command previews the matching files, then prompts
+for confirmation:
+
+```bash
+oceandb download j3 --start-date 2024-01-01 --end-date 2024-02-01
+```
+
+Download multiple missions:
+
+```bash
+oceandb download s3a s3b --start-date 2024-01-01 --end-date 2024-02-01
+```
+
+Download all supported along-track missions:
+
+```bash
+oceandb download all --dataset-version 202411
+```
+
+Skip the confirmation prompt for scripted runs:
+
+```bash
+oceandb download j3 --start-date 2024-01-01 --end-date 2024-02-01 --yes
+```
+
+After data has been downloaded, ingest it into OceanDB.
 
 <!-- TODO: figure out how to include these images -->
 <!-- ![Screenshot 2025-12-05 at 11.19.07 AM.png](docs/Screenshot%202025-12-05%20at%2011.19.07%E2%80%AFAM.png) -->
 
-By default if no arguments are provided this CLI command will iterate over all of the data
+3. **Ingesting Along-Track Data**
 
-   ```bash
-    oceandb ingest-along-track // Ingest all missions across all date ranges
-    oceandb ingest-along-track s3a  // Ingest all Sentinel-3A (s3a) mission data
-    oceandb ingest-along-track s3a j3 c2 // Ingest multiple missions
-    oceandb ingest-along-track j3 --start-date 2019-01-01 --end-date 2020-12-03 // Ingest data from specific missions between start-date and end-date
-    oceandb ingest-along-track s6a --end-date 2024-01-01 // Specify only end-date
-    oceandb ingest-along-track s6a --start-date 2024-01-01  // Specify only start-datea
-  ```
+`oceandb ingest-along-track` reads from the same
+`ALONG_TRACK_DATA_DIRECTORY` used by `oceandb download`.
+
+By default if no arguments are provided this CLI command will iterate over all
+of the data.
+
+```bash
+oceandb ingest-along-track
+oceandb ingest-along-track s3a
+oceandb ingest-along-track s3a j3 c2
+oceandb ingest-along-track j3 --start-date 2019-01-01 --end-date 2020-12-03
+oceandb ingest-along-track s6a --end-date 2024-01-01
+oceandb ingest-along-track s6a --start-date 2024-01-01
+```
 
 
 Ingesting Eddy Data
