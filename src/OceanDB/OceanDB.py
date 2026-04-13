@@ -202,8 +202,13 @@ class OceanDB:
             while True:
                 data = cur.fetchall()
                 basin_id_connection_dict[uid[i]] = data[0][0]
-                basin_id_connection_dict[uid[i]].insert(0, uid[i])
                 i = i + 1
                 if not cur.nextset():
                     break
+        # For any basin without connections, make a connection to itself.
+        for basin_id in np.unique(self.basin_mask_data):
+            if basin_id not in basin_id_connection_dict:
+                basin_id_connection_dict[basin_id] = []
+            basin_id_connection_dict[basin_id].insert(0, basin_id)
+
         return basin_id_connection_dict
