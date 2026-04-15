@@ -98,6 +98,12 @@ oceandb download j3 --start-date 2024-01-01 --end-date 2024-02-01 --yes
 
 After data has been downloaded, ingest it into OceanDB.
 
+Quickly visualize the packaged basin polygons and their basin IDs:
+
+```bash
+oceandb visualize-basins --output artifacts/basin_map.html
+```
+
 <!-- TODO: figure out how to include these images -->
 <!-- ![Screenshot 2025-12-05 at 11.19.07 AM.png](docs/Screenshot%202025-12-05%20at%2011.19.07%E2%80%AFAM.png) -->
 
