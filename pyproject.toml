@@ -20,6 +20,7 @@ dependencies = [
     "xarray~=2024.6.0",
     "dotenv",
     "sqlalchemy>2.0",
+    "shapely~=2.1.2",
     "pydantic-settings"
 
 ]
@@ -42,9 +43,9 @@ include = ["OceanDB*"]
 
 [tool.setuptools.package-data]
 "OceanDB.sql" = ["*.sql"]
-"OceanDB.sql.tables" = ["*.sql"]
-"OceanDB.sql.indices" = ["*.sql"]
-"OceanDB.sql.queries" = ["*.sql"]
+"OceanDB.sql.tables" = ["*/*.sql", "*.sql"]
+"OceanDB.sql.indices" = ["*/*.sql", "*.sql"]
+"OceanDB.sql.queries" = ["*/*.sql", "*.sql"]
 
 
 "OceanDB.data.basin_masks" = ["*.nc"]
