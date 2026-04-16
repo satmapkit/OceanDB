@@ -122,6 +122,7 @@ oceandb ingest-along-track s3a j3 c2
 oceandb ingest-along-track j3 --start-date 2019-01-01 --end-date 2020-12-03
 oceandb ingest-along-track s6a --end-date 2024-01-01
 oceandb ingest-along-track s6a --start-date 2024-01-01
+oceandb summary alongtrack
 ```
 
 

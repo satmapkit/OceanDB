@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from dataclasses import asdict
 from functools import cached_property
+from datetime import datetime
 from pathlib import Path
 import time
 
@@ -17,6 +18,7 @@ from OceanDB.schemas.along_track_schema import (
     along_track_columns,
     along_track_columns_schema,
 )
+from OceanDB.utils.date_time_conversion import compute_date_time
 
 
 @dataclass
@@ -24,6 +26,10 @@ class AlongTrackMetaData:
     """Structured representation of NetCDF global metadata."""
 
     file_name: str
+    mission: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    observation_count: Optional[int] = None
     conventions: Optional[str] = None
     metadata_conventions: Optional[str] = None
     cdm_data_type: Optional[str] = None
@@ -54,7 +60,9 @@ class AlongTrackMetaData:
         return asdict(self)
 
     @classmethod
-    def from_netcdf(cls, ds: nc.Dataset, file_name: str) -> "AlongTrackMetaData":
+    def from_netcdf(
+        cls, ds: nc.Dataset, file_name: str, mission: str
+    ) -> "AlongTrackMetaData":
         """Create AlongTrackMetaData from a NetCDF4 dataset."""
 
         if not isinstance(ds, nc.Dataset):
@@ -63,8 +71,23 @@ class AlongTrackMetaData:
         def get(attr: str):
             return getattr(ds, attr, None)
 
+        start_date = None
+        end_date = None
+        observation_count = None
+        if "time" in ds.variables:
+            time_var = ds.variables["time"]
+            observation_count = len(time_var)
+            if observation_count:
+                date_times = compute_date_time(time_var, slice(0, observation_count))
+                start_date = min(date_times)
+                end_date = max(date_times)
+
         return cls(
             file_name=file_name,
+            mission=mission,
+            start_date=start_date,
+            end_date=end_date,
+            observation_count=observation_count,
             conventions=get("Conventions"),
             metadata_conventions=get("Metadata_Conventions"),
             cdm_data_type=get("cdm_data_type"),
@@ -128,10 +151,22 @@ class AlongTrackETL(BaseETL):
         "tpn",
     ]
 
+    @staticmethod
+    def _extract_mission_from_filename(file: Path) -> str:
+        file_parts = file.name.split("_")
+        if len(file_parts) < 3:
+            raise ValueError(f"Could not parse mission from file name: {file.name}")
+
+        mission = file_parts[2]
+        return mission
+
     def extract_dataset_metadata(
         self, ds: nc.Dataset, file: Path
     ) -> AlongTrackMetaData:
-        return AlongTrackMetaData.from_netcdf(ds, file_name=file.name)
+        mission = self._extract_mission_from_filename(file)
+        return AlongTrackMetaData.from_netcdf(
+            ds, file_name=file.name, mission=mission
+        )
 
     @staticmethod
     def _coerce_smallint(value: Any) -> int | None:
@@ -186,11 +221,7 @@ class AlongTrackETL(BaseETL):
         ds.set_auto_maskandscale(False)
 
         # pull out mission
-        file_parts = file.name.split("_")
-        if len(file_parts) < 3:
-            raise ValueError(f"Could not parse mission from file name: {file.name}")
-
-        mission = file_parts[2]
+        mission = self._extract_mission_from_filename(file)
         if mission not in self.missions:
             raise ValueError(f"Unsupported mission '{mission}' in file: {file.name}")
 
@@ -360,6 +391,10 @@ class AlongTrackETL(BaseETL):
         """Insert metadata into along_track_metadata table, ignoring duplicates."""
         fields = [
             "file_name",
+            "mission",
+            "start_date",
+            "end_date",
+            "observation_count",
             "conventions",
             "metadata_conventions",
             "cdm_data_type",
@@ -406,6 +441,23 @@ class AlongTrackETL(BaseETL):
             cur.execute(query)
             rows = cur.fetchall()
         return set([metadata["file_name"] for metadata in rows])
+
+    def summarize_ingested_missions(self) -> list[dict[str, Any]]:
+        query = """
+            SELECT
+                mission,
+                MIN(start_date) AS start_date,
+                MAX(end_date) AS end_date,
+                COALESCE(SUM(observation_count), 0) AS observation_count,
+                COUNT(*) AS file_count
+            FROM along_track_metadata
+            WHERE mission IS NOT NULL
+            GROUP BY mission
+            ORDER BY mission
+        """
+        with self.cursor(row_factory=dict_row) as cur:
+            cur.execute(query)
+            return list(cur.fetchall())
 
     def process_along_track_file(self, file: Path, batch_size: int = 500000):
         """
