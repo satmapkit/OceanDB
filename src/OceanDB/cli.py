@@ -16,30 +16,38 @@ logger = get_logger()
 
 def _create_base_etl():
     from OceanDB.etl.base_etl import BaseETL
-
     return BaseETL()
 
 
 def _create_along_track_etl():
     from OceanDB.etl.along_track_etl import AlongTrackETL
-
     return AlongTrackETL()
 
 
 def _create_eddy_etl():
     from OceanDB.etl.eddy_etl import EddyETL
-
     return EddyETL()
 
 
 def _create_copernicus_marine_client():
     from OceanDB.etl.copernicus_marine import OceanDBCopernicusMarine
-
     return OceanDBCopernicusMarine()
 
 
 @click.group()
 def cli():
+    pass
+
+
+@cli.group("summary")
+def summary_group():
+    """Summary commands."""
+    pass
+
+
+@cli.group("along_track")
+def along_track_group():
+    """Along-track data commands."""
     pass
 
 
@@ -327,7 +335,6 @@ def get_netcdf4_files(
         )
 
     click.echo(f"Ingesting missions: {missions}")
-    click.echo(f"N Missions {len(missions)}")
     prefix = "SEALEVEL_GLO_PHY_L3_MY_008_062"
     all_netcdf_files = []
 
@@ -373,6 +380,7 @@ def get_netcdf4_files(
 
             all_netcdf_files.extend(nc_files)
 
+    click.echo(f"Matched {len(all_netcdf_files)} file(s) for ingestion.")
     return all_netcdf_files
 
 
@@ -384,6 +392,76 @@ def _format_duration(seconds: float) -> str:
     if minutes:
         return f"{minutes}m {seconds:.1f}s"
     return f"{seconds:.1f}s"
+
+
+def _format_timestamp(value: datetime | None) -> str:
+    if value is None:
+        return "-"
+    return value.strftime("%Y-%m-%d")
+
+
+def _render_along_track_summary() -> None:
+    oceandb_etl = _create_along_track_etl()
+    summary_rows = oceandb_etl.summarize_ingested_missions()
+
+    if not summary_rows:
+        click.echo("No along-track data has been ingested yet.")
+        return
+
+    headers = [
+        ("Mission", "mission"),
+        ("Start", "start_date"),
+        ("End", "end_date"),
+        ("Files", "file_count"),
+        ("Observations", "observation_count"),
+    ]
+
+    formatted_rows = []
+    for row in summary_rows:
+        formatted_rows.append(
+            {
+                "mission": str(row["mission"]),
+                "start_date": _format_timestamp(row["start_date"]),
+                "end_date": _format_timestamp(row["end_date"]),
+                "file_count": str(row["file_count"]),
+                "observation_count": str(row["observation_count"]),
+            }
+        )
+
+    widths = {
+        key: max(len(title), *(len(row[key]) for row in formatted_rows))
+        for title, key in headers
+    }
+
+    header_line = "  ".join(title.ljust(widths[key]) for title, key in headers)
+    separator_line = "  ".join("-" * widths[key] for _, key in headers)
+
+    click.echo(header_line)
+    click.echo(separator_line)
+    for row in formatted_rows:
+        click.echo("  ".join(row[key].ljust(widths[key]) for _, key in headers))
+
+
+@along_track_group.command("summary")
+def summarize_along_track():
+    """
+    Summarize ingested along-track missions and their date coverage.
+    """
+    _render_along_track_summary()
+
+
+@summary_group.command("alongtrack")
+def summarize_alongtrack_from_summary_group():
+    """
+    Summarize ingested along-track missions and their date coverage.
+    """
+    _render_along_track_summary()
+
+
+@cli.command("along-track-summary", hidden=True)
+def summarize_along_track_legacy():
+    """Backward-compatible alias for along-track summary."""
+    _render_along_track_summary()
 
 
 @cli.command()
@@ -449,8 +527,12 @@ def ingest_along_track(missions, start_date, end_date):
         missions=missions, start_date=start_date, end_date=end_date
     )
 
+    if not nc_files:
+        click.echo("No matching along-track files were found. Nothing to ingest.")
+        return
+
     if not click.confirm(
-        f"Ingesting {len(nc_files)} files This may take many hours. Continue?"
+        f"Ingest {len(nc_files)} file(s)? This may take many hours."
     ):
         return
 

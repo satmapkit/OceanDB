@@ -1,5 +1,9 @@
 CREATE TABLE IF NOT EXISTS public.{table_name} (
             file_name text NOT NULL,
+            mission text NULL,
+            start_date timestamp without time zone NULL,
+            end_date timestamp without time zone NULL,
+            observation_count bigint NULL,
             conventions text NULL,
             metadata_conventions text NULL,
             cdm_data_type text NULL,
