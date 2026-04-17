@@ -89,7 +89,7 @@ class QuerySpec(Generic[K]):
 
         :return: SQL query template with all patterns removed other than parameters
         """
-        extra_fields = filter(lambda field: field not in self.mandatory_fields, fields)
+        extra_fields = tuple(filter(lambda field: field not in self.mandatory_fields, fields))
         field_sql = sql.SQL(", ").join(
             self.schema[field].to_sql_query() for field in extra_fields
         )
