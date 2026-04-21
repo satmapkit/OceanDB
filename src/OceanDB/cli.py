@@ -5,6 +5,7 @@ from multiprocessing import Pool
 from pathlib import Path
 
 import click
+import psycopg as pg
 
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.config import Config
@@ -401,8 +402,11 @@ def _format_timestamp(value: datetime | None) -> str:
 
 
 def _render_along_track_summary() -> None:
-    oceandb_etl = _create_along_track_etl()
-    summary_rows = oceandb_etl.summarize_ingested_missions()
+    try:
+        oceandb_etl = _create_along_track_etl()
+        summary_rows = oceandb_etl.summarize_ingested_missions()
+    except pg.OperationalError as e:
+        raise click.ClickException(f"Unable to access database: {e}") from e
 
     if not summary_rows:
         click.echo("No along-track data has been ingested yet.")
