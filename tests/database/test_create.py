@@ -32,6 +32,15 @@ def test_create_database(db_with_db):
             assert exists
 
 
+def test_create_database_when_database_exists(db_with_db, capsys):
+    created = db_with_db.create_database()
+
+    assert created is False
+    captured = capsys.readouterr()
+    assert f"Database '{db_with_db.db_name}' already exists." in captured.out
+    assert f"Database '{db_with_db.db_name}' POSTGIS enabled." in captured.out
+
+
 def test_create_tables(db_with_db):
     for table in [*table_definitions, *eddy_tables]:
         assert not db_with_db.table_exists(table["name"])
