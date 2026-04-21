@@ -2,8 +2,8 @@ from typing import Any, Iterable, Mapping
 
 from psycopg.rows import dict_row
 
-from OceanDB.OceanDB import OceanDB
 from OceanDB.ocean_data.dataset import K
+from OceanDB.OceanDB import OceanDB
 from OceanDB.query_spec import QuerySpec, log_query
 
 

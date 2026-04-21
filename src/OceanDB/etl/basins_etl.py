@@ -8,7 +8,14 @@ class BasinsETL(OceanDBETL):
     basin_table_name: str = "basin"
     basin_connections_table_name: str = "basin_connections"
 
-    def _insert_csv(self, *, module: str, filename: str, table_name: str, rename_map: dict[str, str] | None = None) -> int:
+    def _insert_csv(
+        self,
+        *,
+        module: str,
+        filename: str,
+        table_name: str,
+        rename_map: dict[str, str] | None = None,
+    ) -> int:
         with self.load_module_file(module=module, filename=filename, mode="r") as f:
             df = pd.read_csv(f)
 

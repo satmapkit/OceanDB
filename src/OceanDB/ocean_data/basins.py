@@ -13,9 +13,11 @@ class BasinMask:
 
     @cached_property
     def data(self) -> Any:
-        with resources.files("OceanDB.data").joinpath(
-            "basin_masks/new_basin_mask.nc"
-        ).open("rb") as f:
+        with (
+            resources.files("OceanDB.data")
+            .joinpath("basin_masks/new_basin_mask.nc")
+            .open("rb") as f
+        ):
             ds = nc.Dataset("inmemory.nc", memory=f.read())
             ds.set_auto_mask(False)
             basin_mask = ds.variables["basinmask"][:]

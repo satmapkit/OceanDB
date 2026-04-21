@@ -7,14 +7,10 @@ from pathlib import Path
 import click
 import psycopg as pg
 
-from OceanDB.OceanDB_Initializer import OceanDBInit
-from OceanDB.cli_utils import (
-    format_key_value,
-    format_status_line,
-    render_table,
-    style_value,
-)
+from OceanDB.cli_utils import (format_key_value, format_status_line,
+                               render_table, style_value)
 from OceanDB.config import Config
+from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.utils.basin_visualization import write_basin_map
 from OceanDB.utils.logging import get_logger
 
@@ -23,21 +19,25 @@ logger = get_logger()
 
 def _create_basins_etl():
     from OceanDB.etl.basins_etl import BasinsETL
+
     return BasinsETL()
 
 
 def _create_along_track_etl():
     from OceanDB.etl.along_track_etl import AlongTrackETL
+
     return AlongTrackETL()
 
 
 def _create_eddy_etl():
     from OceanDB.etl.eddy_etl import EddyETL
+
     return EddyETL()
 
 
 def _create_copernicus_marine_client():
     from OceanDB.etl.copernicus_marine import OceanDBCopernicusMarine
+
     return OceanDBCopernicusMarine()
 
 
@@ -596,9 +596,7 @@ def ingest_along_track(missions, start_date, end_date):
         )
         return
 
-    if not click.confirm(
-        f"Ingest {len(nc_files)} file(s)? This may take many hours."
-    ):
+    if not click.confirm(f"Ingest {len(nc_files)} file(s)? This may take many hours."):
         return
 
     # Query the ingested metadata so that we can skip processing files that have already been processed

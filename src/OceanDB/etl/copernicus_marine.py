@@ -176,7 +176,9 @@ class OceanDBCopernicusMarine:
             selected_missions = list(MISSION_DATASET_IDS)
 
         invalid_missions = [
-            mission for mission in selected_missions if mission not in MISSION_DATASET_IDS
+            mission
+            for mission in selected_missions
+            if mission not in MISSION_DATASET_IDS
         ]
         if invalid_missions:
             raise ValueError(
@@ -222,7 +224,9 @@ class OceanDBCopernicusMarine:
 
         filters = []
         year, month = start_date.year, start_date.month
-        while (year < end_date.year) or (year == end_date.year and month <= end_date.month):
+        while (year < end_date.year) or (
+            year == end_date.year and month <= end_date.month
+        ):
             filters.append(f"*{year:04d}/{month:02d}/*.nc")
             month += 1
             if month == 13:
@@ -248,7 +252,9 @@ class OceanDBCopernicusMarine:
             version=version,
         )
         filters = OceanDBCopernicusMarine.build_month_filters(start_date, end_date)
-        configured_output_directory = output_directory or self.config.along_track_data_directory
+        configured_output_directory = (
+            output_directory or self.config.along_track_data_directory
+        )
         if not configured_output_directory:
             raise ValueError(
                 "No output directory configured. Set ALONG_TRACK_DATA_DIRECTORY "

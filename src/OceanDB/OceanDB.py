@@ -1,7 +1,7 @@
+import time
 from contextlib import contextmanager
 from importlib import resources
-import time
-from typing import IO, LiteralString, Literal
+from typing import IO, Literal, LiteralString
 
 import psycopg as pg
 from psycopg import sql

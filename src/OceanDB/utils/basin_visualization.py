@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import textwrap
+import xml.etree.ElementTree as ET
+import zipfile
 from dataclasses import dataclass
 from html import escape
 from importlib import resources
 from pathlib import Path
-import textwrap
-import xml.etree.ElementTree as ET
-import zipfile
-
 
 KML_NS = {"kml": "http://www.opengis.net/kml/2.2"}
 SVG_WIDTH = 1440
@@ -96,9 +95,7 @@ def parse_basin_kml(kml_text: str) -> list[BasinPolygon]:
         feature_id = placemark.findtext(
             ".//kml:SimpleData[@name='feature_id']", namespaces=KML_NS
         )
-        name = placemark.findtext(
-            ".//kml:SimpleData[@name='name']", namespaces=KML_NS
-        )
+        name = placemark.findtext(".//kml:SimpleData[@name='name']", namespaces=KML_NS)
 
         if feature_id is None or name is None:
             continue
@@ -112,7 +109,9 @@ def parse_basin_kml(kml_text: str) -> list[BasinPolygon]:
                 rings.append(points)
 
         if rings:
-            basins.append(BasinPolygon(basin_id=int(feature_id), name=name, rings=rings))
+            basins.append(
+                BasinPolygon(basin_id=int(feature_id), name=name, rings=rings)
+            )
 
     basins.sort(key=lambda basin: basin.basin_id)
     return basins
@@ -196,7 +195,7 @@ def basin_svg_labels(basins: list[BasinPolygon]) -> str:
         label_elements.append(
             (
                 f'<g class="basin-label" data-basin-id="{label.basin_id}">'
-                f'<title>{title}</title>'
+                f"<title>{title}</title>"
                 f'<text x="{label.x:.2f}" y="{label.y:.2f}" class="basin-id">'
                 f"{label.basin_id}</text>"
                 f"</g>"
@@ -222,8 +221,7 @@ def build_basin_map_html(basins: list[BasinPolygon]) -> str:
         )
     )
 
-    return textwrap.dedent(
-        f"""\
+    return textwrap.dedent(f"""\
         <!DOCTYPE html>
         <html lang="en">
         <head>
@@ -657,8 +655,7 @@ def build_basin_map_html(basins: list[BasinPolygon]) -> str:
           </script>
         </body>
         </html>
-        """
-    )
+        """)
 
 
 def write_basin_map(output_path: Path) -> Path:

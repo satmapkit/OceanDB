@@ -1,6 +1,7 @@
-import numpy as np
-from datetime import timedelta, datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
+
+import numpy as np
 
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 from OceanDB.utils.date_time_conversion import compute_date_time

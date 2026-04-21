@@ -1,11 +1,12 @@
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping, Generic, LiteralString
+from typing import Any, Generic, Iterable, LiteralString, Mapping
+
 import numpy as np
 import psycopg as pg
 from psycopg import sql
 
-from OceanDB.ocean_data.ocean_data import OceanDataField
 from OceanDB.ocean_data.dataset import K
+from OceanDB.ocean_data.ocean_data import OceanDataField
 
 
 @dataclass(frozen=True)
@@ -89,7 +90,9 @@ class QuerySpec(Generic[K]):
 
         :return: SQL query template with all patterns removed other than parameters
         """
-        extra_fields = tuple(filter(lambda field: field not in self.mandatory_fields, fields))
+        extra_fields = tuple(
+            filter(lambda field: field not in self.mandatory_fields, fields)
+        )
         field_sql = sql.SQL(", ").join(
             self.schema[field].to_sql_query() for field in extra_fields
         )
