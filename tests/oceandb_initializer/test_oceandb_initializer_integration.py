@@ -1,22 +1,12 @@
 import psycopg as pg
+import pytest
 from psycopg import sql
 
 from OceanDB.OceanDB_Initializer import (OceanDBInit, eddy_tables,
                                          table_definitions)
 from OceanDB.schemas.eddy_schema import eddy_columns_schema
 
-from .fixtures import *
-
-
-def test_basic(config):
-    ocean_db_init = OceanDBInit(config=config)
-    assert ocean_db_init.username == "postgres"
-    assert ocean_db_init.password == "postgres"
-    assert ocean_db_init.port == 5433
-    assert (
-        ocean_db_init.connection_string
-        == "host=localhost dbname=ocean port=5433 user=postgres password=postgres"
-    )
+from tests.database.fixtures import *
 
 
 def test_create_database(db_with_db):

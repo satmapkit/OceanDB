@@ -3,7 +3,7 @@ from click.testing import CliRunner
 from OceanDB import cli as cli_module
 from OceanDB.etl.along_track_etl import AlongTrackETL
 
-from .fixtures import *
+from tests.database.fixtures import *
 
 
 def test_along_track_summary_command(db_with_alongtrack_data):
