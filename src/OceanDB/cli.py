@@ -8,6 +8,12 @@ import click
 import psycopg as pg
 
 from OceanDB.OceanDB_Initializer import OceanDBInit
+from OceanDB.cli_utils import (
+    format_key_value,
+    format_status_line,
+    render_table,
+    style_value,
+)
 from OceanDB.config import Config
 from OceanDB.utils.basin_visualization import write_basin_map
 from OceanDB.utils.logging import get_logger
@@ -211,10 +217,20 @@ def download(
     selected_missions = list(missions) or ["all"]
     dry_run_prefix = "Checking" if dry_run else "Downloading"
     click.echo(
-        f"{dry_run_prefix} Copernicus along-track data for missions: "
-        f"{', '.join(selected_missions)}"
+        format_status_line(
+            dry_run_prefix.upper(),
+            "Copernicus along-track data for missions: "
+            f"{', '.join(selected_missions)}",
+            label_color="blue",
+        )
     )
-    click.echo(f"Output directory: {along_track_directory}")
+    click.echo(
+        format_key_value(
+            "Output directory:",
+            str(along_track_directory),
+            label_color="yellow",
+        )
+    )
 
     oceandb_cm = _create_copernicus_marine_client()
 
@@ -230,10 +246,14 @@ def download(
     )
     summary = oceandb_cm.summarize_get_results(preview_results)
     click.echo(
-        "\nCopernicus preview: "
-        f"{summary.file_count} file(s), "
-        f"{oceandb_cm.format_size(summary.total_size_mb)}, "
-        f"{summary.request_count} request(s)."
+        "\n"
+        + format_status_line(
+            "PREVIEW",
+            f"{summary.file_count} file(s), "
+            f"{oceandb_cm.format_size(summary.total_size_mb)}, "
+            f"{summary.request_count} request(s).",
+            label_color="magenta",
+        )
     )
 
     if dry_run:
@@ -241,7 +261,12 @@ def download(
 
     if not yes:
         click.echo(
-            "\nCopernicus along-track downloads can require tens of GB of storage."
+            "\n"
+            + format_status_line(
+                "WARNING",
+                "Copernicus along-track downloads can require tens of GB of storage.",
+                label_color="yellow",
+            )
         )
         proceed = click.confirm(
             "Do you want to proceed with downloading data?", default=False
@@ -260,7 +285,13 @@ def download(
         dry_run=False,
         overwrite=overwrite,
     )
-    click.echo(f"Finished {len(results)} Copernicus download request(s).")
+    click.echo(
+        format_status_line(
+            "DONE",
+            f"Finished {len(results)} Copernicus download request(s).",
+            label_color="green",
+        )
+    )
 
 
 EARLIEST_DATE = datetime(1990, 1, 1)
@@ -337,7 +368,13 @@ def get_netcdf4_files(
             f"Received missions must be from the following list {oceandb_etl.missions}"
         )
 
-    click.echo(f"Ingesting missions: {missions}")
+    click.echo(
+        format_key_value(
+            "Ingesting missions:",
+            ", ".join(missions),
+            label_color="blue",
+        )
+    )
     prefix = "SEALEVEL_GLO_PHY_L3_MY_008_062"
     all_netcdf_files = []
 
@@ -383,7 +420,13 @@ def get_netcdf4_files(
 
             all_netcdf_files.extend(nc_files)
 
-    click.echo(f"Matched {len(all_netcdf_files)} file(s) for ingestion.")
+    click.echo(
+        format_status_line(
+            "MATCHED",
+            f"{len(all_netcdf_files)} file(s) for ingestion.",
+            label_color="green",
+        )
+    )
     return all_netcdf_files
 
 
@@ -400,7 +443,7 @@ def _format_duration(seconds: float) -> str:
 def _format_timestamp(value: datetime | None) -> str:
     if value is None:
         return "-"
-    return value.strftime("%Y-%m-%d")
+    return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _render_along_track_summary() -> None:
@@ -411,7 +454,13 @@ def _render_along_track_summary() -> None:
         raise click.ClickException(f"Unable to access database: {e}") from e
 
     if not summary_rows:
-        click.echo("No along-track data has been ingested yet.")
+        click.echo(
+            format_status_line(
+                "EMPTY",
+                "No along-track data has been ingested yet.",
+                label_color="yellow",
+            )
+        )
         return
 
     headers = [
@@ -434,18 +483,22 @@ def _render_along_track_summary() -> None:
             }
         )
 
-    widths = {
-        key: max(len(title), *(len(row[key]) for row in formatted_rows))
-        for title, key in headers
-    }
+    def _summary_cell_styler(column: str, value: str) -> str:
+        if column == "mission":
+            return style_value(value, fg="cyan", bold=True)
+        if column in {"file_count", "observation_count"}:
+            return style_value(value, fg="green")
+        return style_value(value, fg="white")
 
-    header_line = "  ".join(title.ljust(widths[key]) for title, key in headers)
-    separator_line = "  ".join("-" * widths[key] for _, key in headers)
-
-    click.echo(header_line)
-    click.echo(separator_line)
-    for row in formatted_rows:
-        click.echo("  ".join(row[key].ljust(widths[key]) for _, key in headers))
+    click.echo(
+        format_status_line(
+            "SUMMARY",
+            f"{len(formatted_rows)} mission(s) with ingested along-track data.",
+            label_color="magenta",
+        )
+    )
+    for line in render_table(headers, formatted_rows, cell_styler=_summary_cell_styler):
+        click.echo(line)
 
 
 @along_track_group.command("summary")
@@ -534,7 +587,13 @@ def ingest_along_track(missions, start_date, end_date):
     )
 
     if not nc_files:
-        click.echo("No matching along-track files were found. Nothing to ingest.")
+        click.echo(
+            format_status_line(
+                "EMPTY",
+                "No matching along-track files were found. Nothing to ingest.",
+                label_color="yellow",
+            )
+        )
         return
 
     if not click.confirm(
@@ -553,12 +612,22 @@ def ingest_along_track(missions, start_date, end_date):
     ]
 
     if not along_track_files:
-        click.echo("All matching files have already been ingested. Nothing to do.")
+        click.echo(
+            format_status_line(
+                "SKIP",
+                "All matching files have already been ingested. Nothing to do.",
+                label_color="yellow",
+            )
+        )
         return
 
     click.echo(
-        f"Processing {len(along_track_files)} new file(s); "
-        f"skipping {len(nc_files) - len(along_track_files)} already ingested file(s)."
+        format_status_line(
+            "INGEST",
+            f"Processing {len(along_track_files)} new file(s); "
+            f"skipping {len(nc_files) - len(along_track_files)} already ingested file(s).",
+            label_color="blue",
+        )
     )
 
     process_count = 6
@@ -571,14 +640,22 @@ def ingest_along_track(missions, start_date, end_date):
             completed += 1
             remaining = total - completed
             click.echo(
-                f"[{completed}/{total}] {result['file_name']} | "
-                f"{result['size_mb']:.2f} MB | "
-                f"{_format_duration(result['duration_seconds'])} | "
-                f"{remaining} remaining"
+                format_status_line(
+                    f"{completed}/{total}",
+                    f"{result['file_name']} | "
+                    f"{result['size_mb']:.2f} MB | "
+                    f"{_format_duration(result['duration_seconds'])} | "
+                    f"{remaining} remaining",
+                    label_color="cyan",
+                )
             )
 
     full_ingest_duration = time.perf_counter() - start_ingest_time
     click.echo(
-        f"Finished ingesting {len(along_track_files)} file(s) in "
-        f"{_format_duration(full_ingest_duration)}."
+        format_status_line(
+            "DONE",
+            f"Finished ingesting {len(along_track_files)} file(s) in "
+            f"{_format_duration(full_ingest_duration)}.",
+            label_color="green",
+        )
     )

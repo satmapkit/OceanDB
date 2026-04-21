@@ -1,4 +1,5 @@
 from click.testing import CliRunner
+from datetime import datetime
 
 from OceanDB import cli as cli_module
 
@@ -20,6 +21,50 @@ def test_along_track_summary_command(db_with_alongtrack_data):
     assert "j2" in result.output
     assert "2013-01-01 12:00:00" in result.output
     assert "2013-01-09 12:00:00" in result.output
+
+
+def test_along_track_summary_command_supports_color(db_with_alongtrack_data):
+    runner = CliRunner()
+    original_factory = cli_module._create_along_track_etl
+
+    try:
+        cli_module._create_along_track_etl = lambda: db_with_alongtrack_data
+        result = runner.invoke(cli_module.cli, ["summary", "alongtrack"], color=True)
+    finally:
+        cli_module._create_along_track_etl = original_factory
+
+    assert result.exit_code == 0
+    assert "\x1b[" in result.output
+    assert "SUMMARY" in result.output
+    assert "Mission" in result.output
+
+
+def test_along_track_summary_command_formats_stubbed_rows(monkeypatch):
+    runner = CliRunner()
+
+    class FakeAlongTrackETL:
+        def summarize_ingested_missions(self):
+            return [
+                {
+                    "mission": "j3",
+                    "start_date": datetime(2024, 1, 1, 0, 0, 0),
+                    "end_date": datetime(2024, 1, 31, 0, 0, 0),
+                    "file_count": 12,
+                    "observation_count": 345678,
+                }
+            ]
+
+    monkeypatch.setattr(
+        cli_module, "_create_along_track_etl", lambda: FakeAlongTrackETL()
+    )
+
+    result = runner.invoke(cli_module.cli, ["summary", "alongtrack"], color=True)
+
+    assert result.exit_code == 0
+    assert "\x1b[" in result.output
+    assert "SUMMARY" in result.output
+    assert "j3" in result.output
+    assert "345678" in result.output
 
 
 def test_along_track_summary_command_with_no_data(db_with_basin_data):
