@@ -206,6 +206,7 @@ class OceanDBInit(BaseWriteQuery):
 
     def create_database(self):
         # Create the Database
+        created_database = False
         with self.cursor(
             autocommit=True, connection_string=self.config.postgres_dsn_admin
         ) as cur:
@@ -216,12 +217,12 @@ class OceanDBInit(BaseWriteQuery):
             exists = cur.fetchone()[0]
             if exists:
                 print(f"Database '{self.db_name}' already exists.")
-                return
-
-            cur.execute(
-                sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.db_name))
-            )
-            print(f"Database '{self.db_name}' created successfully.")
+            else:
+                cur.execute(
+                    sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.db_name))
+                )
+                created_database = True
+                print(f"Database '{self.db_name}' created successfully.")
 
         ## Enable POSTGIS extensions
         with self.cursor(commit=True) as cur:
@@ -229,6 +230,7 @@ class OceanDBInit(BaseWriteQuery):
             cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS postgis;"))
             cur.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS btree_gist;"))
         print(f"Database '{self.db_name}' POSTGIS enabled.")
+        return created_database
 
     def create_tables(self):
         for table in table_definitions:

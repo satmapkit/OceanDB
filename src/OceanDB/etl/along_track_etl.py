@@ -12,6 +12,7 @@ from psycopg.rows import dict_row
 from typing import Any, Optional, Iterator
 
 from OceanDB.etl.base_etl import OceanDBETL, batch
+from OceanDB.ocean_data.basins import BasinMask
 from OceanDB.ocean_data.ocean_data import ColumnField
 from OceanDB.schemas.along_track_schema import (
     along_track_columns,
@@ -150,6 +151,10 @@ class AlongTrackETL(OceanDBETL):
         "tpn",
     ]
 
+    @cached_property
+    def basin_mask_lookup(self) -> BasinMask:
+        return BasinMask()
+
     @staticmethod
     def _extract_mission_from_filename(file: Path) -> str:
         file_parts = file.name.split("_")
@@ -265,36 +270,12 @@ class AlongTrackETL(OceanDBETL):
             vars_slice["mission"] = [mission] * len(vars_slice["latitude"])
             latitude = vars_slice["latitude"]
             longitude = vars_slice["longitude"]
-            vars_slice["basin_id"] = self.basin_mask(latitude, longitude)
+            vars_slice["basin_id"] = self.basin_mask_lookup.lookup(latitude, longitude)
 
             yield [
                 {name: values[i] for name, values in vars_slice.items()}
                 for i in range(stop - start)
             ]
-
-    @cached_property
-    def basin_mask_data(self):
-        """
-        Load the basin mask NetCDF file packaged with the module.
-        Returns the 'basinmask' variable as a NumPy array.
-        """
-        # Open resource file via importlib.resources
-        with self.load_module_file(
-            "OceanDB.data", "basin_masks/new_basin_mask.nc", mode="rb"
-        ) as f:
-            ds = nc.Dataset("inmemory.nc", memory=f.read())  # load from memory buffer
-            ds.set_auto_mask(False)
-            basin_mask = ds.variables["basinmask"][:]
-            ds.close()
-            return basin_mask
-
-    def basin_mask(self, latitude, longitude):
-        onesixth = 1 / 6
-        i = np.floor((latitude + 90) / onesixth).astype(int)
-        j = np.floor((longitude % 360) / onesixth).astype(int)
-        mask_data = self.basin_mask_data
-        basin_mask = mask_data[i, j]
-        return basin_mask
 
     def import_along_track_data_to_postgresql(
         self, along_track_data: batch[along_track_columns]
