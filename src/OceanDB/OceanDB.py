@@ -1,11 +1,8 @@
 from contextlib import contextmanager
-from functools import cached_property
 from importlib import resources
 import time
 from typing import IO, LiteralString, Literal
 
-import netCDF4 as nc
-import numpy as np
 import psycopg as pg
 from psycopg import sql
 from psycopg.rows import tuple_row
@@ -151,64 +148,3 @@ class OceanDB:
         with self.cursor(commit=True) as cur:
             cur.execute(query_truncate_table)
         print(f"All data removed from table '{name} in database.'{self.db_name}'.")
-
-    @cached_property
-    def basin_mask_data(self):
-        """
-        Load the basin mask NetCDF file packaged with the module.
-        Returns the 'basinmask' variable as a NumPy array.
-        """
-        # Open resource file via importlib.resources
-        with self.load_module_file(
-            "OceanDB.data", "basin_masks/new_basin_mask.nc", mode="rb"
-        ) as f:
-            ds = nc.Dataset("inmemory.nc", memory=f.read())  # load from memory buffer
-            ds.set_auto_mask(False)
-            basin_mask = ds.variables["basinmask"][:]
-            ds.close()
-            return basin_mask
-
-    def basin_mask(self, latitude, longitude):
-        """
-        Get basin_id from lat & lng
-        """
-        onesixth = 1 / 6
-        i = np.floor((latitude + 90) / onesixth).astype(int)
-        j = np.floor((longitude % 360) / onesixth).astype(int)
-        mask_data = self.basin_mask_data
-        basin_mask = mask_data[i, j]
-        return basin_mask
-
-    @cached_property
-    def basin_connection_map(self) -> dict:
-        with self.cursor() as cur:
-            cur.execute(
-                """SELECT DISTINCT basin_id FROM basin_connections ORDER BY basin_id"""
-            )
-            unique_ids = cur.fetchall()
-
-        uid = [data_i[0] for data_i in unique_ids]
-        basin_id_dict = [{"basin_id": basin_id} for basin_id in uid]
-
-        query = """SELECT array_agg(connected_id) as connected_basin_id
-        		FROM basin_connections
-        		WHERE basin_id = %(basin_id)s
-        		GROUP BY basin_id"""
-
-        basin_id_connection_dict = {}
-        with self.cursor() as cur:
-            cur.executemany(query, basin_id_dict, returning=True)
-            i = 0
-            while True:
-                data = cur.fetchall()
-                basin_id_connection_dict[uid[i]] = data[0][0]
-                i = i + 1
-                if not cur.nextset():
-                    break
-        # For any basin without connections, make a connection to itself.
-        for basin_id in np.unique(self.basin_mask_data):
-            if basin_id not in basin_id_connection_dict:
-                basin_id_connection_dict[basin_id] = []
-            basin_id_connection_dict[basin_id].insert(0, basin_id)
-
-        return basin_id_connection_dict

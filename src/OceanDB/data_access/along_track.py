@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta
+from functools import cached_property
 from typing import Literal, get_args, Any
 
 from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
+from OceanDB.ocean_data.basins import BasinConnections, BasinMask
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas.along_track_schema import along_track_fields, along_track_schema
 
@@ -51,6 +53,14 @@ class AlongTrack(BaseReadQuery):
     _projected_spatio_temporal_query_no_mask = (
         "queries/along_track/geographic_points_in_spatialtemporal_window.sql"
     )
+
+    @cached_property
+    def basin_mask_lookup(self) -> BasinMask:
+        return BasinMask()
+
+    @cached_property
+    def basin_connections(self) -> BasinConnections:
+        return BasinConnections(config=self.config)
 
     def geographic_point_in_r_dt(
         self,
@@ -102,8 +112,8 @@ class AlongTrack(BaseReadQuery):
             schema=along_track_schema,
         )
 
-        basin_ids = self.basin_mask(latitude, longitude)
-        connected_basin_ids = self.basin_connection_map[basin_ids]
+        basin_ids = self.basin_mask_lookup.lookup(latitude, longitude)
+        connected_basin_ids = self.basin_connections.connection_map[basin_ids]
 
         params = {
             "longitude": longitude,
@@ -143,8 +153,8 @@ class AlongTrack(BaseReadQuery):
             mandatory_fields=["distance"],
         )
 
-        basin_ids = self.basin_mask(latitude, longitude)
-        connected_basin_ids = self.basin_connection_map[basin_ids]
+        basin_ids = self.basin_mask_lookup.lookup(latitude, longitude)
+        connected_basin_ids = self.basin_connections.connection_map[basin_ids]
 
         params = {
             "longitude": longitude,
