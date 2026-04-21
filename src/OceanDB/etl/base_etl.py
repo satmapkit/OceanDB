@@ -1,10 +1,11 @@
+from pathlib import Path
+from typing import Any, Mapping, Sequence, TypeVar, cast
+
 import netCDF4 as nc
 from psycopg import sql
-from typing import Any, TypeVar, Mapping, Sequence, cast
-from pathlib import Path
 
-from OceanDB.OceanDB import OceanDB
 from OceanDB.ocean_data.ocean_data import ColumnField
+from OceanDB.OceanDB import OceanDB
 
 K = TypeVar("K", bound=str)
 batch = list[dict[K, Any]]

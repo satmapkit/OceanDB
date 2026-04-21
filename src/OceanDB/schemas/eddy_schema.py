@@ -1,7 +1,9 @@
 from typing import Literal
+
 import OceanDB.ocean_data.fields.eddy_fields as efields
-from OceanDB.schemas.along_track_schema import along_track_fields, along_track_schema
-from OceanDB.ocean_data.ocean_data import OceanDataField, ColumnField
+from OceanDB.ocean_data.ocean_data import ColumnField, OceanDataField
+from OceanDB.schemas.along_track_schema import (along_track_fields,
+                                                along_track_schema)
 
 eddy_columns = Literal[
     "amplitude",

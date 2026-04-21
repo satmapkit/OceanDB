@@ -1,19 +1,16 @@
 from datetime import datetime
-import numpy.typing as npt
+from typing import Any, Iterable, Literal
+
 import numpy as np
-from typing import Any, Literal, Iterable
+import numpy.typing as npt
 
 from OceanDB.data_access.along_track import BaseReadQuery
-from OceanDB.schemas.along_track_schema import along_track_fields
-from OceanDB.schemas.eddy_schema import (
-    eddy_schema,
-    eddy_fields,
-    eddy_columns,
-    eddy_columns_schema,
-    along_track_eddy_schema,
-)
-from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.data_access.base_query import QuerySpec
+from OceanDB.ocean_data.dataset import Dataset
+from OceanDB.schemas.along_track_schema import along_track_fields
+from OceanDB.schemas.eddy_schema import (along_track_eddy_schema, eddy_columns,
+                                         eddy_columns_schema, eddy_fields,
+                                         eddy_schema)
 
 envelope_fields = Literal["max_date", "min_date", "basin_ids"]
 

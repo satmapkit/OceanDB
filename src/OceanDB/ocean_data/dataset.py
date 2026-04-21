@@ -1,9 +1,6 @@
-from typing import Mapping
+from typing import Generic, Mapping, TypeVar
 
 from ..ocean_data.ocean_data import OceanDataField
-
-
-from typing import TypeVar, Generic, Mapping
 
 K = TypeVar("K", bound=str)
 T = TypeVar("T")

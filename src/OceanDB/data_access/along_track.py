@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
 from functools import cached_property
-from typing import Literal, get_args, Any
+from typing import Any, Literal, get_args
 
 from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
 from OceanDB.ocean_data.basins import BasinConnections, BasinMask
 from OceanDB.ocean_data.dataset import Dataset
-from OceanDB.schemas.along_track_schema import along_track_fields, along_track_schema
+from OceanDB.schemas.along_track_schema import (along_track_fields,
+                                                along_track_schema)
 
 Mission = Literal[
     "al",

@@ -5,10 +5,10 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 from psycopg.rows import dict_row
 
+from OceanDB.ocean_data.dataset import Dataset, K
+from OceanDB.ocean_data.ocean_data import OceanDataField
 from OceanDB.OceanDB import OceanDB
 from OceanDB.query_spec import QuerySpec, log_query
-from OceanDB.ocean_data.ocean_data import OceanDataField
-from OceanDB.ocean_data.dataset import Dataset, K
 
 
 class BaseReadQuery(OceanDB):
