@@ -1,35 +1,40 @@
 # Introduction
 OceanDB is a python package for managing oceanic satellite data intelligently.  The python package interfaces with a postgres database enabling efficient geospatial/temporal queries.  OceanDB comes with a simple CLI that allows users to initialize the database and ingest data.  
 
+## Source data
+Presently, OceanDB handles both satellite altimetry data, as well as processed eddy tracks.
+
+- Along track satellite data can be obtained from Copernicus Marine; a Copernicus Marine account is required to fetch the data.
+- Eddy data is available through AVISO.
+
+
 ## Installation Instructions
-
-1. **Create a Copernicus Marine account (if needed)**
-
-   If you don't already have a Copernicus Marine account, create one. 
 
 1. **Clone OceanDB repository**
 
-2. **Configure the .env file**
-   
-   Open the OceanDB directory, and copy the example .env.example file to .env.
-   Open the new .env file, and edit to set the postgres server and directories to download the data. 
-   ```
-   POSTGRES_HOST=postgres
-   POSTGRES_USERNAME=postgres
-   POSTGRES_PASSWORD=postgres
-   POSTGRES_PORT=5432
-   POSTGRES_DATABASE=ocean
-   
-   ALONG_TRACK_DATA_DIRECTORY=/app/data/copernicus
-   EDDY_DATA_DIRECTORY=/app/data/eddies
-   
-   COPERNICUS_PASSWORD=copernicus_marine_service_password_placeholder
-   COPERNICUS_USERNAME=copernicus_marine_service_username
-   ```
+    ```sh
+    git clone git@github.com:satmapkit/OceanDB.git
+    ```
+
+2. **Configure the database and data source files**
+
+   OceanDB is managed through a database, and contains tooling for both *ingesting* data from source
+   files into the database, as well as *extracting* data from the database.
+
+   To configure database connection, as well as to specify where data source files exist on disk,
+   a `.env` file may be used.
+
+   If you wish to run the database locally using docker, you can copy `.env.example` to `.env`.
 
 4. **Setup python environment**
    
-   The details depend on how you use python, e.g. from the command line or an IDE like PyCharm. These instructions are specific to PyCharm.
+   The details depend on how you use python, e.g. from the command line or an IDE like PyCharm.
+
+   Command-line steps may look like the following.
+   ```sh
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
    
 
 1. **Install OceanDB**
