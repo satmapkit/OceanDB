@@ -15,9 +15,9 @@ from OceanDB.utils.logging import get_logger
 logger = get_logger()
 
 
-def _create_base_etl():
-    from OceanDB.etl.base_etl import BaseETL
-    return BaseETL()
+def _create_basins_etl():
+    from OceanDB.etl.basins_etl import BasinsETL
+    return BasinsETL()
 
 
 def _create_along_track_etl():
@@ -60,11 +60,13 @@ def process():
 @cli.command()
 def init():
     ocean_db_init = OceanDBInit()
-    ocean_db_init.create_database()
+    database_created = ocean_db_init.create_database()
+    if not database_created:
+        return
     ocean_db_init.create_tables()
     ocean_db_init.create_eddy_tables()
     ocean_db_init.create_partitions("1990-01-01", "2025-11-01")
-    oceandb_etl = _create_base_etl()
+    oceandb_etl = _create_basins_etl()
     oceandb_etl.insert_basins_data()
     oceandb_etl.insert_basin_connections_data()
 

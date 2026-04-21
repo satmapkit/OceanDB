@@ -1,5 +1,4 @@
 import netCDF4 as nc
-import pandas as pd
 from psycopg import sql
 from typing import Any, TypeVar, Mapping, Sequence, cast
 from pathlib import Path
@@ -11,7 +10,7 @@ K = TypeVar("K", bound=str)
 batch = list[dict[K, Any]]
 
 
-class BaseETL(OceanDB):
+class OceanDBETL(OceanDB):
 
     def _table_has_rows(self, table_name: str) -> bool:
         query = sql.SQL("SELECT EXISTS (SELECT 1 FROM {table} LIMIT 1)").format(
@@ -52,65 +51,3 @@ class BaseETL(OceanDB):
         except Exception as e:
             print("INSERT FAILED:", e)
             raise
-
-    def insert_basins_data(self):
-        if self._table_has_rows("basin"):
-            print("Skipping basin seed data: basin table already contains rows")
-            return
-
-        with self.load_module_file(
-            module="OceanDB.data", filename="basins/ocean_basins.csv", mode="r"
-        ) as f:
-            df = pd.read_csv(f)
-
-        df.rename(columns={"geom": "basin_geog"}, inplace=True)
-
-        columns = list(df.columns)
-        query: sql.Composed = sql.SQL(
-            "INSERT INTO {table} ({fields}) VALUES ({placeholders})"
-        ).format(
-            table=sql.Identifier("basin"),
-            fields=sql.SQL(", ").join(map(sql.Identifier, columns)),
-            placeholders=sql.SQL(", ").join(sql.Placeholder() * len(columns)),
-        )
-
-        data = df.to_records(index=False).tolist()
-
-        with self.cursor(commit=True) as cur:
-            cur.executemany(query, data)
-
-        print(f"Inserted {len(df)} rows in to the basins table")
-
-    def insert_basin_connections_data(self):
-        if self._table_has_rows("basin_connections"):
-            print(
-                "Skipping basin connection seed data: basin_connections table already contains rows"
-            )
-            return
-
-        with self.load_module_file(
-            module="OceanDB.data",
-            filename="basins/ocean_basin_connections.csv",
-            mode="r",
-        ) as f:
-            df = pd.read_csv(f)
-        df.rename(
-            columns={"basinid": "basin_id", "connected_basin": "connected_id"},
-            inplace=True,
-        )
-        columns = list(df.columns)
-
-        query: sql.Composed = sql.SQL(
-            "INSERT INTO {table} ({fields}) VALUES ({placeholders})"
-        ).format(
-            table=sql.Identifier("basin_connections"),
-            fields=sql.SQL(", ").join(map(sql.Identifier, columns)),
-            placeholders=sql.SQL(", ").join(sql.Placeholder() * len(columns)),
-        )
-
-        data = df.to_records(index=False).tolist()
-
-        with self.cursor(commit=True) as cur:
-            cur.executemany(query, data)
-
-        print(f"Inserted {len(df)} rows in to the basins table")
