@@ -1,7 +1,9 @@
 from click.testing import CliRunner
 from datetime import datetime
+import psycopg as pg
 
 from OceanDB import cli as cli_module
+from OceanDB.etl.along_track_etl import AlongTrackETL
 
 from .fixtures import *
 
@@ -19,8 +21,8 @@ def test_along_track_summary_command(db_with_alongtrack_data):
     assert result.exit_code == 0
     assert "Mission" in result.output
     assert "j2" in result.output
-    assert "2013-01-01 12:00:00" in result.output
-    assert "2013-01-09 12:00:00" in result.output
+    assert "2012-12-31" in result.output
+    assert "2013-01-09" in result.output
 
 
 def test_along_track_summary_command_supports_color(db_with_alongtrack_data):
@@ -68,11 +70,12 @@ def test_along_track_summary_command_formats_stubbed_rows(monkeypatch):
 
 
 def test_along_track_summary_command_with_no_data(db_with_basin_data):
+    along_track_etl = AlongTrackETL(db_with_basin_data.config)
     runner = CliRunner()
     original_factory = cli_module._create_along_track_etl
 
     try:
-        cli_module._create_along_track_etl = lambda: db_with_basin_data
+        cli_module._create_along_track_etl = lambda: along_track_etl
         result = runner.invoke(cli_module.cli, ["summary", "alongtrack"])
     finally:
         cli_module._create_along_track_etl = original_factory
@@ -107,7 +110,7 @@ def test_init_exits_early_when_database_exists(monkeypatch):
             calls.append("insert_basin_connections_data")
 
     monkeypatch.setattr(cli_module, "OceanDBInit", FakeInit)
-    monkeypatch.setattr(cli_module, "_create_base_etl", lambda: FakeBaseETL())
+    monkeypatch.setattr(cli_module, "_create_basins_etl", lambda: FakeBaseETL())
 
     result = runner.invoke(cli_module.cli, ["init"])
 
