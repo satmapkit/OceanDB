@@ -4,12 +4,12 @@ import time
 from typing import Iterator, Any
 from pathlib import Path
 
-from OceanDB.etl import BaseETL, batch
+from OceanDB.etl.base_etl import OceanDBETL, batch
 from OceanDB.ocean_data.ocean_data import ColumnField
 from OceanDB.schemas.eddy_schema import eddy_columns, eddy_columns_schema
 
 
-class EddyETL(BaseETL):
+class EddyETL(OceanDBETL):
     def ingest_eddy_data_file(
         self,
         file: Path,

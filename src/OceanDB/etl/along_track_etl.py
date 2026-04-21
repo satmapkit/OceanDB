@@ -6,13 +6,12 @@ from pathlib import Path
 import time
 
 import netCDF4 as nc
-import pandas as pd
 import numpy as np
 from psycopg import sql
 from psycopg.rows import dict_row
 from typing import Any, Optional, Iterator
 
-from OceanDB.etl.base_etl import BaseETL, batch
+from OceanDB.etl.base_etl import OceanDBETL, batch
 from OceanDB.ocean_data.ocean_data import ColumnField
 from OceanDB.schemas.along_track_schema import (
     along_track_columns,
@@ -116,7 +115,7 @@ class AlongTrackMetaData:
         )
 
 
-class AlongTrackETL(BaseETL):
+class AlongTrackETL(OceanDBETL):
     ocean_basin_table_name: str = "basin"
     ocean_basins_connections_table_name: str = "basin_connection"
     along_track_table_name: str = "along_track"
@@ -272,68 +271,6 @@ class AlongTrackETL(BaseETL):
                 {name: values[i] for name, values in vars_slice.items()}
                 for i in range(stop - start)
             ]
-
-    def insert_basins_data(self):
-        if self._table_has_rows("basin"):
-            print("Skipping basin seed data: basin table already contains rows")
-            return
-
-        with self.load_module_file(
-            module="OceanDB.data", filename="basins/ocean_basins.csv", mode="r"
-        ) as f:
-            df = pd.read_csv(f)
-
-        df.rename(columns={"geom": "basin_geog"}, inplace=True)
-
-        columns = list(df.columns)
-        query = sql.SQL(
-            "INSERT INTO {table} ({fields}) VALUES ({placeholders})"
-        ).format(
-            table=sql.Identifier("basin"),
-            fields=sql.SQL(", ").join(map(sql.Identifier, columns)),
-            placeholders=sql.SQL(", ").join(sql.Placeholder() * len(columns)),
-        )
-
-        data = df.to_records(index=False).tolist()
-
-        with self.cursor(commit=True) as cur:
-            cur.executemany(query, data)
-
-        print(f"Inserted {len(df)} rows in to the basins table")
-
-    def insert_basin_connections_data(self):
-        if self._table_has_rows("basin_connections"):
-            print(
-                "Skipping basin connection seed data: basin_connections table already contains rows"
-            )
-            return
-
-        with self.load_module_file(
-            module="OceanDB.data",
-            filename="basins/ocean_basin_connections.csv",
-            mode="r",
-        ) as f:
-            df = pd.read_csv(f)
-        df.rename(
-            columns={"basinid": "basin_id", "connected_basin": "connected_id"},
-            inplace=True,
-        )
-        columns = list(df.columns)
-
-        query = sql.SQL(
-            "INSERT INTO {table} ({fields}) VALUES ({placeholders})"
-        ).format(
-            table=sql.Identifier("basin_connections"),
-            fields=sql.SQL(", ").join(map(sql.Identifier, columns)),
-            placeholders=sql.SQL(", ").join(sql.Placeholder() * len(columns)),
-        )
-
-        data = df.to_records(index=False).tolist()
-
-        with self.cursor(commit=True) as cur:
-            cur.executemany(query, data)
-
-        print(f"Inserted {len(df)} rows in to the basins table")
 
     @cached_property
     def basin_mask_data(self):

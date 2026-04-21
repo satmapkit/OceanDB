@@ -4,7 +4,10 @@ from pathlib import Path
 
 from OceanDB.config import Config
 from OceanDB.OceanDB_Initializer import OceanDBInit
-from OceanDB.etl import BaseETL, EddyETL, AlongTrackETL
+from OceanDB.etl import BasinsETL, EddyETL, AlongTrackETL
+
+TEST_PARTITION_START = "2012-12-01"
+TEST_PARTITION_END = "2013-02-01"
 
 
 @pytest.fixture
@@ -31,7 +34,7 @@ def db_with_tables(db_with_db):
     db = db_with_db
     db.create_tables()
     db.create_eddy_tables()
-    db.create_partitions("1990-01-01", "2025-11-01")
+    db.create_partitions(TEST_PARTITION_START, TEST_PARTITION_END)
     return db
 
 
@@ -40,21 +43,20 @@ def db_with_indices(db_with_tables):
     db = db_with_tables
     db.create_indices()
     db.create_eddy_indices()
-    db.create_partitions("1990-01-01", "2025-11-01")
     return db
 
 
 @pytest.fixture
 def db_with_basin_data(db_with_tables):
     db = db_with_tables
-    oceandb_etl = BaseETL(config=db.config)
+    oceandb_etl = BasinsETL(config=db.config)
     oceandb_etl.insert_basins_data()
     oceandb_etl.insert_basin_connections_data()
     return oceandb_etl
 
 
 @pytest.fixture
-def db_with_cyclonic_eddy_data(db_with_basin_data: BaseETL) -> EddyETL:
+def db_with_cyclonic_eddy_data(db_with_basin_data: BasinsETL) -> EddyETL:
     oceandb_etl = EddyETL(config=db_with_basin_data.config)
     eddy_directory = oceandb_etl.config.eddy_data_directory
 
@@ -64,7 +66,7 @@ def db_with_cyclonic_eddy_data(db_with_basin_data: BaseETL) -> EddyETL:
 
 
 @pytest.fixture
-def db_with_alongtrack_data(db_with_basin_data: BaseETL) -> AlongTrackETL:
+def db_with_alongtrack_data(db_with_basin_data: BasinsETL) -> AlongTrackETL:
     oceandb_etl = AlongTrackETL(config=db_with_basin_data.config)
     alongtrack_directory = oceandb_etl.config.along_track_data_directory
 

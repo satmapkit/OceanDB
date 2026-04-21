@@ -1,8 +1,15 @@
 def __getattr__(name):
-    if name in {"BaseETL", "batch"}:
-        from OceanDB.etl.base_etl import BaseETL, batch
+    if name in {"OceanDBETL", "batch"}:
+        from OceanDB.etl.base_etl import OceanDBETL, batch
 
-        return {"BaseETL": BaseETL, "batch": batch}[name]
+        return {
+            "OceanDBETL": OceanDBETL,
+            "batch": batch,
+        }[name]
+    if name == "BasinsETL":
+        from OceanDB.etl.basins_etl import BasinsETL
+
+        return BasinsETL
     if name == "AlongTrackETL":
         from OceanDB.etl.along_track_etl import AlongTrackETL
 
