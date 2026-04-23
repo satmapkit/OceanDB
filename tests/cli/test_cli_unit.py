@@ -1,9 +1,12 @@
 from datetime import datetime
 
 import psycopg as pg
+import pytest
 from click.testing import CliRunner
 
 from OceanDB import cli as cli_module
+
+pytestmark = pytest.mark.unit
 
 
 class FakeAlongTrackETLReturningRows:

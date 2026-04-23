@@ -8,6 +8,8 @@ from OceanDB.schemas.eddy_schema import eddy_columns_schema
 
 from tests.database.fixtures import *
 
+pytestmark = pytest.mark.uses_database
+
 
 def test_create_database(db_with_db):
     with pg.connect(db_with_db.config.postgres_dsn_admin) as conn:

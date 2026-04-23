@@ -1,10 +1,13 @@
 from datetime import datetime, timedelta
+import pytest
 
 import numpy as np
 
 from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 from tests.database.fixtures import *
+
+pytestmark = pytest.mark.uses_database
 
 
 def test_execute_query(db_with_alongtrack_data):

@@ -1,6 +1,9 @@
 import psycopg as pg
+import pytest
 
 from tests.database.fixtures import *
+
+pytestmark = pytest.mark.uses_database
 
 
 def test_insert_basin_data(db_with_basin_data):

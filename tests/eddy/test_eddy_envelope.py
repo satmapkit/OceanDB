@@ -1,9 +1,12 @@
 from typing import get_args
 
 import numpy as np
+import pytest
 
 from OceanDB.data_access.eddy import Eddy, envelope_fields
 from tests.database.fixtures import *
+
+pytestmark = pytest.mark.uses_database
 
 
 def test_eddy_envelope_basic(db_with_cyclonic_eddy_data):

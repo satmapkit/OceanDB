@@ -1,6 +1,10 @@
+import pytest
+
 from OceanDB.OceanDB_Initializer import OceanDBInit
 
 from tests.database.fixtures import *
+
+pytestmark = pytest.mark.unit
 
 
 def test_basic(config):

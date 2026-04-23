@@ -1,7 +1,12 @@
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Any, cast
+
+import pytest
 
 from OceanDB.etl.copernicus_marine import OceanDBCopernicusMarine
+
+pytestmark = pytest.mark.unit
 
 
 class FakeCopernicusClient:
@@ -47,7 +52,7 @@ def test_sync_uses_configured_output_and_month_filters(tmp_path):
         copernicus_password="password",
         along_track_data_directory=str(tmp_path),
     )
-    downloader = OceanDBCopernicusMarine(config=config, client=client)
+    downloader = OceanDBCopernicusMarine(config=cast(Any, config), client=client)
 
     downloader.sync_copernicus_along_track_data(
         missions=["j3"],
