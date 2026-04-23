@@ -14,6 +14,8 @@ class Config(BaseSettings):
     eddy_data_directory: str = ""
     copernicus_password: str = ""
     copernicus_username: str = ""
+    aviso_password: str = ""
+    aviso_username: str = ""
 
     model_config = SettingsConfigDict(
         env_prefix="",  # no prefix (POSTGRES_HOST, etc.)
