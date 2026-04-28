@@ -85,8 +85,8 @@ def process():
 @cli.command()
 def init():
     ocean_db_init = OceanDBInit()
-    database_created = ocean_db_init.create_database()
-    if not database_created:
+    successful = ocean_db_init.create_database()
+    if not successful:
         return
     ocean_db_init.create_tables()
     ocean_db_init.create_eddy_tables()
