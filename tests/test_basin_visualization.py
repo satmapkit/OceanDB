@@ -1,5 +1,5 @@
-from OceanDB.utils.basin_visualization import build_basin_map_html, parse_basin_kml
-
+from OceanDB.utils.basin_visualization import (build_basin_map_html,
+                                               parse_basin_kml)
 
 SAMPLE_KML = """\
 <kml xmlns="http://www.opengis.net/kml/2.2">

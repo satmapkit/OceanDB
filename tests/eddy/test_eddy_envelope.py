@@ -1,8 +1,8 @@
 from typing import get_args
+
 import numpy as np
 
 from OceanDB.data_access.eddy import Eddy, envelope_fields
-
 from tests.database.fixtures import *
 
 

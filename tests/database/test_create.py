@@ -1,7 +1,8 @@
 import psycopg as pg
 from psycopg import sql
 
-from OceanDB.OceanDB_Initializer import OceanDBInit, table_definitions, eddy_tables
+from OceanDB.OceanDB_Initializer import (OceanDBInit, eddy_tables,
+                                         table_definitions)
 from OceanDB.schemas.eddy_schema import eddy_columns_schema
 
 from .fixtures import *

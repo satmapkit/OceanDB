@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from click.testing import CliRunner
 import psycopg as pg
+from click.testing import CliRunner
 
 from OceanDB import cli as cli_module
 

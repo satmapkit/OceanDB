@@ -1,5 +1,6 @@
-import psycopg as pg
 import datetime
+
+import psycopg as pg
 
 from OceanDB.data_access.eddy import Eddy
 from OceanDB.schemas.eddy_schema import eddy_columns_schema

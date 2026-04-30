@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
 
-from OceanDB.data_access.base_query import QuerySpec, BaseReadQuery
-from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 import numpy as np
 
+from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
+from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 from tests.database.fixtures import *
 
 
