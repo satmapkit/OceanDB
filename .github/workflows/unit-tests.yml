@@ -1,0 +1,21 @@
+name: Unit Tests
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install package and test dependencies
+        run: |
+          pip install -e .
+          pip install -r requirements.txt
+      - name: Run unit tests
+        run: pytest -m unit
