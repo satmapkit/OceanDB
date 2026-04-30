@@ -1,0 +1,45 @@
+name: Integration Tests
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_USERNAME: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DATABASE: ocean
+      ALONG_TRACK_DATA_DIRECTORY: tests/data/along_track
+      EDDY_DATA_DIRECTORY: tests/data/eddy
+      COPERNICUS_USERNAME: none
+      COPERNICUS_PASSWORD: none
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install package and test dependencies
+        run: |
+          pip install -e .
+          pip install -r requirements.txt
+      - name: Run integration tests
+        run: pytest -m uses_database
