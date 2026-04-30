@@ -10,8 +10,8 @@ from tests.database.fixtures import *
 pytestmark = pytest.mark.uses_database
 
 
-def test_execute_query(db_with_alongtrack_data):
-    query = QuerySpec(
+def _make_along_track_query() -> QuerySpec:
+    return QuerySpec(
         sql_template="""
             SELECT
                 {fields}
@@ -51,16 +51,22 @@ def test_execute_query(db_with_alongtrack_data):
         },
     )
 
+
+def _make_along_track_params():
+    return {
+        "longitude": -65.9,
+        "latitude": 58.9,
+        "central_date_time": datetime(year=2013, month=1, day=4, hour=23),
+        "time_delta": timedelta(days=10),
+        "distance": 500_000,
+    }
+
+
+def test_execute_query(db_with_alongtrack_data):
     base_query = BaseReadQuery(db_with_alongtrack_data.config)
     res = base_query.execute_read_query(
-        query_spec=query,
-        params={
-            "longitude": -65.9,
-            "latitude": 58.9,
-            "central_date_time": datetime(year=2013, month=1, day=4, hour=23),
-            "time_delta": timedelta(days=10),
-            "distance": 500_000,
-        },
+        query_spec=_make_along_track_query(),
+        params=_make_along_track_params(),
         fields=[
             "latitude",
             "distance",
@@ -70,3 +76,30 @@ def test_execute_query(db_with_alongtrack_data):
     assert res is not None
     assert "latitude" in res
     assert "distance" in res
+
+
+def test_execute_query_with_debug_sql_logs_rendered_query(
+    db_with_alongtrack_data, caplog
+):
+    base_query = BaseReadQuery(db_with_alongtrack_data.config)
+
+    res = base_query.execute_read_query(
+        query_spec=_make_along_track_query(),
+        params=_make_along_track_params(),
+        fields=[
+            "latitude",
+            "distance",
+        ],
+        debug_sql=True,
+    )
+    log_text = caplog.text
+
+    assert res is not None
+    assert "--- SQL QUERY ---" in log_text
+    assert "--- PARAMS ---" not in log_text
+    assert "%(longitude)s" not in log_text
+    assert "%(latitude)s" not in log_text
+    assert "%(distance)s" not in log_text
+    assert "-65.9" in log_text
+    assert "58.9" in log_text
+    assert "500000" in log_text
