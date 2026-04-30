@@ -71,7 +71,6 @@ def test_execute_query(db_with_alongtrack_data):
             "latitude",
             "distance",
         ],
-        debug_sql=True,
     )
     assert res is not None
     assert "latitude" in res
@@ -82,6 +81,7 @@ def test_execute_query_with_debug_sql_logs_rendered_query(
     db_with_alongtrack_data, caplog
 ):
     base_query = BaseReadQuery(db_with_alongtrack_data.config)
+    base_query.debug = True
 
     res = base_query.execute_read_query(
         query_spec=_make_along_track_query(),
@@ -90,7 +90,6 @@ def test_execute_query_with_debug_sql_logs_rendered_query(
             "latitude",
             "distance",
         ],
-        debug_sql=True,
     )
     log_text = caplog.text
 
