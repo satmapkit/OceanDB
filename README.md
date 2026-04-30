@@ -76,20 +76,20 @@ before downloading anything.
 Preview a download without fetching files:
 
 ```bash
-oceandb download --dry-run j3 --start-date 2024-01-01 --end-date 2024-02-01
+oceandb download --dry-run j3 --start-date 2017-01-01 --end-date 2017-02-01
 ```
 
 Download one mission. The command previews the matching files, then prompts
 for confirmation:
 
 ```bash
-oceandb download j3 --start-date 2024-01-01 --end-date 2024-02-01
+oceandb download j3 --start-date 2017-01-01 --end-date 2017-02-01
 ```
 
 Download multiple missions:
 
 ```bash
-oceandb download s3a s3b --start-date 2024-01-01 --end-date 2024-02-01
+oceandb download s3a s3b --start-date 2017-01-01 --end-date 2017-02-01
 ```
 
 Download all supported along-track missions:
@@ -101,7 +101,7 @@ oceandb download all --dataset-version 202411
 Skip the confirmation prompt for scripted runs:
 
 ```bash
-oceandb download j3 --start-date 2024-01-01 --end-date 2024-02-01 --yes
+oceandb download j3 --start-date 2017-01-01 --end-date 2017-02-01 --yes
 ```
 
 After data has been downloaded, ingest it into OceanDB.
@@ -168,8 +168,8 @@ oceandb ingest-along-track
 oceandb ingest-along-track s3a
 oceandb ingest-along-track s3a j3 c2
 oceandb ingest-along-track j3 --start-date 2019-01-01 --end-date 2020-12-03
-oceandb ingest-along-track s6a --end-date 2024-01-01
-oceandb ingest-along-track s6a --start-date 2024-01-01
+oceandb ingest-along-track s6a --end-date 2017-01-01
+oceandb ingest-along-track s6a --start-date 2017-01-01
 oceandb summary alongtrack
 ```
 
