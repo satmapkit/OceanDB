@@ -7,6 +7,7 @@ from psycopg import sql
 
 from OceanDB.ocean_data.dataset import K
 from OceanDB.ocean_data.ocean_data import OceanDataField
+from OceanDB.utils.logging import get_logger
 
 
 @dataclass(frozen=True)
@@ -110,9 +111,21 @@ class RawSpec(QuerySpec):
         return self.query_string
 
 
-def log_query(conn: pg.Connection, query: sql.Composable, params: Any) -> None:
-    print("\n--- SQL QUERY ---")
-    print(query.as_string(conn))
-    print("--- PARAMS ---")
-    print(params)
-    print("----------------\n")
+def log_query(
+    conn: pg.Connection, cursor: pg.Cursor, query: sql.Composed, params: Any
+) -> None:
+    logger = get_logger()
+    if not isinstance(cursor, pg.ClientCursor):
+        logger.info(
+            "\n--- SQL QUERY ---\n"
+            + str(query.as_string(conn))
+            + "\n--- PARAMS ---"
+            + str(params)
+            + "\n----------------\n"
+        )
+    else:
+        logger.info(
+            "\n--- SQL QUERY ---\n"
+            + cursor.mogrify(query, params)
+            + "\n----------------\n"
+        )

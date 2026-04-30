@@ -53,9 +53,11 @@ class BaseReadQuery(OceanDB):
 
         sql_query = query_spec.sql_projection_compiler(fields)
 
-        with self.cursor(row_factory=dict_row) as cur:
+        with self.cursor(row_factory=dict_row, debug=debug_sql) as cur:
             if debug_sql:
-                log_query(conn=cur.connection, query=sql_query, params=params)
+                log_query(
+                    conn=cur.connection, cursor=cur, query=sql_query, params=params
+                )
 
             cur.execute(sql_query, params)
             rows: list[Mapping[str, Any]] = cur.fetchall()

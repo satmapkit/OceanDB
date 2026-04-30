@@ -46,6 +46,7 @@ class OceanDB:
         use_geometry: bool = False,
         row_factory=tuple_row,
         connection_string: str | None = None,
+        debug: bool = False,
     ):
         """
         Managed PostgreSQL cursor for all OceanDB database access.
@@ -55,7 +56,12 @@ class OceanDB:
 
         dsn = self.connection_string if connection_string is None else connection_string
 
-        with pg.connect(dsn) as conn:
+        if debug:
+            cursor_factory = pg.ClientCursor
+        else:
+            cursor_factory = None
+
+        with pg.connect(dsn, cursor_factory=cursor_factory) as conn:
             conn.autocommit = autocommit
 
             if use_geometry:
