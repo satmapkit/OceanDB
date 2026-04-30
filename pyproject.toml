@@ -21,7 +21,8 @@ dependencies = [
     "dotenv",
     "sqlalchemy>2.0",
     "shapely~=2.1.2",
-    "pydantic-settings"
+    "pydantic-settings",
+    "paramiko>=3.4.0",
 
 ]
 
