@@ -2,7 +2,6 @@ from typing import get_args
 
 from OceanDB.data_access.eddy import Eddy
 from OceanDB.schemas.along_track_schema import along_track_fields
-
 from tests.database.fixtures import *
 
 

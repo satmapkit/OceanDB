@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
-from OceanDB.data_access.along_track import AlongTrack
-from OceanDB.schemas.along_track_schema import along_track_schema
+
 import numpy as np
 
+from OceanDB.data_access.along_track import AlongTrack
+from OceanDB.schemas.along_track_schema import along_track_schema
 from tests.database.fixtures import *
 
 

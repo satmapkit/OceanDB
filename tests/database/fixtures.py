@@ -1,10 +1,11 @@
-import pytest
-from typing import Generator
 from pathlib import Path
+from typing import Generator
+
+import pytest
 
 from OceanDB.config import Config
+from OceanDB.etl import AlongTrackETL, BasinsETL, EddyETL
 from OceanDB.OceanDB_Initializer import OceanDBInit
-from OceanDB.etl import BasinsETL, EddyETL, AlongTrackETL
 
 TEST_PARTITION_START = "2012-12-01"
 TEST_PARTITION_END = "2013-02-01"
@@ -61,7 +62,9 @@ def db_with_cyclonic_eddy_data(db_with_basin_data: BasinsETL) -> EddyETL:
     eddy_directory = oceandb_etl.config.eddy_data_directory
 
     cyclonic_filepath = Path(f"{eddy_directory}/cyclonic.nc")
-    oceandb_etl.ingest_eddy_data_file(cyclonic_filepath, cyclonic_type=-1, batch_size=10)
+    oceandb_etl.ingest_eddy_data_file(
+        cyclonic_filepath, cyclonic_type=-1, batch_size=10
+    )
     return oceandb_etl
 
 
@@ -73,7 +76,8 @@ def db_with_alongtrack_data(db_with_basin_data: BasinsETL) -> AlongTrackETL:
     for i in range(1, 10):
         print(f"ingesting {alongtrack_directory}/2013010{i}.nc")
         oceandb_etl.process_along_track_file(
-            Path(f"{alongtrack_directory}/required_underscores_j2_2013010{i}.nc"), batch_size=10
+            Path(f"{alongtrack_directory}/required_underscores_j2_2013010{i}.nc"),
+            batch_size=10,
         )
     return oceandb_etl
 
@@ -96,6 +100,7 @@ def db_with_eddy_and_alongtrack_data(db_with_all_eddy_data: EddyETL) -> AlongTra
     for i in range(1, 10):
         print(f"ingesting {alongtrack_directory}/2013010{i}.nc")
         db.process_along_track_file(
-            Path(f"{alongtrack_directory}/required_underscores_j2_2013010{i}.nc"), batch_size=10
+            Path(f"{alongtrack_directory}/required_underscores_j2_2013010{i}.nc"),
+            batch_size=10,
         )
     return db

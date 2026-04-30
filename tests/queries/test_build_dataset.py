@@ -5,7 +5,6 @@ import pytest
 
 from OceanDB.data_access.base_query import BaseReadQuery
 from OceanDB.ocean_data.ocean_data import ColumnField
-
 from tests.database.fixtures import *
 
 
