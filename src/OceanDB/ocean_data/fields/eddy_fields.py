@@ -279,7 +279,7 @@ distance = DerivedField(
     export_name="distance",
     expression=f"""
         ST_Distance(
-            ST_MakePoint({eddy_alias}.latitude,{eddy_alias}.longitude),
+            {eddy_alias}.eddy_point,
             {atk_alias}.along_track_point
         )
     """,
