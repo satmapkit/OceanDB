@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,6 +16,10 @@ class Config(BaseSettings):
     eddy_data_directory: str = ""
     copernicus_password: str = ""
     copernicus_username: str = ""
+    ingest_mode: Literal["insert", "copy"] = Field(
+        default="insert",
+        validation_alias="OCEANDB_INGEST_MODE",
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="",  # no prefix (POSTGRES_HOST, etc.)
@@ -21,6 +27,7 @@ class Config(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",  # ignore unrelated env vars
         case_sensitive=False,
+        populate_by_name=True,
     )
 
     @property

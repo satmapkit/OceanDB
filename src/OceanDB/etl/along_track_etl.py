@@ -2,12 +2,12 @@ from dataclasses import dataclass
 from dataclasses import asdict
 from functools import cached_property
 from datetime import datetime
+import os
 from pathlib import Path
 import time
 
 import netCDF4 as nc
 import numpy as np
-from psycopg import sql
 from psycopg.rows import dict_row
 from typing import Any, Optional, Iterator
 
@@ -281,29 +281,14 @@ class AlongTrackETL(OceanDBETL):
         self, along_track_data: batch[along_track_columns]
     ):
         """
-        Bulk load along-track rows into Postgres using COPY.
+        Insert along-track rows into Postgres using the configured ingest mode.
         """
-        columns = [
-            field.postgres_column_name for field in along_track_columns_schema.values()
-        ]
-        copy_query = sql.SQL("""
-            COPY {table} (
-                {columns}
-            ) FROM STDIN
-        """).format(
-            table=sql.Identifier(self.along_track_table_name),
-            columns=sql.SQL(", ").join(map(sql.Identifier, columns)),
+        self.import_schema_rows_to_postgresql(
+            table_name=self.along_track_table_name,
+            schema=along_track_columns_schema,
+            data=along_track_data,
+            value_adapter=self._copy_value,
         )
-
-        with self.cursor(commit=True) as cur:
-            with cur.copy(copy_query) as copy:
-                for row in along_track_data:
-                    copy.write_row(
-                        tuple(
-                            self._copy_value(field, row[field_name])
-                            for field_name, field in along_track_columns_schema.items()
-                        )
-                    )
 
     def import_metadata_to_psql(self, metadata: AlongTrackMetaData) -> None:
         """Insert metadata into along_track_metadata table, ignoring duplicates."""
@@ -382,18 +367,58 @@ class AlongTrackETL(OceanDBETL):
         Processes an along track netcdf file & inserts into Postgres
         """
         start = time.perf_counter()
-
+        worker_pid = os.getpid()
+        self.debug_log(
+            (
+                f"[ALONG-TRACK] pid={worker_pid} starting file={file.name} "
+                f"batch_size={batch_size} mode={self.config.ingest_mode}"
+            )
+        )
         dataset: nc.Dataset = self.load_netcdf(file)
         along_track_metadata: AlongTrackMetaData = self.extract_dataset_metadata(
             ds=dataset, file=file
         )
+        self.debug_log(
+            (
+                f"[ALONG-TRACK] pid={worker_pid} parsed metadata file={file.name} "
+                f"mission={along_track_metadata.mission} "
+                f"observations={along_track_metadata.observation_count}"
+            )
+        )
+        batch_count = 0
+        row_count = 0
         for data_batch in self.extract_data_from_netcdf(
             ds=dataset, file=file, batch_size=batch_size
         ):
+            batch_count += 1
+            row_count += len(data_batch)
+            self.debug_log(
+                (
+                    f"[ALONG-TRACK] pid={worker_pid} inserting file={file.name} "
+                    f"batch={batch_count} rows={len(data_batch)} "
+                    f"cumulative_rows={row_count}"
+                )
+            )
             self.import_along_track_data_to_postgresql(data_batch)
+            self.debug_log(
+                (
+                    f"[ALONG-TRACK] pid={worker_pid} inserted file={file.name} "
+                    f"batch={batch_count}"
+                )
+            )
+        self.debug_log(
+            f"[ALONG-TRACK] pid={worker_pid} writing metadata file={file.name}"
+        )
         self.import_metadata_to_psql(metadata=along_track_metadata)
         duration = time.perf_counter() - start
         size_mb = file.stat().st_size / (1024 * 1024)
+        self.debug_log(
+            (
+                f"[ALONG-TRACK] pid={worker_pid} finished file={file.name} "
+                f"batches={batch_count} rows={row_count} "
+                f"duration={duration:.2f}s"
+            )
+        )
         return {
             "file_name": file.name,
             "size_mb": size_mb,

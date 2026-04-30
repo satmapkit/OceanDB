@@ -22,6 +22,7 @@ OceanDB is a python package for managing oceanic satellite data intelligently.  
    
    ALONG_TRACK_DATA_DIRECTORY=/app/data/copernicus
    EDDY_DATA_DIRECTORY=/app/data/eddies
+   OCEANDB_INGEST_MODE=insert
    
    COPERNICUS_PASSWORD=copernicus_marine_service_password_placeholder
    COPERNICUS_USERNAME=copernicus_marine_service_username
@@ -111,6 +112,8 @@ oceandb visualize-basins --output artifacts/basin_map.html
 
 `oceandb ingest-along-track` reads from the same
 `ALONG_TRACK_DATA_DIRECTORY` used by `oceandb download`.
+Set `OCEANDB_INGEST_MODE=copy` in `.env` to stage batches through PostgreSQL
+`COPY`; the default remains `insert`.
 
 By default if no arguments are provided this CLI command will iterate over all
 of the data.
