@@ -43,7 +43,8 @@ eddy_directory = config.eddy_data_directory
 alongtrack_directory = config.along_track_data_directory
 
 # eddy file
-eddy_fname = f"{eddy_directory}/META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc"
+eddy_cyclonic_fname = f"{eddy_directory}/META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc"
+eddy_anticyclonic_fname = f"{eddy_directory}/META3.2_DT_allsat_Anticyclonic_long_19930101_20220209.nc"
 
 # along track files
 along_track_prefix = f"{alongtrack_directory}/SEALEVEL_GLO_PHY_L3_MY_008_062/"
@@ -57,9 +58,21 @@ for next_part in os.listdir(Path(along_track_prefix)):
     along_track_fnames.append(fname)
 
 
-eddy_ds = nc.Dataset(Path(eddy_fname))
+eddy_cyclonic_ds = nc.Dataset(Path(eddy_cyclonic_fname))
+eddy_anticyclonic_ds = nc.Dataset(Path(eddy_anticyclonic_fname))
 along_track_dss = [
     nc.Dataset(Path(along_track_fname)) for along_track_fname in along_track_fnames
 ]
 
 along_track_missions = [ds.source for ds in along_track_dss]
+
+
+eddy_track_id = 527413
+print(f"Finding anticyclonic eddy +{eddy_track_id}")
+eddy_rows_anticyclonic = np.where(eddy_anticyclonic_ds['track'][:] == 527413)
+print("rows", np.min(eddy_rows_anticyclonic), 'through', np.max(eddy_rows_anticyclonic))
+eddy_track_times = nc.num2date(
+        eddy_anticyclonic_ds['time'][eddy_rows_anticyclonic],
+        eddy_anticyclonic_ds['time'].units,
+    )
+print('times:', eddy_track_times)
