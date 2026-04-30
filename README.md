@@ -24,7 +24,10 @@ Presently, OceanDB handles both satellite altimetry data, as well as processed e
    To configure database connection, as well as to specify where data source files exist on disk,
    a `.env` file may be used.
 
-   If you wish to run the database locally using docker, you can copy `.env.example` to `.env`.
+   If you wish to run the database locally using docker, you can copy `.env.example` to `.env`, i.e.
+   ```sh
+   cp .env.example .env
+   ```
 
 4. **Setup python environment**
    
