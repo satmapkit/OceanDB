@@ -15,6 +15,7 @@ class EddyETL(OceanDBETL):
         file: Path,
         cyclonic_type: int,
         batch_size: int = 500000,
+        offset: int = 0
     ):
         """
         Processes & Ingests Eddy Data NetCDF file
@@ -24,6 +25,7 @@ class EddyETL(OceanDBETL):
             dataset,
             cyclonic_type=cyclonic_type,
             batch_size=batch_size,
+            offset=offset,
         ):
             start = time.perf_counter()
             self.import_eddy_data_to_postgresql(eddy_data=eddy_data_batch)
@@ -35,6 +37,7 @@ class EddyETL(OceanDBETL):
         ds: nc.Dataset,
         cyclonic_type: int,
         batch_size: int,
+        offset: int
     ) -> Iterator[batch[eddy_columns]]:
         """
         Yield batches of eddy data from a NetCDF dataset.
@@ -60,7 +63,7 @@ class EddyETL(OceanDBETL):
             if field.netcdf_name in ds.variables
         ]
 
-        for start in range(0, n_total, batch_size):
+        for start in range(offset, n_total, batch_size):
             stop = min(start + batch_size, n_total)
 
             vars_slice: dict[eddy_columns, Any] = {
