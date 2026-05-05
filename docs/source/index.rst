@@ -6,14 +6,11 @@
 OceanDB documentation
 =====================
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
-
-
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
    readme_link
+   along_track_points_near_eddy
+   installation_parallel
    api
