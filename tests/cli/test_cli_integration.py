@@ -1,9 +1,12 @@
 from click.testing import CliRunner
+import pytest
 
 from OceanDB import cli as cli_module
 from OceanDB.etl.along_track_etl import AlongTrackETL
 
-from .fixtures import *
+from tests.database.fixtures import *
+
+pytestmark = pytest.mark.uses_database
 
 
 def test_along_track_summary_command(db_with_alongtrack_data):

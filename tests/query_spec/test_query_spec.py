@@ -3,6 +3,8 @@ import pytest
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 from OceanDB.query_spec import QuerySpec
 
+pytestmark = pytest.mark.unit
+
 
 def test_sql_projection_compiler_with_no_fields():
     query = QuerySpec(

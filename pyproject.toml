@@ -52,3 +52,9 @@ include = ["OceanDB*"]
 "OceanDB.data.basin_masks" = ["*.nc"]
 
 "OceanDB.data.basins" = ["*.csv"]
+
+[tool.pytest.ini_options]
+markers = [
+    "unit: tests that do not require external setup",
+    "uses_database: tests that require the active test database",
+]

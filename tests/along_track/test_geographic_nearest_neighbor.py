@@ -1,10 +1,13 @@
 from datetime import datetime, timedelta
 
 import numpy as np
+import pytest
 
 from OceanDB.data_access.along_track import AlongTrack
 from OceanDB.schemas.along_track_schema import along_track_schema
 from tests.database.fixtures import *
+
+pytestmark = pytest.mark.uses_database
 
 
 def test_geographic_nearest_neighbor(db_with_alongtrack_data):
