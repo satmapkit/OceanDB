@@ -8,6 +8,7 @@ import time
 
 import netCDF4 as nc
 import numpy as np
+from psycopg import sql
 from psycopg.rows import dict_row
 from typing import Any, Optional, Iterator
 
@@ -288,6 +289,7 @@ class AlongTrackETL(OceanDBETL):
             schema=along_track_columns_schema,
             data=along_track_data,
             value_adapter=self._copy_value,
+            ignore_conflicts=False,
         )
 
     def import_metadata_to_psql(self, metadata: AlongTrackMetaData) -> None:

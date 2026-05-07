@@ -1,10 +1,14 @@
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Mapping, Sequence, TypeVar
+
+import click
 import netCDF4 as nc
 import numpy as np
 from psycopg import sql
-from typing import Any, Callable, Mapping, Sequence, TypeVar
-from pathlib import Path
 
 from OceanDB.OceanDB import OceanDB
+from OceanDB.cli_utils import format_status_line, style_value
 from OceanDB.ocean_data.ocean_data import ColumnField
 
 K = TypeVar("K", bound=str)
@@ -22,7 +26,26 @@ class OceanDBETL(OceanDB):
 
     def debug_log(self, message: str) -> None:
         if self.debug:
-            print(message, flush=True)
+            timestamp = style_value(
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                fg="bright_black",
+            )
+            label = "DEBUG"
+            body = message
+
+            if message.startswith("[") and "]" in message:
+                closing_bracket = message.find("]")
+                label = message[1:closing_bracket]
+                body = message[closing_bracket + 1 :].strip()
+
+            click.echo(
+                format_status_line(
+                    label,
+                    f"{timestamp} {body}",
+                    label_color="yellow",
+                ),
+                color=True,
+            )
 
     def _table_has_rows(self, table_name: str) -> bool:
         query = sql.SQL("SELECT EXISTS (SELECT 1 FROM {table} LIMIT 1)").format(
@@ -44,6 +67,7 @@ class OceanDBETL(OceanDB):
         schema: Mapping[K, ColumnField],
         data: Sequence[Mapping[K, Any]],
         value_adapter: ValueAdapter | None = None,
+        ignore_conflicts: bool = True,
     ) -> None:
         if not data:
             return
@@ -60,6 +84,7 @@ class OceanDBETL(OceanDB):
                 table_name=table_name,
                 columns=columns,
                 rows=normalized_rows,
+                ignore_conflicts=ignore_conflicts,
             )
             return
 
@@ -67,6 +92,7 @@ class OceanDBETL(OceanDB):
             table_name=table_name,
             columns=columns,
             rows=normalized_rows,
+            ignore_conflicts=ignore_conflicts,
         )
 
     @staticmethod
@@ -104,11 +130,11 @@ class OceanDBETL(OceanDB):
         table_name: str,
         columns: Sequence[ColumnField],
         rows: Sequence[tuple[Any, ...]],
+        ignore_conflicts: bool,
     ) -> None:
         insert_query = sql.SQL("""
             INSERT INTO {table} ({columns})
             VALUES ({placeholders})
-            ON CONFLICT DO NOTHING
         """).format(
             table=sql.Identifier("public", table_name),
             columns=sql.SQL(", ").join(
@@ -118,6 +144,8 @@ class OceanDBETL(OceanDB):
                 sql.Placeholder() for _ in columns
             ),
         )
+        if ignore_conflicts:
+            insert_query += sql.SQL(" ON CONFLICT DO NOTHING")
 
         with self.cursor(commit=True) as cur:
             cur.executemany(insert_query, rows)
@@ -128,6 +156,7 @@ class OceanDBETL(OceanDB):
         table_name: str,
         columns: Sequence[ColumnField],
         rows: Sequence[tuple[Any, ...]],
+        ignore_conflicts: bool,
     ) -> None:
         temp_table_name = f"temp_{table_name}_ingest"
         target_table = sql.Identifier("public", table_name)
@@ -137,11 +166,13 @@ class OceanDBETL(OceanDB):
         )
 
         create_temp_query = sql.SQL("""
-            CREATE TEMP TABLE {temp_table}
-            (LIKE {target_table} INCLUDING DEFAULTS)
-            ON COMMIT DROP
+            CREATE TEMP TABLE {temp_table} AS
+            SELECT {columns}
+            FROM {target_table}
+            WHERE FALSE
         """).format(
             temp_table=temp_table,
+            columns=column_list,
             target_table=target_table,
         )
         copy_query = sql.SQL("""
@@ -154,12 +185,13 @@ class OceanDBETL(OceanDB):
             INSERT INTO {target_table} ({columns})
             SELECT {columns}
             FROM {temp_table}
-            ON CONFLICT DO NOTHING
         """).format(
             target_table=target_table,
             columns=column_list,
             temp_table=temp_table,
         )
+        if ignore_conflicts:
+            merge_query += sql.SQL(" ON CONFLICT DO NOTHING")
 
         with self.cursor(commit=True) as cur:
             cur.execute(create_temp_query)

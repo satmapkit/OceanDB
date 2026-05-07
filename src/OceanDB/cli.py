@@ -1,6 +1,7 @@
 import time
 import webbrowser
 from datetime import datetime
+from multiprocessing import TimeoutError
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -455,6 +456,10 @@ def _format_timestamp(value: datetime | None) -> str:
     return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _timestamp_now() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _render_along_track_summary() -> None:
     try:
         oceandb_etl = _create_along_track_etl()
@@ -480,6 +485,9 @@ def _render_along_track_summary() -> None:
         ("Observations", "observation_count"),
     ]
 
+    total_files = sum(int(row["file_count"]) for row in summary_rows)
+    total_observations = sum(int(row["observation_count"]) for row in summary_rows)
+
     formatted_rows = []
     for row in summary_rows:
         formatted_rows.append(
@@ -504,6 +512,13 @@ def _render_along_track_summary() -> None:
             "SUMMARY",
             f"{len(formatted_rows)} mission(s) with ingested along-track data.",
             label_color="magenta",
+        )
+    )
+    click.echo(
+        format_status_line(
+            "TOTAL",
+            f"{total_files} file(s) | {total_observations} observation(s)",
+            label_color="green",
         )
     )
     for line in render_table(headers, formatted_rows, cell_styler=_summary_cell_styler):
@@ -677,19 +692,58 @@ def ingest_along_track(missions, start_date, end_date, workers, debug):
         )
 
     try:
-        for result in results:
-            completed += 1
-            remaining = total - completed
-            click.echo(
-                format_status_line(
-                    f"{completed}/{total}",
-                    f"{result['file_name']} | "
-                    f"{result['size_mb']:.2f} MB | "
-                    f"{_format_duration(result['duration_seconds'])} | "
-                    f"{remaining} remaining",
-                    label_color="cyan",
+        if process_count == 1:
+            for result in results:
+                completed += 1
+                remaining = total - completed
+                click.echo(
+                    format_status_line(
+                        f"{completed}/{total}",
+                        f"{_timestamp_now()} | "
+                        f"{result['file_name']} | "
+                        f"{result['size_mb']:.2f} MB | "
+                        f"{_format_duration(result['duration_seconds'])} | "
+                        f"{remaining} remaining",
+                        label_color="cyan",
+                    )
                 )
-            )
+        else:
+            heartbeat_seconds = 30
+            completed_new_files = 0
+            total_new_files = len(along_track_files)
+
+            while completed_new_files < total_new_files:
+                try:
+                    result = results.next(timeout=heartbeat_seconds)
+                except TimeoutError:
+                    active_workers = min(
+                        process_count, total_new_files - completed_new_files
+                    )
+                    click.echo(
+                        format_status_line(
+                            "WAIT",
+                            f"{completed}/{total} file(s) complete | "
+                            f"{completed_new_files}/{total_new_files} new file(s) finished | "
+                            f"{active_workers} worker(s) still running",
+                            label_color="yellow",
+                        )
+                    )
+                    continue
+
+                completed += 1
+                completed_new_files += 1
+                remaining = total - completed
+                click.echo(
+                    format_status_line(
+                        f"{completed}/{total}",
+                        f"{_timestamp_now()} | "
+                        f"{result['file_name']} | "
+                        f"{result['size_mb']:.2f} MB | "
+                        f"{_format_duration(result['duration_seconds'])} | "
+                        f"{remaining} remaining",
+                        label_color="cyan",
+                    )
+                )
     finally:
         if process_count > 1:
             multiprocessing_pool.close()

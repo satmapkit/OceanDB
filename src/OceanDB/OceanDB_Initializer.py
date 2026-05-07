@@ -5,6 +5,7 @@ from psycopg import sql
 from sqlalchemy import text
 
 from OceanDB.base_write_query import BaseWriteQuery
+from OceanDB.cli_utils import format_status_line
 from OceanDB.query_spec import RawSpec
 
 table_definitions = [
@@ -50,61 +51,85 @@ sql_index_files = [
         "name": "along_track_index_basin",
         "filepath": "indices/along_track/create_along_track_index_basin.sql",
         "params": {"index_name": "along_track_index_basin"},
+        "table_name": "along_track",
+        "index_name": "along_track_basin_idx",
     },
     {
         "name": "along_track_index_date",
         "filepath": "indices/along_track/create_along_track_index_date.sql",
         "params": {"index_name": "along_track_index_date"},
+        "table_name": "along_track",
+        "index_name": "along_track_date_idx",
     },
     {
         "name": "along_track_index_filename",
         "filepath": "indices/along_track/create_along_track_index_filename.sql",
         "params": {"index_name": "along_track_index_filename"},
+        "table_name": "along_track",
+        "index_name": "along_track_file_name_idx",
     },
     {
         "name": "along_track_index_mission",
         "filepath": "indices/along_track/create_along_track_index_mission.sql",
         "params": {"index_name": "along_track_index_mission"},
+        "table_name": "along_track",
+        "index_name": "along_track_mission_idx",
     },
     {
         "name": "along_track_index_point",
         "filepath": "indices/along_track/create_along_track_index_point.sql",
         "params": {"index_name": "along_track_index_point"},
+        "table_name": "along_track",
+        "index_name": "along_track_point_idx",
     },
     {
         "name": "along_track_index_point_date",
         "filepath": "indices/along_track/create_along_track_index_point_date.sql",
         "params": {"index_name": "along_track_index_point_date"},
+        "table_name": "along_track",
+        "index_name": "along_track_point_date_idx",
     },
     {
         "name": "along_track_index_point_date_mission",
         "filepath": "indices/along_track/create_along_track_index_point_date_mission.sql",
         "params": {"index_name": "along_track_index_point_date_mission"},
+        "table_name": "along_track",
+        "index_name": "along_track_point_date_mission_idx",
     },
     {
         "name": "along_track_index_point_date_mission_basin",
         "filepath": "indices/along_track/create_along_track_index_point_date_mission_basin.sql",
         "params": {"index_name": "along_track_index_point_date_mission_basin"},
+        "table_name": "along_track",
+        "index_name": "along_track_point_date_mission_basin_idx",
     },
     {
         "name": "along_track_index_point_geom",
         "filepath": "indices/along_track/create_along_track_index_point_geom.sql",
         "params": {"index_name": "along_track_index_point_geom"},
+        "table_name": "along_track",
+        "index_name": "along_track_point_geom_idx",
     },
     {
         "name": "along_track_index_time",
         "filepath": "indices/along_track/create_along_track_index_time.sql",
         "params": {"index_name": "along_track_index_time"},
+        "table_name": "along_track",
+        "index_name": "along_track_time_idx",
     },
     {
         "name": "basin_connection_index_basin_id",
         "filepath": "indices/basin/create_basin_connection_index_basin_id.sql",
         "params": {"index_name": "basin_connection_index_basin_id"},
+        "table_name": "basin_connections",
+        "index_name": "basin_id_idx",
     },
     {
         "name": "basin_index_geom",
         "filepath": "indices/basin/create_basin_index_geom.sql",
         "params": {"index_name": "basin_index_geom"},
+        "table_name": "basin",
+        "index_name": "basin_geog_idx",
     },
     # {
     #     "name": "chelton_eddy_index_point",
@@ -148,11 +173,15 @@ eddy_index_files = [
         "name": "eddy_index_point",
         "filepath": "indices/eddy/create_eddy_index_point.sql",
         "params": {"index_name": "eddy_index_point"},
+        "table_name": "eddy",
+        "index_name": "eddy_point_idx",
     },
     {
         "name": "eddy_index_track_cyclonic_type",
         "filepath": "indices/eddy/create_eddy_index_track_cyclonic_type.sql",
         "params": {"index_name": "eddy_index_track_cyclonic_type"},
+        "table_name": "eddy",
+        "index_name": "track_times_cyclonic_type_idx",
     },
 ]
 
@@ -188,6 +217,66 @@ EXPECTED_TABLE_INDEXES = {
 
 
 class OceanDBInit(BaseWriteQuery):
+    def _log_index_status(
+        self,
+        label: str,
+        message: str,
+        *,
+        label_color: str,
+    ) -> None:
+        self.logger.info(
+            format_status_line(label, message, label_color=label_color)
+        )
+
+    def index_exists(self, *, table_name: str, index_name: str) -> bool:
+        with self.cursor() as cur:
+            cur.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_indexes
+                    WHERE schemaname = 'public'
+                      AND tablename = %s
+                      AND indexname = %s
+                )
+                """,
+                (table_name, index_name),
+            )
+            return bool(cur.fetchone()[0])
+
+    def _create_index_group(self, indexes, *, group_name: str) -> None:
+        total = len(indexes)
+        self._log_index_status(
+            "CHECK",
+            f"Checking {total} {group_name} index definition(s).",
+            label_color="blue",
+        )
+
+        for position, index in enumerate(indexes, start=1):
+            index_name = index["index_name"]
+            table_name = index["table_name"]
+            progress = f"[{position}/{total}]"
+
+            if self.index_exists(table_name=table_name, index_name=index_name):
+                self._log_index_status(
+                    "SKIP",
+                    f"{progress} {index_name} on {table_name}: already present.",
+                    label_color="yellow",
+                )
+                continue
+
+            self._log_index_status(
+                "START",
+                f"{progress} {index_name} on {table_name}.",
+                label_color="magenta",
+            )
+            query = self.parametrize_sql_statements(index)
+            self.execute_write_query(query)
+            self._log_index_status(
+                "DONE",
+                f"{progress} {index_name} on {table_name}.",
+                label_color="green",
+            )
 
     def table_exists(self, table: str) -> bool:
         with self.cursor() as cur:
@@ -255,18 +344,10 @@ class OceanDBInit(BaseWriteQuery):
                 self.logger.info(ex)
 
     def create_indices(self):
-        for index in sql_index_files:
-            table_name = index["name"]
-            query = self.parametrize_sql_statements(index)
-            self.execute_write_query(query)
-            self.logger.info(f"Executing {table_name}")
+        self._create_index_group(sql_index_files, group_name="standard")
 
     def create_eddy_indices(self):
-        for index in eddy_index_files:
-            table_name = index["name"]
-            query = self.parametrize_sql_statements(index)
-            self.execute_write_query(query)
-            self.logger.info(f"Executing {table_name}")
+        self._create_index_group(eddy_index_files, group_name="eddy")
 
     def create_partitions(self, min_date, max_date):
         """

@@ -1,6 +1,11 @@
 
 NETWORK_NAME=ocean_network
 
+ifneq ("$(wildcard .env)","")
+include .env
+export
+endif
+
 create_network:
 	@if ! docker network ls --format '{{.Name}}' | grep -q '^$(NETWORK_NAME)'; then \
 		echo "Creating Docker network $(NETWORK_NAME)..."; \
@@ -10,6 +15,11 @@ create_network:
 	fi
 
 run_postgres: create_network
+	@if [ -z "$(POSTGRES_DATA_DIRECTORY)" ]; then \
+		echo "POSTGRES_DATA_DIRECTORY is not set."; \
+		echo "Set it in .env or your shell before running make run_postgres."; \
+		exit 1; \
+	fi
 	docker-compose -f docker-compose.postgres.yml up
 
 run_postgres_test: create_network
@@ -22,13 +32,15 @@ shell:
 	docker-compose run --rm -it ocean_db_client bash
 
 delete_volume:
-	docker volume rm oceandb_postgres_data
+	@echo "OceanDB now uses a bind-mounted PostgreSQL data directory configured in .env."
+	@echo "Remove the old named volume manually if you still have it:"
+	@echo "docker volume rm oceandb_postgres_data"
 
 build_image:
 	docker build -f docker_build/Dockerfile -t ocean_db_client:latest .
 
 psql:
-	docker exec -it postgres psql -h localhost -p 5432 -U postgres -d ocean2
+	psql "host=$(POSTGRES_HOST) port=$(POSTGRES_PORT) user=$(POSTGRES_USERNAME) password=$(POSTGRES_PASSWORD) dbname=$(POSTGRES_DATABASE)"
 
 .PHONY: format lint check start_postgres_test test test-db-create test-db-ingest test-along-track test-eddy-nearalong
 

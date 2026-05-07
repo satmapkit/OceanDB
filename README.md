@@ -19,6 +19,7 @@ OceanDB is a python package for managing oceanic satellite data intelligently.  
    POSTGRES_PASSWORD=postgres
    POSTGRES_PORT=5432
    POSTGRES_DATABASE=ocean
+   POSTGRES_DATA_DIRECTORY=/Volumes/ExternalDrive/oceandb/postgres
    
    ALONG_TRACK_DATA_DIRECTORY=/app/data/copernicus
    EDDY_DATA_DIRECTORY=/app/data/eddies
@@ -27,6 +28,7 @@ OceanDB is a python package for managing oceanic satellite data intelligently.  
    COPERNICUS_PASSWORD=copernicus_marine_service_password_placeholder
    COPERNICUS_USERNAME=copernicus_marine_service_username
    ```
+   `POSTGRES_DATA_DIRECTORY` should be a writable folder on the external drive you want Docker to use for development PostgreSQL storage. The test container still uses the small named Docker volume `oceandb_postgres_data_test`.
 
 4. **Setup python environment**
    
@@ -198,6 +200,7 @@ In the top right of the PyCharm window, click the 'edit' button to configure the
    ```bash
    make run_postgres // runs postgres postgis in docker compose
    ```
+   The Postgres container stores its data in the host directory configured by `POSTGRES_DATA_DIRECTORY` in `.env`.
    
 2. **Build OceanDB Python Image**
    If building a development image 
