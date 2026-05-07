@@ -6,6 +6,7 @@ import click
 import netCDF4 as nc
 import numpy as np
 from psycopg import sql
+from pathlib import Path
 
 from OceanDB.OceanDB import OceanDB
 from OceanDB.cli_utils import format_status_line, style_value

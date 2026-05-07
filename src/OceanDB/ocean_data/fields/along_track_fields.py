@@ -1,7 +1,8 @@
-import numpy as np
 from datetime import datetime
-import netCDF4 as nc
 from typing import Any
+
+import netCDF4 as nc
+import numpy as np
 
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 from OceanDB.utils.date_time_conversion import compute_date_time
@@ -144,6 +145,7 @@ mdt = ColumnField(
     postgres_type="smallint",
     netcdf_unique_name="mdt",
 )
+
 
 def _expand_if_low_dim(var: nc.Variable, rows: slice) -> Any:
     """

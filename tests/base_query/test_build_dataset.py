@@ -5,8 +5,9 @@ import pytest
 
 from OceanDB.data_access.base_query import BaseReadQuery
 from OceanDB.ocean_data.ocean_data import ColumnField
-
 from tests.database.fixtures import *
+
+pytestmark = pytest.mark.unit
 
 
 def test_build_dataset_skips_missing_fields(config):

@@ -48,8 +48,7 @@ def render_table(
 ) -> list[str]:
     headers = list(headers)
     widths = {
-        key: max(len(title), *(len(row[key]) for row in rows))
-        for title, key in headers
+        key: max(len(title), *(len(row[key]) for row in rows)) for title, key in headers
     }
 
     header_line = "  ".join(

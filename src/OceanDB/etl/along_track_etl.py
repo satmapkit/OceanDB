@@ -1,24 +1,21 @@
-from dataclasses import dataclass
-from dataclasses import asdict
-from functools import cached_property
-from datetime import datetime
 import os
-from pathlib import Path
 import time
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from functools import cached_property
+from pathlib import Path
+from typing import Any, Iterator, Optional
 
 import netCDF4 as nc
 import numpy as np
 from psycopg import sql
 from psycopg.rows import dict_row
-from typing import Any, Optional, Iterator
 
 from OceanDB.etl.base_etl import OceanDBETL, batch
 from OceanDB.ocean_data.basins import BasinMask
 from OceanDB.ocean_data.ocean_data import ColumnField
-from OceanDB.schemas.along_track_schema import (
-    along_track_columns,
-    along_track_columns_schema,
-)
+from OceanDB.schemas.along_track_schema import (along_track_columns,
+                                                along_track_columns_schema)
 from OceanDB.utils.date_time_conversion import compute_date_time
 
 
@@ -169,9 +166,7 @@ class AlongTrackETL(OceanDBETL):
         self, ds: nc.Dataset, file: Path
     ) -> AlongTrackMetaData:
         mission = self._extract_mission_from_filename(file)
-        return AlongTrackMetaData.from_netcdf(
-            ds, file_name=file.name, mission=mission
-        )
+        return AlongTrackMetaData.from_netcdf(ds, file_name=file.name, mission=mission)
 
     @staticmethod
     def _coerce_smallint(value: Any) -> int | None:
@@ -262,7 +257,8 @@ class AlongTrackETL(OceanDBETL):
         for start in range(0, n_total, batch_size):
             stop = min(start + batch_size, n_total)
             vars_slice: dict[along_track_columns, Any] = {
-                name: field.from_netcdf(ds, slice(start, stop)) for name, field in fields_in_ds
+                name: field.from_netcdf(ds, slice(start, stop))
+                for name, field in fields_in_ds
             }
 
             # file_name, mission, and basin_id are part of the DB schema but derived here

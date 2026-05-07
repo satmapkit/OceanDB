@@ -1,4 +1,9 @@
-from OceanDB.utils.basin_visualization import build_basin_map_html, parse_basin_kml
+import pytest
+
+from OceanDB.utils.basin_visualization import (build_basin_map_html,
+                                               parse_basin_kml)
+
+pytestmark = pytest.mark.unit
 
 
 SAMPLE_KML = """\

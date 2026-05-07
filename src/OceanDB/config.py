@@ -20,6 +20,8 @@ class Config(BaseSettings):
         default="insert",
         validation_alias="OCEANDB_INGEST_MODE",
     )
+    aviso_password: str = ""
+    aviso_username: str = ""
 
     model_config = SettingsConfigDict(
         env_prefix="",  # no prefix (POSTGRES_HOST, etc.)

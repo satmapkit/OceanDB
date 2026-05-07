@@ -3,6 +3,8 @@ import pytest
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 from OceanDB.query_spec import QuerySpec
 
+pytestmark = pytest.mark.unit
+
 
 def test_sql_projection_compiler_with_no_fields():
     query = QuerySpec(
@@ -61,7 +63,7 @@ def test_sql_projection_compiler_with_one_derived_field():
     sql_string = compiled.as_string(None)
 
     assert sql_string == (
-        'SELECT ST_Distance(ST_MakePoint(%(longitude)s, %(latitude)s), '
+        "SELECT ST_Distance(ST_MakePoint(%(longitude)s, %(latitude)s), "
         'dummy.geom) AS "distance" FROM dummy_table dummy'
     )
     assert "%(longitude)s" in sql_string
@@ -122,7 +124,7 @@ def test_sql_projection_compiler_with_mandatory_and_extra_field():
 
     assert compiled.as_string(None) == (
         'SELECT "dummy"."x_value" AS "x_value",dummy.geom <-> '
-        'ST_MakePoint(%(longitude)s, %(latitude)s) AS distance FROM dummy_table dummy'
+        "ST_MakePoint(%(longitude)s, %(latitude)s) AS distance FROM dummy_table dummy"
     )
 
 

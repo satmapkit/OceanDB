@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Any, Callable
-from psycopg import sql
+from typing import Any, Callable, Optional
+
+import netCDF4 as nc
 import numpy as np
 import numpy.typing as npt
-import netCDF4 as nc
+from psycopg import sql
 
 
 @dataclass(frozen=True)

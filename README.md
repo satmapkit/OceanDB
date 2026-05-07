@@ -110,7 +110,47 @@ oceandb visualize-basins --output artifacts/basin_map.html
 <!-- TODO: figure out how to include these images -->
 <!-- ![Screenshot 2025-12-05 at 11.19.07 AM.png](docs/Screenshot%202025-12-05%20at%2011.19.07%E2%80%AFAM.png) -->
 
-3. **Ingesting Along-Track Data**
+3. **Downloading Eddy Data**
+
+Use `oceandb download-eddy` to fetch the packaged AVISO eddy NetCDF files.
+The command downloads files into `EDDY_DATA_DIRECTORY` and requires AVISO
+credentials in `.env`.
+
+```bash
+EDDY_DATA_DIRECTORY=/path/to/eddies
+AVISO_USERNAME=aviso_username
+AVISO_PASSWORD=aviso_password
+```
+
+The downloader previews how many eddy files will be downloaded and how many
+already exist locally. By default, it skips existing files unless
+`--overwrite` is provided.
+
+Preview the download without fetching files:
+
+```bash
+oceandb download-eddy --dry-run
+```
+
+Download the missing eddy files:
+
+```bash
+oceandb download-eddy
+```
+
+Skip the confirmation prompt for scripted runs:
+
+```bash
+oceandb download-eddy --yes
+```
+
+Force a re-download of files that already exist locally:
+
+```bash
+oceandb download-eddy --overwrite --yes
+```
+
+4. **Ingesting Along-Track Data**
 
 `oceandb ingest-along-track` reads from the same
 `ALONG_TRACK_DATA_DIRECTORY` used by `oceandb download`.
@@ -139,7 +179,7 @@ oceandb ingest-eddy
 
 
  
-4. **Querying SLA Data**
+5. **Querying SLA Data**
    
    To query the sea level anomaly for a given satellite mission, time range & radius around a given point
    ```python

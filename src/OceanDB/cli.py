@@ -6,24 +6,32 @@ from multiprocessing import Pool
 from pathlib import Path
 
 import click
+import paramiko
 import psycopg as pg
 
-from OceanDB.OceanDB_Initializer import OceanDBInit
-from OceanDB.cli_utils import (
-    format_key_value,
-    format_status_line,
-    render_table,
-    style_value,
-)
+from OceanDB.cli_utils import (format_key_value, format_status_line,
+                               render_table, style_value)
 from OceanDB.config import Config
+from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.utils.basin_visualization import write_basin_map
 from OceanDB.utils.logging import get_logger
 
 logger = get_logger()
 
+AVISO_HOST = "ftp-access.aviso.altimetry.fr"
+AVISO_PORT = 2221
+AVISO_EDDY_REMOTE_DIRECTORY = (
+    "value-added/eddy-trajectory/delayed-time/META3.2_DT_allsat"
+)
+AVISO_EDDY_FILENAMES = [
+    "META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc",
+    "META3.2_DT_allsat_Anticyclonic_long_19930101_20220209.nc",
+]
+
 
 def _create_basins_etl():
     from OceanDB.etl.basins_etl import BasinsETL
+
     return BasinsETL()
 
 
@@ -34,11 +42,13 @@ def _create_along_track_etl(debug: bool = False):
 
 def _create_eddy_etl():
     from OceanDB.etl.eddy_etl import EddyETL
+
     return EddyETL()
 
 
 def _create_copernicus_marine_client():
     from OceanDB.etl.copernicus_marine import OceanDBCopernicusMarine
+
     return OceanDBCopernicusMarine()
 
 
@@ -304,6 +314,133 @@ def download(
     )
 
 
+@cli.command("download-eddy")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="List Eddy AVISO files without downloading them.",
+)
+@click.option(
+    "--yes",
+    is_flag=True,
+    help="Skip the confirmation prompt.",
+)
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    help="Overwrite files that already exist locally.",
+)
+def download_eddy(dry_run: bool, yes: bool, overwrite: bool):
+    """Download Eddy AVISO NetCDF files over SFTP."""
+    config = Config()
+    output_dir = Path(config.eddy_data_directory)
+    username = config.aviso_username
+    password = config.aviso_password
+
+    if not config.eddy_data_directory:
+        raise click.ClickException(
+            "EDDY_DATA_DIRECTORY is not set. Add it to your .env file."
+        )
+    if not username or not password:
+        raise click.ClickException(
+            "AVISO credentials are missing. Set AVISO_USERNAME and "
+            "AVISO_PASSWORD in your .env file."
+        )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    dry_run_prefix = "Checking" if dry_run else "Downloading"
+    click.echo(
+        format_status_line(
+            dry_run_prefix.upper(),
+            "AVISO eddy data files",
+            label_color="blue",
+        )
+    )
+    click.echo(
+        format_key_value(
+            "Output directory:",
+            str(output_dir),
+            label_color="yellow",
+        )
+    )
+
+    existing_files = [
+        filename
+        for filename in AVISO_EDDY_FILENAMES
+        if (output_dir / filename).exists()
+    ]
+    files_to_download = (
+        AVISO_EDDY_FILENAMES
+        if overwrite
+        else [
+            filename
+            for filename in AVISO_EDDY_FILENAMES
+            if filename not in existing_files
+        ]
+    )
+    click.echo(
+        "\n"
+        + format_status_line(
+            "PREVIEW",
+            f"{len(files_to_download)} file(s) to download, "
+            f"{len(existing_files)} existing file(s) found.",
+            label_color="magenta",
+        )
+    )
+
+    if dry_run:
+        return
+
+    if not yes and files_to_download:
+        click.echo(
+            "\n"
+            + format_status_line(
+                "WARNING",
+                "AVISO eddy downloads may overwrite local files when requested.",
+                label_color="yellow",
+            )
+        )
+        proceed = click.confirm(
+            "Do you want to proceed with downloading data?", default=False
+        )
+        if not proceed:
+            click.echo("Download canceled.")
+            return
+
+    if not files_to_download:
+        click.echo(
+            format_status_line(
+                "DONE",
+                "All AVISO eddy files already exist locally.",
+                label_color="green",
+            )
+        )
+        return
+
+    with paramiko.SSHClient() as ssh:
+        ssh.load_system_host_keys()
+        ssh.connect(
+            hostname=AVISO_HOST,
+            port=AVISO_PORT,
+            username=username,
+            password=password,
+        )
+        with ssh.open_sftp() as sftp:
+            for filename in files_to_download:
+                remote_path = f"{AVISO_EDDY_REMOTE_DIRECTORY}/{filename}"
+                local_path = output_dir / filename
+                sftp.get(remote_path, str(local_path))
+
+    click.echo(
+        format_status_line(
+            "DONE",
+            f"Finished downloading {len(files_to_download)} AVISO eddy file(s).",
+            label_color="green",
+        )
+    )
+
+
 EARLIEST_DATE = datetime(1990, 1, 1)
 
 
@@ -350,7 +487,7 @@ def iter_year_months(
 
 
 def get_netcdf4_files(
-    missions: list, start_date: datetime = None, end_date: datetime = None
+    missions: list, start_date: datetime | None = None, end_date: datetime | None = None
 ) -> list[Path]:
     """
     Generate a list of NetCDF along-track files based on missions and optional date filtering.
@@ -633,9 +770,7 @@ def ingest_along_track(missions, start_date, end_date, workers, debug):
         )
         return
 
-    if not click.confirm(
-        f"Ingest {len(nc_files)} file(s)? This may take many hours."
-    ):
+    if not click.confirm(f"Ingest {len(nc_files)} file(s)? This may take many hours."):
         return
 
     # Query the ingested metadata so that we can skip processing files that have already been processed
@@ -683,6 +818,7 @@ def ingest_along_track(missions, start_date, end_date, workers, debug):
     completed = skipped_count
     total = len(nc_files)
 
+    multiprocessing_pool = None
     if process_count == 1:
         results = map(oceandb_etl.process_along_track_file, along_track_files)
     else:
@@ -692,7 +828,7 @@ def ingest_along_track(missions, start_date, end_date, workers, debug):
         )
 
     try:
-        if process_count == 1:
+        if multiprocessing_pool is None:
             for result in results:
                 completed += 1
                 remaining = total - completed
@@ -745,7 +881,7 @@ def ingest_along_track(missions, start_date, end_date, workers, debug):
                     )
                 )
     finally:
-        if process_count > 1:
+        if multiprocessing_pool is not None:
             multiprocessing_pool.close()
             multiprocessing_pool.join()
 

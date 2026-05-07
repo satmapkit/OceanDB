@@ -1,8 +1,8 @@
-import netCDF4 as nc
-
 import time
-from typing import Iterator, Any
 from pathlib import Path
+from typing import Any, Iterator
+
+import netCDF4 as nc
 
 from OceanDB.etl.base_etl import OceanDBETL, batch
 from OceanDB.ocean_data.ocean_data import ColumnField

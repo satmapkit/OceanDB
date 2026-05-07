@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from typing import Any
-import numpy as np
+
 import netCDF4 as nc
+import numpy as np
 
 
 def _infer_len(dataset: Any) -> int:
