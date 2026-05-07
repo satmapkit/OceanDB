@@ -1,8 +1,13 @@
 from contextlib import contextmanager
+from typing import Any, cast
+
+import pytest
 
 from OceanDB.config import Config
 from OceanDB.etl.base_etl import OceanDBETL
 from OceanDB.ocean_data.ocean_data import ColumnField
+
+pytestmark = pytest.mark.unit
 
 
 class FakeCopy:
@@ -68,7 +73,7 @@ def test_import_schema_rows_uses_insert_mode():
         assert kwargs == {"commit": True}
         yield cursor
 
-    etl.cursor = fake_cursor
+    etl.cursor = cast(Any, fake_cursor)
 
     etl.import_schema_rows_to_postgresql(
         table_name="sample",
@@ -107,7 +112,7 @@ def test_import_schema_rows_uses_copy_mode_and_value_adapter():
         assert kwargs == {"commit": True}
         yield cursor
 
-    etl.cursor = fake_cursor
+    etl.cursor = cast(Any, fake_cursor)
 
     etl.import_schema_rows_to_postgresql(
         table_name="sample",
