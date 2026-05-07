@@ -224,9 +224,7 @@ class OceanDBInit(BaseWriteQuery):
         *,
         label_color: str,
     ) -> None:
-        self.logger.info(
-            format_status_line(label, message, label_color=label_color)
-        )
+        self.logger.info(format_status_line(label, message, label_color=label_color))
 
     def index_exists(self, *, table_name: str, index_name: str) -> bool:
         with self.cursor() as cur:

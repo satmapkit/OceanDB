@@ -1,8 +1,7 @@
 import time
 import webbrowser
 from datetime import datetime
-from multiprocessing import TimeoutError
-from multiprocessing import Pool
+from multiprocessing import Pool, TimeoutError
 from pathlib import Path
 
 import click
@@ -37,6 +36,7 @@ def _create_basins_etl():
 
 def _create_along_track_etl(debug: bool = False):
     from OceanDB.etl.along_track_etl import AlongTrackETL
+
     return AlongTrackETL(debug=debug)
 
 
@@ -153,15 +153,11 @@ def ingest_eddy():
     click.echo(_render_ingest_mode(oceandb_etl.config.ingest_mode))
 
     print(f"Processing Ingesting {AVISO_EDDY_FILENAMES[0]}")
-    cyclonic_filepath = Path(
-        f"{eddy_directory}/{AVISO_EDDY_FILENAMES[0]}"
-    )
+    cyclonic_filepath = Path(f"{eddy_directory}/{AVISO_EDDY_FILENAMES[0]}")
     oceandb_etl.ingest_eddy_data_file(cyclonic_filepath, cyclonic_type=-1)
 
     print(f"Processing Ingesting {AVISO_EDDY_FILENAMES[1]}")
-    anticyclonic_filepath = Path(
-        f"{eddy_directory}/{AVISO_EDDY_FILENAMES[1]}"
-    )
+    anticyclonic_filepath = Path(f"{eddy_directory}/{AVISO_EDDY_FILENAMES[1]}")
     oceandb_etl.ingest_eddy_data_file(anticyclonic_filepath, cyclonic_type=1)
 
 

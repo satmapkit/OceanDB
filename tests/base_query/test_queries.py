@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
-import pytest
 
 import numpy as np
+import pytest
 
 from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField

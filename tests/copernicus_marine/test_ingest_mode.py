@@ -118,9 +118,9 @@ def test_import_schema_rows_uses_copy_mode_and_value_adapter():
         table_name="sample",
         schema=schema,
         data=[{"id": 1, "name": "alpha"}],
-        value_adapter=lambda field, value: str(value).upper()
-        if field.postgres_column_name == "name"
-        else value,
+        value_adapter=lambda field, value: (
+            str(value).upper() if field.postgres_column_name == "name" else value
+        ),
     )
 
     assert len(cursor.executed) == 2

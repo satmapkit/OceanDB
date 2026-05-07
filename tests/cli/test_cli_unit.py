@@ -123,6 +123,7 @@ def test_init_exits_early_when_database_exists(monkeypatch):
     assert result.exit_code == 0
     assert calls == ["create_database"]
 
+
 def test_ingest_mode_status_line_formats():
     rendered = cli_module._render_ingest_mode("copy")
     assert "MODE" in rendered

@@ -5,7 +5,6 @@ from psycopg import sql
 from OceanDB.OceanDB_Initializer import (OceanDBInit, eddy_tables,
                                          table_definitions)
 from OceanDB.schemas.eddy_schema import eddy_columns_schema
-
 from tests.database.fixtures import *
 
 pytestmark = pytest.mark.uses_database

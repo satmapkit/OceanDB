@@ -6,11 +6,10 @@ import click
 import netCDF4 as nc
 import numpy as np
 from psycopg import sql
-from pathlib import Path
 
-from OceanDB.OceanDB import OceanDB
 from OceanDB.cli_utils import format_status_line, style_value
 from OceanDB.ocean_data.ocean_data import ColumnField
+from OceanDB.OceanDB import OceanDB
 
 K = TypeVar("K", bound=str)
 batch = list[dict[K, Any]]
@@ -121,7 +120,9 @@ class OceanDBETL(OceanDB):
     ) -> list[tuple[Any, ...]]:
         adapter = value_adapter or (lambda field, value: self._normalize_value(value))
         return [
-            tuple(adapter(field, row[field_name]) for field_name, field in schema.items())
+            tuple(
+                adapter(field, row[field_name]) for field_name, field in schema.items()
+            )
             for row in data
         ]
 
@@ -141,9 +142,7 @@ class OceanDBETL(OceanDB):
             columns=sql.SQL(", ").join(
                 sql.Identifier(field.postgres_column_name) for field in columns
             ),
-            placeholders=sql.SQL(", ").join(
-                sql.Placeholder() for _ in columns
-            ),
+            placeholders=sql.SQL(", ").join(sql.Placeholder() for _ in columns),
         )
         if ignore_conflicts:
             insert_query += sql.SQL(" ON CONFLICT DO NOTHING")
