@@ -152,17 +152,15 @@ def ingest_eddy():
     eddy_directory = oceandb_etl.config.eddy_data_directory
     click.echo(_render_ingest_mode(oceandb_etl.config.ingest_mode))
 
-    print("Processing Ingesting META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc")
+    print(f"Processing Ingesting {AVISO_EDDY_FILENAMES[0]}")
     cyclonic_filepath = Path(
-        f"{eddy_directory}/META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc"
+        f"{eddy_directory}/{AVISO_EDDY_FILENAMES[0]}"
     )
     oceandb_etl.ingest_eddy_data_file(cyclonic_filepath, cyclonic_type=-1)
 
-    print(
-        "Processing Ingesting META3.2_DT_allsat_Anticyclonic_long_19930101_20220209.nc"
-    )
+    print(f"Processing Ingesting {AVISO_EDDY_FILENAMES[1]}")
     anticyclonic_filepath = Path(
-        f"{eddy_directory}/META3.2_DT_allsat_AntiCyclonic_long_19930101_20220209.nc"
+        f"{eddy_directory}/{AVISO_EDDY_FILENAMES[1]}"
     )
     oceandb_etl.ingest_eddy_data_file(anticyclonic_filepath, cyclonic_type=1)
 
