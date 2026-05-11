@@ -25,6 +25,10 @@ class BaseReadQuery(OceanDB):
     * SQL aliases == schema keys
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.debug = False
+
     def execute_read_query(
         self,
         query_spec: QuerySpec,
@@ -32,7 +36,6 @@ class BaseReadQuery(OceanDB):
         fields: Iterable[K],
         params: Mapping[str, Any],
         dataset_name: str = "query_result",
-        debug_sql: bool = False,
     ) -> Dataset[K, Any] | None:
         """
         Execute a single query and return a Dataset, or None if empty.
@@ -53,9 +56,9 @@ class BaseReadQuery(OceanDB):
 
         sql_query = query_spec.sql_projection_compiler(fields)
 
-        with self.cursor(row_factory=dict_row) as cur:
-            if debug_sql:
-                log_query(conn=cur.connection, query=sql_query, params=params)
+        with self.cursor(row_factory=dict_row, debug=self.debug) as cur:
+            if self.debug:
+                log_query(conn=cur.connection, cursor=cur, query=sql_query, params=params)
 
             cur.execute(sql_query, params)
             rows: list[Mapping[str, Any]] = cur.fetchall()

@@ -1,4 +1,7 @@
+import OceanDB.query_spec as query_spec_module
 import pytest
+from psycopg import sql
+from typing import Any, cast
 
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 from OceanDB.query_spec import QuerySpec
@@ -187,3 +190,52 @@ def test_sql_projection_compiler_raises_for_unknown_field():
 
     with pytest.raises(KeyError):
         query.sql_projection_compiler(["not_in_schema"])
+
+
+def test_log_query_logs_rendered_sql_for_client_cursor(monkeypatch, caplog):
+    class FakeClientCursor:
+        def mogrify(self, query, params):
+            assert query.as_string(None) == "SELECT * FROM dummy WHERE id = %(id)s"
+            assert params == {"id": 3}
+            return "OUTPUT"
+
+    monkeypatch.setattr(query_spec_module.pg, "ClientCursor", FakeClientCursor)
+
+    query = cast(Any, sql.SQL("SELECT * FROM dummy WHERE id = %(id)s"))
+
+    with caplog.at_level("INFO", logger="oceandb"):
+        query_spec_module.log_query(
+            conn=cast(Any, None),
+            cursor=cast(Any, FakeClientCursor()),
+            query=query,
+            params={"id": 3},
+        )
+
+    assert "--- SQL QUERY ---" in caplog.text
+    assert "OUTPUT" in caplog.text
+    assert "--- PARAMS ---" not in caplog.text
+
+
+def test_log_query_logs_sql_and_params_for_non_client_cursor(monkeypatch, caplog):
+    class FakeClientCursor:
+        pass
+
+    class FakeCursor:
+        pass
+
+    monkeypatch.setattr(query_spec_module.pg, "ClientCursor", FakeClientCursor)
+
+    query = cast(Any, sql.SQL("SELECT * FROM dummy WHERE id = %(id)s"))
+
+    with caplog.at_level("INFO", logger="oceandb"):
+        query_spec_module.log_query(
+            conn=cast(Any, None),
+            cursor=cast(Any, FakeCursor()),
+            query=query,
+            params={"id": 3},
+        )
+
+    assert "--- SQL QUERY ---" in caplog.text
+    assert "SELECT * FROM dummy WHERE id = %(id)s" in caplog.text
+    assert "--- PARAMS ---" in caplog.text
+    assert "{'id': 3}" in caplog.text
