@@ -108,9 +108,9 @@ def test_execute_query_with_start_debug_captures_rendered_query(
 def test_stop_debug_disables_rendered_query_capture(
     db_with_alongtrack_data,
 ):
-    rendered_queries: list[str] = []
+    capture = []
     base_query = BaseReadQuery(db_with_alongtrack_data.config)
-    base_query.start_debug(rendered_queries.append)
+    base_query.start_debug(lambda x, y, z: capture.append((x, y, z)))
     base_query.stop_debug()
 
     res = base_query.execute_read_query(
@@ -122,5 +122,35 @@ def test_stop_debug_disables_rendered_query_capture(
         ],
     )
 
+    rendered_queries = [x[2] for x in capture]
     assert res is not None
-    assert rendered_queries == []
+    assert len(rendered_queries) == 0
+
+
+def test_execute_batch_query_preserves_input_order(db_with_alongtrack_data):
+    base_query = BaseReadQuery(db_with_alongtrack_data.config)
+
+    matching_params = _make_along_track_params()
+    missing_params = {
+        **matching_params,
+        "longitude": 0.0,
+        "latitude": 0.0,
+        "distance": 10,
+    }
+
+    res = list(
+        base_query.execute_batch_read_query(
+            query_spec=_make_along_track_query(),
+            params_batch=[matching_params, missing_params],
+            fields=[
+                "latitude",
+                "distance",
+            ],
+        )
+    )
+
+    assert len(res) == 2
+    assert res[0] is not None
+    assert res[1] is None
+    assert "latitude" in res[0]
+    assert "distance" in res[0]

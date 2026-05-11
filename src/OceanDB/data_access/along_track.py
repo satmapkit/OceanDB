@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from functools import cached_property
-from typing import Any, Literal, get_args
+from typing import Any, Generator, Literal, get_args
 
 from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
 from OceanDB.ocean_data.basins import BasinConnections, BasinMask
@@ -133,6 +133,51 @@ class AlongTrack(BaseReadQuery):
             dataset_name="along_track",
         )
 
+    def geographic_point_in_r_dt_batch(
+        self,
+        fields: list[along_track_fields],
+        latitudes: list[float],
+        longitudes: list[float],
+        dates: list[datetime],
+        radius: float = 500_000.0,
+        time_window: timedelta = timedelta(days=10),
+        missions: list[Mission] = all_missions,
+    ) -> Generator[Dataset[along_track_fields, Any] | None]:
+        """
+        Query along-track points for multiple spatial + temporal windows.
+
+        Yields one Dataset per query point, or None where no rows are returned.
+        """
+
+        query_spec = QuerySpec(
+            sql_template=self.load_sql_file(self._along_track_spatiotemporal_query),
+            schema=along_track_schema,
+        )
+
+        params_batch = []
+        for latitude, longitude, date in zip(latitudes, longitudes, dates, strict=True):
+            basin_ids = self.basin_mask_lookup.lookup(latitude, longitude)
+            connected_basin_ids = self.basin_connections.connection_map[basin_ids]
+
+            params_batch.append(
+                {
+                    "longitude": longitude,
+                    "latitude": latitude,
+                    "distance": radius,
+                    "central_date_time": date,
+                    "time_delta": time_window,
+                    "connected_basin_ids": connected_basin_ids,
+                    "missions": missions,
+                }
+            )
+
+        return self.execute_batch_read_query(
+            query_spec=query_spec,
+            fields=fields,
+            params_batch=params_batch,
+            dataset_name="along_track",
+        )
+
     def geographic_nearest_neighbors(
         self,
         fields: list,
@@ -170,5 +215,49 @@ class AlongTrack(BaseReadQuery):
             query_spec=query_spec,
             fields=fields,
             params=params,
+            dataset_name="along_track",
+        )
+
+    def geographic_nearest_neighbors_batch(
+        self,
+        fields: list[along_track_fields],
+        latitudes: list[float],
+        longitudes: list[float],
+        dates: list[datetime],
+        time_window: timedelta = timedelta(days=10),
+        missions: list[Mission] = all_missions,
+    ) -> Generator[Dataset[along_track_fields, Any] | None]:
+        """
+        Query nearest neighbors for multiple points using a prepared batch query.
+
+        Yields one Dataset per query point, or None where no rows are returned.
+        """
+
+        query_spec = QuerySpec(
+            sql_template=self.load_sql_file(self._along_track_nearest_neighbor_query),
+            schema=along_track_schema,
+            mandatory_fields=["distance"],
+        )
+
+        params_batch = []
+        for latitude, longitude, date in zip(latitudes, longitudes, dates, strict=True):
+            basin_ids = self.basin_mask_lookup.lookup(latitude, longitude)
+            connected_basin_ids = self.basin_connections.connection_map[basin_ids]
+
+            params_batch.append(
+                {
+                    "longitude": longitude,
+                    "latitude": latitude,
+                    "central_date_time": date,
+                    "time_delta": time_window,
+                    "connected_basin_ids": connected_basin_ids,
+                    "missions": missions,
+                }
+            )
+
+        return self.execute_batch_read_query(
+            query_spec=query_spec,
+            fields=fields,
+            params_batch=params_batch,
             dataset_name="along_track",
         )
