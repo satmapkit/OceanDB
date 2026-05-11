@@ -125,10 +125,21 @@ class BaseReadQuery(OceanDB):
         dataset_name: str = "query_result",
     ) -> Generator[Dataset[K, Any] | None, None, None]:
         """
-        Execute a prepared batch query and return one Dataset per parameter set.
+        Execute the same query over many different parameters.
+        For each result, yield a Dataset, or None if empty.
 
-        Each batch item produces its own result set via psycopg3
-        ``executemany(..., returning=True, prepare=True)``.
+        :param query_spec:
+            The specification for the query to be made
+
+        :param fields:
+            Set of fields to be extracted from the query
+
+        :param params:
+            Iterable of desired query params, one for each query.
+
+        :param dataset_name:
+            Name to give to the resulting dataset
+            (this is mostly used for output to NETCDF)
         """
 
         sql_query = query_spec.sql_projection_compiler(fields)
