@@ -3,6 +3,7 @@ import webbrowser
 from datetime import datetime
 from multiprocessing import Pool, TimeoutError
 from pathlib import Path
+from typing import Literal
 
 import click
 import paramiko
@@ -85,8 +86,8 @@ def process():
 @cli.command()
 def init():
     ocean_db_init = OceanDBInit()
-    database_created = ocean_db_init.create_database()
-    if not database_created:
+    successful = ocean_db_init.create_database()
+    if not successful:
         return
     ocean_db_init.create_tables()
     ocean_db_init.create_eddy_tables()
@@ -128,7 +129,35 @@ def visualize_basins(output: Path):
 
 
 @cli.command()
-def ingest_eddy():
+@click.option(
+    "--cyclonic-only",
+    "only_ingest",
+    flag_value="cyclonic",
+    help="Only ingest cyclonic data",
+    default="both",
+)
+@click.option(
+    "--anticyclonic-only",
+    "only_ingest",
+    flag_value="anticyclonic",
+    help="Only ingest anticyclonic data",
+    default="both",
+)
+@click.option(
+    "--offset-cyclonic",
+    default="0",
+    show_default=True,
+    type=int,
+    help="Rows to offset the cyclonic eddy ingestion by",
+)
+@click.option(
+    "--offset-anticyclonic",
+    default="0",
+    show_default=True,
+    type=int,
+    help="Rows to offset the anticyclonic eddy ingestion by",
+)
+def ingest_eddy(only_ingest: Literal['both', 'cyclonic', 'anticyclonic'], offset_cyclonic: int, offset_anticyclonic: int):
     """
     Ingest eddy detection datasets into OceanDB.
 
@@ -150,15 +179,26 @@ def ingest_eddy():
     """
     oceandb_etl = _create_eddy_etl()
     eddy_directory = oceandb_etl.config.eddy_data_directory
-    click.echo(_render_ingest_mode(oceandb_etl.config.ingest_mode))
+    cyclonic_file = AVISO_EDDY_FILENAMES[0]
+    anticyclonic_file = AVISO_EDDY_FILENAMES[1]
 
-    print(f"Processing Ingesting {AVISO_EDDY_FILENAMES[0]}")
-    cyclonic_filepath = Path(f"{eddy_directory}/{AVISO_EDDY_FILENAMES[0]}")
-    oceandb_etl.ingest_eddy_data_file(cyclonic_filepath, cyclonic_type=-1)
+    if only_ingest in ('both', 'cyclonic'):
+        print(f"Processing ingesting {cyclonic_file}")
+        if offset_cyclonic > 0:
+            print(f"Starting at {offset_cyclonic}")
+        cyclonic_filepath = Path(
+            f"{eddy_directory}/{cyclonic_file}"
+        )
+        oceandb_etl.ingest_eddy_data_file(cyclonic_filepath, cyclonic_type=-1, offset=offset_cyclonic)
 
-    print(f"Processing Ingesting {AVISO_EDDY_FILENAMES[1]}")
-    anticyclonic_filepath = Path(f"{eddy_directory}/{AVISO_EDDY_FILENAMES[1]}")
-    oceandb_etl.ingest_eddy_data_file(anticyclonic_filepath, cyclonic_type=1)
+    if only_ingest in ('both', 'anticyclonic'):
+        if offset_anticyclonic > 0:
+            print(f"Starting at {offset_anticyclonic}")
+        print(f"Processing ingesting {anticyclonic_file}")
+        anticyclonic_filepath = Path(
+            f"{eddy_directory}/{anticyclonic_file}"
+        )
+        oceandb_etl.ingest_eddy_data_file(anticyclonic_filepath, cyclonic_type=1, offset=offset_anticyclonic)
 
 
 @cli.command()

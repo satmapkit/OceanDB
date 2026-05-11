@@ -84,6 +84,9 @@ def latitude_longitude_to_spherical_transverse_mercator(
     :param lon0:
         reference longitude to center the projection around
 
+    :returns:
+        x, y as numpy arrays of same shape as lat and lon
+
     """
     k0 = 0.9996
     WGS84a = 6378137.0
