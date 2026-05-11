@@ -1,4 +1,5 @@
 from typing import get_args
+
 import pytest
 
 from OceanDB.data_access.eddy import Eddy

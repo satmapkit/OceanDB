@@ -1,9 +1,9 @@
 import datetime
+
 import pytest
 
 from OceanDB.data_access.eddy import Eddy
 from OceanDB.schemas.eddy_schema import eddy_columns_schema
-
 from tests.database.fixtures import *
 
 pytestmark = pytest.mark.uses_database

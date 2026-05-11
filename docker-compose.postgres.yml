@@ -18,9 +18,6 @@ services:
       - ocean_network
     volumes:
       - ./initdb:/docker-entrypoint-initdb.d
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
-    name: oceandb_postgres_data
-
+      - type: bind
+        source: ${POSTGRES_DATA_DIRECTORY}
+        target: /var/lib/postgresql/data

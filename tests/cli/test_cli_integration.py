@@ -1,9 +1,8 @@
-from click.testing import CliRunner
 import pytest
+from click.testing import CliRunner
 
 from OceanDB import cli as cli_module
 from OceanDB.etl.along_track_etl import AlongTrackETL
-
 from tests.database.fixtures import *
 
 pytestmark = pytest.mark.uses_database

@@ -1,7 +1,7 @@
 import time
 import webbrowser
 from datetime import datetime
-from multiprocessing import Pool
+from multiprocessing import Pool, TimeoutError
 from pathlib import Path
 
 import click
@@ -34,10 +34,10 @@ def _create_basins_etl():
     return BasinsETL()
 
 
-def _create_along_track_etl():
+def _create_along_track_etl(debug: bool = False):
     from OceanDB.etl.along_track_etl import AlongTrackETL
 
-    return AlongTrackETL()
+    return AlongTrackETL(debug=debug)
 
 
 def _create_eddy_etl():
@@ -50,6 +50,14 @@ def _create_copernicus_marine_client():
     from OceanDB.etl.copernicus_marine import OceanDBCopernicusMarine
 
     return OceanDBCopernicusMarine()
+
+
+def _render_ingest_mode(mode: str) -> str:
+    return format_status_line(
+        "MODE",
+        f"Using {mode.upper()} ingest mode.",
+        label_color="magenta",
+    )
 
 
 @click.group()
@@ -142,19 +150,14 @@ def ingest_eddy():
     """
     oceandb_etl = _create_eddy_etl()
     eddy_directory = oceandb_etl.config.eddy_data_directory
+    click.echo(_render_ingest_mode(oceandb_etl.config.ingest_mode))
 
-    print("Processing Ingesting META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc")
-    cyclonic_filepath = Path(
-        f"{eddy_directory}/META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc"
-    )
+    print(f"Processing Ingesting {AVISO_EDDY_FILENAMES[0]}")
+    cyclonic_filepath = Path(f"{eddy_directory}/{AVISO_EDDY_FILENAMES[0]}")
     oceandb_etl.ingest_eddy_data_file(cyclonic_filepath, cyclonic_type=-1)
 
-    print(
-        "Processing Ingesting META3.2_DT_allsat_Anticyclonic_long_19930101_20220209.nc"
-    )
-    anticyclonic_filepath = Path(
-        f"{eddy_directory}/META3.2_DT_allsat_AntiCyclonic_long_19930101_20220209.nc"
-    )
+    print(f"Processing Ingesting {AVISO_EDDY_FILENAMES[1]}")
+    anticyclonic_filepath = Path(f"{eddy_directory}/{AVISO_EDDY_FILENAMES[1]}")
     oceandb_etl.ingest_eddy_data_file(anticyclonic_filepath, cyclonic_type=1)
 
 
@@ -584,6 +587,10 @@ def _format_timestamp(value: datetime | None) -> str:
     return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _timestamp_now() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _render_along_track_summary() -> None:
     try:
         oceandb_etl = _create_along_track_etl()
@@ -609,6 +616,9 @@ def _render_along_track_summary() -> None:
         ("Observations", "observation_count"),
     ]
 
+    total_files = sum(int(row["file_count"]) for row in summary_rows)
+    total_observations = sum(int(row["observation_count"]) for row in summary_rows)
+
     formatted_rows = []
     for row in summary_rows:
         formatted_rows.append(
@@ -633,6 +643,13 @@ def _render_along_track_summary() -> None:
             "SUMMARY",
             f"{len(formatted_rows)} mission(s) with ingested along-track data.",
             label_color="magenta",
+        )
+    )
+    click.echo(
+        format_status_line(
+            "TOTAL",
+            f"{total_files} file(s) | {total_observations} observation(s)",
+            label_color="green",
         )
     )
     for line in render_table(headers, formatted_rows, cell_styler=_summary_cell_styler):
@@ -673,13 +690,26 @@ def summarize_along_track_legacy():
     type=click.DateTime(formats=["%Y-%m-%d"]),
     required=False,
 )
-def ingest_along_track(missions, start_date, end_date):
+@click.option(
+    "--workers",
+    type=click.IntRange(min=1),
+    default=6,
+    show_default=True,
+    help="Number of worker processes to use for along-track ingestion.",
+)
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Emit verbose worker-level progress logs during ingestion.",
+)
+def ingest_along_track(missions, start_date, end_date, workers, debug):
     """
     Ingest along-track altimetry data for one or more missions.
 
     This command  parses, and ingests along-track NetCDF files
     into the OceanDB PostgreSQL database. Data are streamed into Postgres
-    using a bulk COPY operation for efficiency.
+    using the mode configured by ``OCEANDB_INGEST_MODE`` (``insert`` by default,
+    ``copy`` for bulk staged COPY ingest).
 
     Parameters
     ----------
@@ -738,7 +768,7 @@ def ingest_along_track(missions, start_date, end_date):
         return
 
     # Query the ingested metadata so that we can skip processing files that have already been processed
-    oceandb_etl = _create_along_track_etl()
+    oceandb_etl = _create_along_track_etl(debug=debug)
     metadata_filenames = oceandb_etl.query_metadata()
 
     start_ingest_time = time.perf_counter()
@@ -757,34 +787,97 @@ def ingest_along_track(missions, start_date, end_date):
         )
         return
 
+    skipped_count = len(nc_files) - len(along_track_files)
+
     click.echo(
         format_status_line(
             "INGEST",
             f"Processing {len(along_track_files)} new file(s); "
-            f"skipping {len(nc_files) - len(along_track_files)} already ingested file(s).",
+            f"skipping {skipped_count} already ingested file(s).",
             label_color="blue",
         )
     )
-
-    process_count = 6
-    with Pool(process_count) as multiprocessing_pool:
-        completed = 0
-        total = len(along_track_files)
-        for result in multiprocessing_pool.imap_unordered(
-            oceandb_etl.process_along_track_file, along_track_files
-        ):
-            completed += 1
-            remaining = total - completed
-            click.echo(
-                format_status_line(
-                    f"{completed}/{total}",
-                    f"{result['file_name']} | "
-                    f"{result['size_mb']:.2f} MB | "
-                    f"{_format_duration(result['duration_seconds'])} | "
-                    f"{remaining} remaining",
-                    label_color="cyan",
-                )
+    click.echo(_render_ingest_mode(oceandb_etl.config.ingest_mode))
+    process_count = workers
+    if debug:
+        click.echo(
+            format_status_line(
+                "WORKERS",
+                f"Starting {process_count} worker(s). "
+                "Waiting for the first completed file...",
+                label_color="magenta",
             )
+        )
+
+    completed = skipped_count
+    total = len(nc_files)
+
+    multiprocessing_pool = None
+    if process_count == 1:
+        results = map(oceandb_etl.process_along_track_file, along_track_files)
+    else:
+        multiprocessing_pool = Pool(process_count)
+        results = multiprocessing_pool.imap_unordered(
+            oceandb_etl.process_along_track_file, along_track_files
+        )
+
+    try:
+        if multiprocessing_pool is None:
+            for result in results:
+                completed += 1
+                remaining = total - completed
+                click.echo(
+                    format_status_line(
+                        f"{completed}/{total}",
+                        f"{_timestamp_now()} | "
+                        f"{result['file_name']} | "
+                        f"{result['size_mb']:.2f} MB | "
+                        f"{_format_duration(result['duration_seconds'])} | "
+                        f"{remaining} remaining",
+                        label_color="cyan",
+                    )
+                )
+        else:
+            heartbeat_seconds = 30
+            completed_new_files = 0
+            total_new_files = len(along_track_files)
+
+            while completed_new_files < total_new_files:
+                try:
+                    result = results.next(timeout=heartbeat_seconds)
+                except TimeoutError:
+                    active_workers = min(
+                        process_count, total_new_files - completed_new_files
+                    )
+                    click.echo(
+                        format_status_line(
+                            "WAIT",
+                            f"{completed}/{total} file(s) complete | "
+                            f"{completed_new_files}/{total_new_files} new file(s) finished | "
+                            f"{active_workers} worker(s) still running",
+                            label_color="yellow",
+                        )
+                    )
+                    continue
+
+                completed += 1
+                completed_new_files += 1
+                remaining = total - completed
+                click.echo(
+                    format_status_line(
+                        f"{completed}/{total}",
+                        f"{_timestamp_now()} | "
+                        f"{result['file_name']} | "
+                        f"{result['size_mb']:.2f} MB | "
+                        f"{_format_duration(result['duration_seconds'])} | "
+                        f"{remaining} remaining",
+                        label_color="cyan",
+                    )
+                )
+    finally:
+        if multiprocessing_pool is not None:
+            multiprocessing_pool.close()
+            multiprocessing_pool.join()
 
     full_ingest_duration = time.perf_counter() - start_ingest_time
     click.echo(
