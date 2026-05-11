@@ -111,11 +111,26 @@ class RawSpec(QuerySpec):
         return self.query_string
 
 
-def log_query(
+def render_query(
     conn: pg.Connection, cursor: pg.Cursor, query: sql.Composed, params: Any
-) -> None:
-    logger = get_logger()
+) -> str:
+    """Render a query to its exact SQL string, including bound parameters."""
     if not isinstance(cursor, pg.ClientCursor):
+        return str(query.as_string(conn))
+
+    return cursor.mogrify(query, params)
+
+
+def log_query(
+    conn: pg.Connection,
+    query: sql.Composed,
+    params: Any,
+    cursor: pg.Cursor | None = None,
+) -> None:
+    """Log a rendered SQL query for debugging."""
+    logger = get_logger()
+
+    if cursor is None or not isinstance(cursor, pg.ClientCursor):
         logger.info(
             "\n--- SQL QUERY ---\n"
             + str(query.as_string(conn))
@@ -123,9 +138,10 @@ def log_query(
             + str(params)
             + "\n----------------\n"
         )
-    else:
-        logger.info(
-            "\n--- SQL QUERY ---\n"
-            + cursor.mogrify(query, params)
-            + "\n----------------\n"
-        )
+        return
+
+    logger.info(
+        "\n--- SQL QUERY ---\n"
+        + render_query(conn=conn, cursor=cursor, query=query, params=params)
+        + "\n----------------\n"
+    )

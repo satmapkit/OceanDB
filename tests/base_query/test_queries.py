@@ -77,11 +77,12 @@ def test_execute_query(db_with_alongtrack_data):
     assert "distance" in res
 
 
-def test_execute_query_with_debug_sql_logs_rendered_query(
-    db_with_alongtrack_data, caplog
+def test_execute_query_with_start_debug_captures_rendered_query(
+    db_with_alongtrack_data,
 ):
+    rendered_queries: list[str] = []
     base_query = BaseReadQuery(db_with_alongtrack_data.config)
-    base_query.debug = True
+    base_query.start_debug(rendered_queries.append)
 
     res = base_query.execute_read_query(
         query_spec=_make_along_track_query(),
@@ -91,14 +92,34 @@ def test_execute_query_with_debug_sql_logs_rendered_query(
             "distance",
         ],
     )
-    log_text = caplog.text
 
     assert res is not None
-    assert "--- SQL QUERY ---" in log_text
-    assert "--- PARAMS ---" not in log_text
-    assert "%(longitude)s" not in log_text
-    assert "%(latitude)s" not in log_text
-    assert "%(distance)s" not in log_text
-    assert "-65.9" in log_text
-    assert "58.9" in log_text
-    assert "500000" in log_text
+    assert len(rendered_queries) == 1
+    assert "%(longitude)s" not in rendered_queries[0]
+    assert "%(latitude)s" not in rendered_queries[0]
+    assert "%(distance)s" not in rendered_queries[0]
+    assert "-65.9" in rendered_queries[0]
+    assert "58.9" in rendered_queries[0]
+    assert "500000" in rendered_queries[0]
+    base_query.stop_debug()
+
+
+def test_stop_debug_disables_rendered_query_capture(
+    db_with_alongtrack_data,
+):
+    rendered_queries: list[str] = []
+    base_query = BaseReadQuery(db_with_alongtrack_data.config)
+    base_query.start_debug(rendered_queries.append)
+    base_query.stop_debug()
+
+    res = base_query.execute_read_query(
+        query_spec=_make_along_track_query(),
+        params=_make_along_track_params(),
+        fields=[
+            "latitude",
+            "distance",
+        ],
+    )
+
+    assert res is not None
+    assert rendered_queries == []
