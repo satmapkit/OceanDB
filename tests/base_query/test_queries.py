@@ -80,9 +80,9 @@ def test_execute_query(db_with_alongtrack_data):
 def test_execute_query_with_start_debug_captures_rendered_query(
     db_with_alongtrack_data,
 ):
-    rendered_queries: list[str] = []
+    capture = []
     base_query = BaseReadQuery(db_with_alongtrack_data.config)
-    base_query.start_debug(rendered_queries.append)
+    base_query.start_debug(lambda x, y, z: capture.append((x, y, z)))
 
     res = base_query.execute_read_query(
         query_spec=_make_along_track_query(),
@@ -93,6 +93,7 @@ def test_execute_query_with_start_debug_captures_rendered_query(
         ],
     )
 
+    rendered_queries = [x[2] for x in capture]
     assert res is not None
     assert len(rendered_queries) == 1
     assert "%(longitude)s" not in rendered_queries[0]

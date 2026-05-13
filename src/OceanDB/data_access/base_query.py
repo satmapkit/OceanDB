@@ -3,12 +3,15 @@ from __future__ import annotations
 from typing import Any, Callable, Iterable, Mapping
 
 import numpy as np
+from psycopg import sql
 from psycopg.rows import dict_row
 
 from OceanDB.ocean_data.dataset import Dataset, K
 from OceanDB.ocean_data.ocean_data import OceanDataField
 from OceanDB.OceanDB import OceanDB
 from OceanDB.query_spec import QuerySpec, render_query
+
+QueryObserver = Callable[[sql.Composed, Mapping[str, Any], str], None]
 
 
 class BaseReadQuery(OceanDB):
@@ -27,9 +30,9 @@ class BaseReadQuery(OceanDB):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.query_observer: Callable[[str], None] | None = None
+        self.query_observer: QueryObserver | None = None
 
-    def start_debug(self, query_observer: Callable[[str], None]):
+    def start_debug(self, query_observer: QueryObserver):
         """
         Enable SQL rendering callbacks for subsequent read queries.
 
@@ -42,7 +45,7 @@ class BaseReadQuery(OceanDB):
 
         .. code-block:: python
 
-            along_track.start_debug(print)
+            along_track.start_debug(lambda x,y,z: print(z))
             along_track.geographic_nearest_neighbors(...)
 
         :param query_observer:
@@ -95,7 +98,11 @@ class BaseReadQuery(OceanDB):
                     query=sql_query,
                     params=params,
                 )
-                self.query_observer(rendered_query)
+                self.query_observer(
+                    sql_query,
+                    params,
+                    rendered_query,
+                )
 
             cur.execute(sql_query, params)
             rows: list[Mapping[str, Any]] = cur.fetchall()
