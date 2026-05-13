@@ -222,6 +222,25 @@ PARTITIONED_ALONG_TRACK_INDEX_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 
+INDEX_SQL_PATTERN = re.compile(
+    r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+(?P<index_name>\S+)\s+ON\s+"
+    r"(?P<table_name>(?:public\.)?[A-Za-z_][A-Za-z0-9_]*)",
+    flags=re.IGNORECASE,
+)
+
+
+def load_index_metadata(oceandb, index: dict[str, str]) -> dict[str, str]:
+    sql_statement = oceandb.load_sql_file(index["filepath"])
+    match = INDEX_SQL_PATTERN.search(sql_statement)
+    if not match:
+        raise ValueError(f"Unable to parse index SQL for '{index['name']}'")
+
+    return {
+        **index,
+        "index_name": match.group("index_name").replace("public.", ""),
+        "table_name": match.group("table_name").replace("public.", ""),
+    }
+
 
 EXPECTED_TABLE_INDEXES = {
     "along_track": {

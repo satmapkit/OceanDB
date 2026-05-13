@@ -250,25 +250,6 @@ def test_index_create_all_command_creates_all_indices(monkeypatch):
     assert "All OceanDB-managed indices were created." in result.output
 
 
-def test_create_indices_alias_creates_all_indices(monkeypatch):
-    runner = CliRunner()
-    calls = []
-
-    class FakeInit:
-        def create_indices(self):
-            calls.append("create_indices")
-
-        def create_eddy_indices(self):
-            calls.append("create_eddy_indices")
-
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInit)
-
-    result = runner.invoke(cli_module.cli, ["create-indices"])
-
-    assert result.exit_code == 0
-    assert calls == ["create_indices", "create_eddy_indices"]
-
-
 def test_index_create_command_prompts_for_partitioned_creation(monkeypatch):
     runner = CliRunner()
     calls = []

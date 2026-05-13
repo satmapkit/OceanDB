@@ -108,7 +108,6 @@ def _create_all_indices():
     ocean_db_init.create_indices()
     ocean_db_init.create_eddy_indices()
 
-
 def _partitioned_index_choices() -> list[str]:
     return [
         index["name"]
@@ -427,14 +426,71 @@ def drop_index_command(drop_all: bool, yes: bool):
             "DROPPED",
             "All OceanDB-managed indices were dropped.",
             label_color="yellow",
+            )
+        )
+
+@cli.command("analyze-queries")
+def analyze_queries():
+    """Run representative queries and show their index usage matrix."""
+    from OceanDB.query_analysis import QueryAnalysisRunner
+
+    runner = QueryAnalysisRunner()
+    rows = runner.analyze_queries()
+    all_indices = runner.index_names
+    used_indices = set.union(*[row.used_indices for row in rows])
+    unused_indices = all_indices - used_indices
+
+    used_index_names = sorted(used_indices)
+    unused_index_names = sorted(unused_indices)
+
+    click.echo(
+        format_status_line(
+            "ANALYZE",
+            f"Analyzed {len(rows)} query scenario(s).",
+            label_color="magenta",
         )
     )
 
+    headers = [("Query", "scenario_name")] + [
+        (f"{i}", index_name) for i, index_name in enumerate(used_index_names)
+    ]
+    formatted_rows = []
+    for row in rows:
+        formatted_row = {"scenario_name": row.scenario_name}
+        used_indices = row.used_indices
+        for index_name in used_index_names:
+            formatted_row[index_name] = "X" if index_name in used_indices else ""
+        formatted_rows.append(formatted_row)
 
-@cli.command("create-indices")
-def create_indices():
-    """Deprecated alias for ``oceandb index create``."""
-    _create_all_indices()
+    def _analysis_cell_styler(column: str, value: str) -> str:
+        if column == "scenario_name":
+            return style_value(value, fg="cyan", bold=True)
+        if value.strip() == "X":
+            return style_value(value, fg="green", bold=True)
+        return style_value(value, fg="white")
+
+    for line in render_table(
+        headers, formatted_rows, cell_styler=_analysis_cell_styler
+    ):
+        click.echo(line)
+
+    click.echo(
+        format_status_line(
+            "USED",
+            "\n" + "\n".join(f"{i}: {n}" for i, n in enumerate(used_index_names))
+            or "-",
+            label_color="green",
+            message_color="green",
+        )
+    )
+    click.echo(
+        format_status_line(
+            "UNUSED",
+            "\n" + "\n".join(f"{n}" for n in unused_index_names) or "-",
+            label_color="yellow",
+            message_color="yellow",
+        )
+    )
 
 
 @cli.command()
