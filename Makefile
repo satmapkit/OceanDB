@@ -56,6 +56,8 @@ psql:
 format:
 	black src/OceanDB
 	isort src/OceanDB
+	black tests/
+	isort tests/
 
 lint:
 	flake8 src/OceanDB
