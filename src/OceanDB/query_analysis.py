@@ -58,9 +58,9 @@ class QueryScenario:
 @dataclass(frozen=True)
 class QueryAnalysisRow:
     scenario_name: str
-    tables: tuple[str, ...]
-    candidate_indices: tuple[str, ...]
-    used_indices: tuple[str, ...]
+    tables: set[str]
+    candidate_indices: set[str]
+    used_indices: set[str]
     sql: str
 
 
@@ -131,15 +131,22 @@ class QueryAnalysisRunner(OceanDB):
         self,
         scenario: QueryScenario,
     ) -> QueryAnalysisRow:
-        captured = self._capture_statement_sql(scenario)
-        tables = self.extract_tables(captured.rendered)
-        explain_output = self.explain_analyze_sql(captured)
+
+        captured_all = self._capture_statement_sql(scenario)
+
+        tables = set()
+        explain_output = []
+        for captured_query in captured_all:
+            tables.update(self.extract_tables(captured_query.rendered))
+            explain_output.extend(self.explain_analyze_sql(captured_query))
+        rendered = (c.rendered for c in captured_all)
+
         return QueryAnalysisRow(
             scenario_name=scenario.name,
             tables=tables,
             candidate_indices=self.candidate_indices_for_tables(tables),
             used_indices=self.extract_used_indices(explain_output),
-            sql=captured.rendered,
+            sql="\n".join(rendered),
         )
 
     def explain_analyze_sql(self, capture: QueryCapture) -> list[dict[str, Any]]:
@@ -156,13 +163,11 @@ class QueryAnalysisRunner(OceanDB):
             raise ValueError("Expected EXPLAIN YAML entries to be mappings")
         return explain_output
 
-    def candidate_indices_for_tables(self, tables: tuple[str, ...]) -> tuple[str, ...]:
-        return tuple(
-            sorted(
-                index["index_name"]
-                for index in self.indices
-                if index["table_name"] in tables
-            )
+    def candidate_indices_for_tables(self, tables: Iterable[str]) -> set[str]:
+        return set(
+            index["index_name"]
+            for index in self.indices
+            if index["table_name"] in tables
         )
 
     @property
@@ -191,11 +196,10 @@ class QueryAnalysisRunner(OceanDB):
             if parent_index_name in self.index_names
         }
 
-    def extract_tables(self, query: str) -> tuple[str, ...]:
+    def extract_tables(self, query: str) -> set[str]:
         # TODO: figure out a better way to do this other than
         # searching the string
-        tables = set(match.group(1) for match in SQL_TABLE_PATTERN.finditer(query))
-        return tuple(sorted(tables))
+        return set(match.group(1) for match in SQL_TABLE_PATTERN.finditer(query))
 
     def normalize_index_name(self, index_name: str) -> str | None:
         if index_name in self.index_names:
@@ -203,8 +207,8 @@ class QueryAnalysisRunner(OceanDB):
         return self.partition_index_name_map.get(index_name)
 
     def extract_used_indices(
-        self, explain_output: list[dict[str, Any]]
-    ) -> tuple[str, ...]:
+        self, explain_output: Iterable[dict[str, Any]]
+    ) -> set[str]:
         matched: set[str] = set()
         for node in self.iter_plan_nodes(explain_output):
             index_name = node.get("Index Name")
@@ -214,10 +218,10 @@ class QueryAnalysisRunner(OceanDB):
             normalized_index_name = self.normalize_index_name(index_name)
             if normalized_index_name is not None:
                 matched.add(normalized_index_name)
-        return tuple(sorted(matched))
+        return matched
 
     def iter_plan_nodes(
-        self, explain_output: list[dict[str, Any]]
+        self, explain_output: Iterable[dict[str, Any]]
     ) -> Iterator[dict[str, Any]]:
         for explain_doc in explain_output:
             plan = explain_doc.get("Plan")
@@ -235,16 +239,15 @@ class QueryAnalysisRunner(OceanDB):
             if isinstance(child, dict):
                 yield from self._iter_plan_nodes(child)
 
-    def _capture_statement_sql(self, scenario: QueryScenario) -> QueryCapture:
+    def _capture_statement_sql(self, scenario: QueryScenario) -> list[QueryCapture]:
+
+        outputs: list[QueryCapture] = []
 
         def observer(
             query: sql.Composed, params: Mapping[str, Any], rendered: str
         ) -> None:
-            raise QueryCaptureInterrupt(QueryCapture(query, params, rendered))
+            outputs.append(QueryCapture(query, params, rendered))
 
-        try:
-            scenario.run(config=self.config, observer=observer)
-        except QueryCaptureInterrupt as exc:
-            return exc.query
+        scenario.run(config=self.config, observer=observer)
 
-        raise ValueError(f"Scenario {scenario.name} did not emit a query")
+        return outputs

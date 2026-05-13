@@ -16,15 +16,17 @@ def test_default_scenarios_cover_expected_query_surfaces():
     runner = QueryAnalysisRunner()
 
     scenarios = runner.default_scenarios()
-    scenario_names = [scenario.name for scenario in scenarios]
+    scenario_names = set([scenario.name for scenario in scenarios])
 
-    assert scenario_names == [
-        "AlongTrack.geographic_point_in_r_dt",
-        "AlongTrack.geographic_nearest_neighbors",
-        "Eddy.eddy_with_track_id",
-        "Eddy.eddy_envelope_query",
-        "Eddy.along_track_points_near_eddy",
-    ]
+    assert scenario_names == set(
+        (
+            "AlongTrack.geographic_point_in_r_dt",
+            "AlongTrack.geographic_nearest_neighbors",
+            "Eddy.eddy_with_track_id",
+            "Eddy.eddy_envelope_query",
+            "Eddy.along_track_points_near_eddy",
+        )
+    )
     assert scenarios[0].query_class is AlongTrack
     assert scenarios[0].method_name == "geographic_point_in_r_dt"
     assert scenarios[2].query_class is Eddy
@@ -112,9 +114,11 @@ def test_extract_used_indices_matches_known_index_names_from_plan():
         }
     ]
 
-    assert runner.extract_used_indices(explain_docs) == (
-        "basin_geog_idx",
-        "track_times_cyclonic_type_idx",
+    assert runner.extract_used_indices(explain_docs) == set(
+        (
+            "basin_geog_idx",
+            "track_times_cyclonic_type_idx",
+        )
     )
 
 
@@ -144,8 +148,8 @@ def test_extract_used_indices_normalizes_partition_child_index_names():
         }
     ]
 
-    assert runner.extract_used_indices(explain_docs) == (
-        "along_track_point_date_mission_basin_idx",
+    assert runner.extract_used_indices(explain_docs) == set(
+        ("along_track_point_date_mission_basin_idx",)
     )
 
 
@@ -186,17 +190,19 @@ def test_iter_plan_nodes_yields_nested_plan_nodes():
 def test_candidate_indices_for_tables_uses_initializer_metadata():
     runner = QueryAnalysisRunner()
 
-    assert runner.candidate_indices_for_tables(("eddy", "along_track")) == (
-        "along_track_basin_idx",
-        "along_track_date_idx",
-        "along_track_file_name_idx",
-        "along_track_mission_idx",
-        "along_track_point_date_idx",
-        "along_track_point_date_mission_basin_idx",
-        "along_track_point_date_mission_idx",
-        "along_track_point_geom_idx",
-        "along_track_point_idx",
-        "along_track_time_idx",
-        "eddy_point_idx",
-        "track_times_cyclonic_type_idx",
+    assert runner.candidate_indices_for_tables(("eddy", "along_track")) == set(
+        (
+            "along_track_basin_idx",
+            "along_track_date_idx",
+            "along_track_file_name_idx",
+            "along_track_mission_idx",
+            "along_track_point_date_idx",
+            "along_track_point_date_mission_basin_idx",
+            "along_track_point_date_mission_idx",
+            "along_track_point_geom_idx",
+            "along_track_point_idx",
+            "along_track_time_idx",
+            "eddy_point_idx",
+            "track_times_cyclonic_type_idx",
+        )
     )
