@@ -66,6 +66,8 @@ class QueryAnalysisRow:
     candidate_indices: set[str]
     used_indices: set[str]
     sql: str
+    explain_result_dict: list[Any]
+    explain_result_str: str
 
 
 class QueryAnalysisRunner(OceanDB):
@@ -142,7 +144,7 @@ class QueryAnalysisRunner(OceanDB):
         captured_all = self._capture_statement_sql(scenario)
 
         tables = set()
-        explain_output = []
+        explain_output: list[dict[str, Any]] = []
         for captured_query in captured_all:
             tables.update(self.extract_tables(captured_query.rendered))
             explain_output.extend(self.explain_analyze_sql(captured_query))
@@ -154,6 +156,8 @@ class QueryAnalysisRunner(OceanDB):
             candidate_indices=self.candidate_indices_for_tables(tables),
             used_indices=self.extract_used_indices(explain_output),
             sql="\n".join(rendered),
+            explain_result_dict=explain_output,
+            explain_result_str=yaml.safe_dump(explain_output),
         )
 
     def explain_analyze_sql(self, capture: QueryCapture) -> list[dict[str, Any]]:
