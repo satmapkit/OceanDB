@@ -49,7 +49,10 @@ The OceanDB package provides a CLI for initializing the database and ingesting d
 1. **Initializing the Database**
    ```bash
    oceandb init // Creates the database, tables, partitions, and reference data
-   oceandb create-indices // Build query indices after bulk ingest
+   oceandb index create --all // Build every OceanDB-managed index with the legacy full-table flow
+   oceandb index create // Prompt for one along-track index and a partition date range
+   oceandb index list // Show indices currently present in the database
+   oceandb index drop --all // Drop all OceanDB-managed indices
    ```
 
 2. **Downloading Along-Track Data**
