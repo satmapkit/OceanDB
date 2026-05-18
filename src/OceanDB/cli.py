@@ -108,6 +108,7 @@ def _create_all_indices():
     ocean_db_init.create_indices()
     ocean_db_init.create_eddy_indices()
 
+
 def _partitioned_index_choices() -> list[str]:
     return [
         index["name"]
@@ -426,13 +427,19 @@ def drop_index_command(drop_all: bool, yes: bool):
             "DROPPED",
             "All OceanDB-managed indices were dropped.",
             label_color="yellow",
-            )
         )
+    )
+
 
 @cli.command("analyze-queries")
 def analyze_queries():
     """Run representative queries and show their index usage matrix."""
     from OceanDB.query_analysis import QueryAnalysisRunner
+
+    def _format_metric(value: float | None) -> str:
+        if value is None:
+            return "-"
+        return f"{value:.3f}"
 
     runner = QueryAnalysisRunner()
     rows = runner.analyze_queries()
@@ -450,6 +457,32 @@ def analyze_queries():
             label_color="magenta",
         )
     )
+
+    summary_headers = [
+        ("Query", "scenario_name"),
+        ("Total Cost", "total_cost"),
+        ("Total Time (s)", "total_time"),
+    ]
+    summary_rows = [
+        {
+            "scenario_name": row.scenario_name,
+            "total_cost": _format_metric(row.total_cost),
+            "total_time": _format_metric(row.total_time),
+        }
+        for row in rows
+    ]
+
+    def _summary_cell_styler(column: str, value: str) -> str:
+        if column == "scenario_name":
+            return style_value(value, fg="cyan", bold=True)
+        return style_value(value, fg="white")
+
+    for line in render_table(
+        summary_headers, summary_rows, cell_styler=_summary_cell_styler
+    ):
+        click.echo(line)
+
+    click.echo()
 
     headers = [("Query", "scenario_name")] + [
         (f"{i}", index_name) for i, index_name in enumerate(used_index_names)

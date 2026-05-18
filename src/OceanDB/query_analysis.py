@@ -13,11 +13,8 @@ from OceanDB.data_access.along_track import AlongTrack
 from OceanDB.data_access.base_query import BaseReadQuery, QueryObserver
 from OceanDB.data_access.eddy import Eddy
 from OceanDB.OceanDB import OceanDB
-from OceanDB.OceanDB_Initializer import (
-    eddy_index_files,
-    load_index_metadata,
-    sql_index_files,
-)
+from OceanDB.OceanDB_Initializer import (eddy_index_files, load_index_metadata,
+                                         sql_index_files)
 from OceanDB.schemas.along_track_schema import along_track_schema
 from OceanDB.schemas.eddy_schema import eddy_columns_schema
 
@@ -68,6 +65,8 @@ class QueryAnalysisRow:
     sql: str
     explain_result_dict: list[Any]
     explain_result_str: str
+    total_cost: float | None
+    total_time: float | None
 
 
 class QueryAnalysisRunner(OceanDB):
@@ -158,6 +157,8 @@ class QueryAnalysisRunner(OceanDB):
             sql="\n".join(rendered),
             explain_result_dict=explain_output,
             explain_result_str=yaml.safe_dump(explain_output),
+            total_cost=self.extract_total_cost(explain_output),
+            total_time=self.extract_total_time(explain_output),
         )
 
     def explain_analyze_sql(self, capture: QueryCapture) -> list[dict[str, Any]]:
@@ -230,6 +231,22 @@ class QueryAnalysisRunner(OceanDB):
             if normalized_index_name is not None:
                 matched.add(normalized_index_name)
         return matched
+
+    def extract_total_cost(
+        self, explain_output: Iterable[dict[str, Any]]
+    ) -> float | None:
+        for explain_doc in explain_output:
+            for node in self.iter_plan_nodes((explain_doc,)):
+                return node.get("Total Cost")
+        return None
+
+    def extract_total_time(
+        self, explain_output: Iterable[dict[str, Any]]
+    ) -> float | None:
+        for explain_doc in explain_output:
+            for node in self.iter_plan_nodes((explain_doc,)):
+                return node.get("Actual Total Time")
+        return None
 
     def iter_plan_nodes(
         self, explain_output: Iterable[dict[str, Any]]

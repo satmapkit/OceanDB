@@ -187,6 +187,66 @@ def test_iter_plan_nodes_yields_nested_plan_nodes():
     ]
 
 
+def test_extract_total_cost_and_time_read_first_plan_node_match():
+    runner = QueryAnalysisRunner()
+
+    explain_docs = [
+        {
+            "Plan": {
+                "Node Type": "Gather",
+                "Actual Total Time": 20.984,
+                "Total Cost": 48778.67,
+                "Plans": [
+                    {
+                        "Node Type": "Bitmap Heap Scan",
+                        "Actual Total Time": 12.0,
+                        "Total Cost": 100.0,
+                    }
+                ],
+            },
+        },
+        {"Plan": {"Node Type": "Seq Scan"}},
+    ]
+
+    assert runner.extract_total_cost(explain_docs) == 48778.67
+    assert runner.extract_total_time(explain_docs) == 20.984
+
+
+def test_analyze_statement_includes_top_level_metrics(monkeypatch):
+    scenario = QueryScenario(
+        query_class=FakeQuery,
+        method_name="emit_two",
+        kwargs={"sql_one": "SELECT * FROM eddy", "sql_two": "SELECT * FROM basin"},
+    )
+    runner = QueryAnalysisRunner(scenarios=[scenario])
+
+    captured_queries = [
+        type("Captured", (), {"rendered": "SELECT * FROM eddy"})(),
+        type("Captured", (), {"rendered": "SELECT * FROM basin"})(),
+    ]
+    explain_outputs = iter(
+        [
+            [
+                {
+                    "Execution Time": 2.5,
+                    "Plan": {"Total Cost": 10.0, "Actual Total Time": 2.0},
+                }
+            ],
+            [{"Plan": {"Total Cost": 20.0, "Actual Total Time": 4.0}}],
+        ]
+    )
+
+    monkeypatch.setattr(runner, "_capture_statement_sql", lambda _: captured_queries)
+    monkeypatch.setattr(runner, "explain_analyze_sql", lambda _: next(explain_outputs))
+    monkeypatch.setattr(runner, "candidate_indices_for_tables", lambda _: set())
+    monkeypatch.setattr(runner, "extract_used_indices", lambda _: set())
+
+    row = runner._analyze_statement(scenario)
+
+    assert row.total_cost == 10.0
+    assert row.total_time == 2.0
+
+
 def test_candidate_indices_for_tables_uses_initializer_metadata():
     runner = QueryAnalysisRunner()
 
