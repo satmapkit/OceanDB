@@ -394,7 +394,10 @@ class OceanDBInit(BaseWriteQuery):
                 "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %s)",
                 (self.db_name,),
             )
-            exists = cur.fetchone()[0]
+            out = cur.fetchone()
+            if out is None:
+                raise ValueError("Bad result from database when looking for database")
+            exists = out[0]
             if exists:
                 print(f"Database '{self.db_name}' already exists.")
             else:
@@ -414,8 +417,8 @@ class OceanDBInit(BaseWriteQuery):
 
     def create_tables(self):
         for table in table_definitions:
+            table_name = table["name"]
             try:
-                table_name = table["name"]
                 query = self.parametrize_sql_statements(table)
                 self.execute_write_query(query)
                 self.logger.info(f"Executing {table_name}")
