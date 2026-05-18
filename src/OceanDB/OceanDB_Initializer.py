@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from typing import LiteralString
 
 from dateutil.relativedelta import relativedelta
 from psycopg import sql
@@ -706,7 +707,7 @@ class OceanDBInit(BaseWriteQuery):
         query = sql.SQL(sql_statement).format(**safe_params)
         return RawSpec(query)
 
-    def load_sql(self, filename: str) -> str:
+    def load_sql(self, filename: str) -> LiteralString:
         # with resources.files(self.sql_pkg).joinpath(filename).open("r", encoding="utf-8") as f:
         #     tokenized_query = f.read()
         with self.load_module_file(
