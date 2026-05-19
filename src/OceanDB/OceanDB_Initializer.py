@@ -159,8 +159,14 @@ eddy_index_files = [
 
 
 drop_index_files = [
-    {"name": "along_track_index_basin", "filepath": "drop/drop_along_track_index_basin.sql"},
-    {"name": "along_track_index_date", "filepath": "drop/drop_along_track_index_date.sql"},
+    {
+        "name": "along_track_index_basin",
+        "filepath": "drop/drop_along_track_index_basin.sql",
+    },
+    {
+        "name": "along_track_index_date",
+        "filepath": "drop/drop_along_track_index_date.sql",
+    },
     {
         "name": "along_track_index_filename",
         "filepath": "drop/drop_along_track_index_filename.sql",
@@ -169,7 +175,10 @@ drop_index_files = [
         "name": "along_track_index_mission",
         "filepath": "drop/drop_along_track_index_mission.sql",
     },
-    {"name": "along_track_index_point", "filepath": "drop/drop_along_track_index_point.sql"},
+    {
+        "name": "along_track_index_point",
+        "filepath": "drop/drop_along_track_index_point.sql",
+    },
     {
         "name": "along_track_index_point_date",
         "filepath": "drop/drop_along_track_index_point_date.sql",
@@ -186,7 +195,10 @@ drop_index_files = [
         "name": "along_track_index_point_geom",
         "filepath": "drop/drop_along_track_index_point_geom.sql",
     },
-    {"name": "along_track_index_time", "filepath": "drop/drop_along_track_index_time.sql"},
+    {
+        "name": "along_track_index_time",
+        "filepath": "drop/drop_along_track_index_time.sql",
+    },
     {
         "name": "basin_connection_index_basin_id",
         "filepath": "drop/drop_basin_connection_index_basin_id.sql",
@@ -420,14 +432,16 @@ class OceanDBInit(BaseWriteQuery):
             self.logger.info(f"Executing {table_name}")
 
     def list_partitionable_along_track_indices(self) -> list[str]:
-        return [index["logical_name"] for index in self._partitionable_along_track_index_info()]
+        return [
+            index["logical_name"]
+            for index in self._partitionable_along_track_index_info()
+        ]
 
     def list_along_track_partitions(self) -> list[str]:
         engine = self.get_engine()
 
         with engine.connect() as conn:
-            rows = conn.execute(
-                text("""
+            rows = conn.execute(text("""
                     SELECT child.relname
                     FROM pg_inherits
                     JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
@@ -436,8 +450,7 @@ class OceanDBInit(BaseWriteQuery):
                     WHERE parent.relname = 'along_track'
                       AND ns.nspname = 'public'
                     ORDER BY child.relname
-                """)
-            ).fetchall()
+                """)).fetchall()
 
         return [row[0] for row in rows]
 
@@ -475,9 +488,7 @@ class OceanDBInit(BaseWriteQuery):
                 f"Starting index creation for {partition_index_name} on partition {partition_name}"
             )
             self.execute_write_query(RawSpec(sql.SQL(partition_sql)))
-            self.logger.info(
-                f"Executing {logical_name} for partition {partition_name}"
-            )
+            self.logger.info(f"Executing {logical_name} for partition {partition_name}")
             created_partitions.append(partition_name)
 
         return {

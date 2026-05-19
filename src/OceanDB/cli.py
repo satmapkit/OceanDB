@@ -135,7 +135,9 @@ def _drop_all_indices() -> None:
     ocean_db_init.drop_eddy_indices()
 
 
-def _render_index_list(show_definition: bool = False, include_all: bool = False) -> None:
+def _render_index_list(
+    show_definition: bool = False, include_all: bool = False
+) -> None:
     try:
         ocean_db_init = OceanDBInit()
         index_rows = ocean_db_init.list_indices(managed_only=not include_all)
@@ -190,7 +192,9 @@ def _render_index_list(show_definition: bool = False, include_all: bool = False)
 def _render_partitioned_index_ranges(index_name: str | None = None) -> None:
     try:
         ocean_db_init = OceanDBInit()
-        range_rows = ocean_db_init.show_partitioned_index_ranges(logical_name=index_name)
+        range_rows = ocean_db_init.show_partitioned_index_ranges(
+            logical_name=index_name
+        )
     except pg.OperationalError as e:
         raise click.ClickException(f"Unable to access database: {e}") from e
     except ValueError as e:
@@ -236,7 +240,9 @@ def _render_partitioned_index_ranges(index_name: str | None = None) -> None:
         cell_styler=lambda column, value: (
             style_value(value, fg="cyan", bold=True)
             if column == "logical_name"
-            else style_value(value, fg="green" if column == "partition_count" else "white")
+            else style_value(
+                value, fg="green" if column == "partition_count" else "white"
+            )
         ),
     ):
         click.echo(line)
@@ -304,7 +310,9 @@ def create_index_command(
     )
 
     if selected_end_date < selected_start_date:
-        raise click.UsageError("--end-date must be greater than or equal to --start-date.")
+        raise click.UsageError(
+            "--end-date must be greater than or equal to --start-date."
+        )
 
     try:
         ocean_db_init = OceanDBInit()
@@ -482,7 +490,11 @@ def visualize_basins(output: Path):
     type=int,
     help="Rows to offset the anticyclonic eddy ingestion by",
 )
-def ingest_eddy(only_ingest: Literal['both', 'cyclonic', 'anticyclonic'], offset_cyclonic: int, offset_anticyclonic: int):
+def ingest_eddy(
+    only_ingest: Literal["both", "cyclonic", "anticyclonic"],
+    offset_cyclonic: int,
+    offset_anticyclonic: int,
+):
     """
     Ingest eddy detection datasets into OceanDB.
 
@@ -507,23 +519,23 @@ def ingest_eddy(only_ingest: Literal['both', 'cyclonic', 'anticyclonic'], offset
     cyclonic_file = AVISO_EDDY_FILENAMES[0]
     anticyclonic_file = AVISO_EDDY_FILENAMES[1]
 
-    if only_ingest in ('both', 'cyclonic'):
+    if only_ingest in ("both", "cyclonic"):
         print(f"Processing ingesting {cyclonic_file}")
         if offset_cyclonic > 0:
             print(f"Starting at {offset_cyclonic}")
-        cyclonic_filepath = Path(
-            f"{eddy_directory}/{cyclonic_file}"
+        cyclonic_filepath = Path(f"{eddy_directory}/{cyclonic_file}")
+        oceandb_etl.ingest_eddy_data_file(
+            cyclonic_filepath, cyclonic_type=-1, offset=offset_cyclonic
         )
-        oceandb_etl.ingest_eddy_data_file(cyclonic_filepath, cyclonic_type=-1, offset=offset_cyclonic)
 
-    if only_ingest in ('both', 'anticyclonic'):
+    if only_ingest in ("both", "anticyclonic"):
         if offset_anticyclonic > 0:
             print(f"Starting at {offset_anticyclonic}")
         print(f"Processing ingesting {anticyclonic_file}")
-        anticyclonic_filepath = Path(
-            f"{eddy_directory}/{anticyclonic_file}"
+        anticyclonic_filepath = Path(f"{eddy_directory}/{anticyclonic_file}")
+        oceandb_etl.ingest_eddy_data_file(
+            anticyclonic_filepath, cyclonic_type=1, offset=offset_anticyclonic
         )
-        oceandb_etl.ingest_eddy_data_file(anticyclonic_filepath, cyclonic_type=1, offset=offset_anticyclonic)
 
 
 @cli.command()

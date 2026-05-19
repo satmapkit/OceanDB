@@ -1,14 +1,11 @@
+from psycopg import ClientCursor, connect, sql
+
 import OceanDB.query_spec as query_spec_module
-from psycopg import sql, connect, ClientCursor
-
-
 from tests.database.fixtures import *
 
 
 def test_log_query(db_with_db, caplog):
-    with connect(
-        db_with_db.connection_string, cursor_factory=ClientCursor
-    ) as conn:
+    with connect(db_with_db.connection_string, cursor_factory=ClientCursor) as conn:
         with conn.cursor() as cur:
             with caplog.at_level("INFO", logger="oceandb"):
                 query_spec_module.log_query(
