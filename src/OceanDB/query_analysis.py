@@ -133,9 +133,9 @@ class QueryAnalysisRunner(OceanDB):
         )
 
     def analyze_queries(self) -> list[QueryAnalysisRow]:
-        return [self._analyze_statement(scenario) for scenario in self.scenarios]
+        return [self.analyze_statement(scenario) for scenario in self.scenarios]
 
-    def _analyze_statement(
+    def analyze_statement(
         self,
         scenario: QueryScenario,
     ) -> QueryAnalysisRow:

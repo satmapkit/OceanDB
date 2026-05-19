@@ -241,7 +241,7 @@ def test_analyze_statement_includes_top_level_metrics(monkeypatch):
     monkeypatch.setattr(runner, "candidate_indices_for_tables", lambda _: set())
     monkeypatch.setattr(runner, "extract_used_indices", lambda _: set())
 
-    row = runner._analyze_statement(scenario)
+    row = runner.analyze_statement(scenario)
 
     assert row.total_cost == 10.0
     assert row.total_time == 2.0
