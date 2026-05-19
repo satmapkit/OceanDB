@@ -69,4 +69,4 @@ def test_index_list_command(db_with_indices):
     assert result.exit_code == 0
     assert "INDICES" in result.output
     assert "along_track" in result.output
-    assert "along_track_index_time" in result.output
+    assert "along_track_time_idx" in result.output

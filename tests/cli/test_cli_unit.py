@@ -224,12 +224,12 @@ def test_init_exits_early_when_database_exists(monkeypatch):
     assert calls == ["create_database"]
 
 
-<<<<<<< Updated upstream
 def test_ingest_mode_status_line_formats():
     rendered = cli_module._render_ingest_mode("copy")
     assert "MODE" in rendered
     assert "Using COPY ingest mode." in rendered
-=======
+
+
 def test_index_create_all_command_creates_all_indices(monkeypatch):
     runner = CliRunner()
     calls = []
@@ -615,4 +615,3 @@ def test_index_drop_all_command_with_database_error(monkeypatch):
 
     assert result.exit_code != 0
     assert "Unable to access database" in result.output
->>>>>>> Stashed changes
