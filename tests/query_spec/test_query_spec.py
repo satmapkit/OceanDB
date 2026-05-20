@@ -1,8 +1,9 @@
-import OceanDB.query_spec as query_spec_module
-import pytest
-from psycopg import sql
 from typing import Any, cast
 
+import pytest
+from psycopg import sql
+
+import OceanDB.query_spec as query_spec_module
 from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField
 from OceanDB.query_spec import QuerySpec
 

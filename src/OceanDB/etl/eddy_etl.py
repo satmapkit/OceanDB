@@ -11,11 +11,7 @@ from OceanDB.schemas.eddy_schema import eddy_columns, eddy_columns_schema
 
 class EddyETL(OceanDBETL):
     def ingest_eddy_data_file(
-        self,
-        file: Path,
-        cyclonic_type: int,
-        batch_size: int = 500000,
-        offset: int = 0
+        self, file: Path, cyclonic_type: int, batch_size: int = 500000, offset: int = 0
     ):
         """
         Processes & Ingests Eddy Data NetCDF file
@@ -33,11 +29,7 @@ class EddyETL(OceanDBETL):
             print(f"✅ Ingested Eddy Data Points took {duration:.2f} seconds")
 
     def extract_eddy_data_batches_from_netcdf(
-        self,
-        ds: nc.Dataset,
-        cyclonic_type: int,
-        batch_size: int,
-        offset: int
+        self, ds: nc.Dataset, cyclonic_type: int, batch_size: int, offset: int
     ) -> Iterator[batch[eddy_columns]]:
         """
         Yield batches of eddy data from a NetCDF dataset.

@@ -58,7 +58,9 @@ class BaseReadQuery(OceanDB):
 
         with self.cursor(row_factory=dict_row, debug=self.debug) as cur:
             if self.debug:
-                log_query(conn=cur.connection, cursor=cur, query=sql_query, params=params)
+                log_query(
+                    conn=cur.connection, cursor=cur, query=sql_query, params=params
+                )
 
             cur.execute(sql_query, params)
             rows: list[Mapping[str, Any]] = cur.fetchall()

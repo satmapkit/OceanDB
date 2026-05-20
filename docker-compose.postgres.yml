@@ -21,3 +21,4 @@ services:
       - type: bind
         source: ${POSTGRES_DATA_DIRECTORY}
         target: /var/lib/postgresql/data
+

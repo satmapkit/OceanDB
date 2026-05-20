@@ -54,3 +54,19 @@ def test_along_track_summary_command_with_no_data(db_with_basin_data):
 
     assert result.exit_code == 0
     assert "No along-track data has been ingested yet." in result.output
+
+
+def test_index_list_command(db_with_indices):
+    runner = CliRunner()
+    original_init = cli_module.OceanDBInit
+
+    try:
+        cli_module.OceanDBInit = lambda: db_with_indices
+        result = runner.invoke(cli_module.cli, ["index", "list"])
+    finally:
+        cli_module.OceanDBInit = original_init
+
+    assert result.exit_code == 0
+    assert "INDICES" in result.output
+    assert "along_track" in result.output
+    assert "along_track_time_idx" in result.output

@@ -1,4 +1,9 @@
 
+ifneq (,$(wildcard .env))
+include .env
+export
+endif
+
 NETWORK_NAME=ocean_network
 
 ifneq ("$(wildcard .env)","")
@@ -40,7 +45,11 @@ build_image:
 	docker build -f docker_build/Dockerfile -t ocean_db_client:latest .
 
 psql:
-	psql "host=$(POSTGRES_HOST) port=$(POSTGRES_PORT) user=$(POSTGRES_USERNAME) password=$(POSTGRES_PASSWORD) dbname=$(POSTGRES_DATABASE)"
+#<<<<<<< Updated upstream
+#	psql "host=$(POSTGRES_HOST) port=$(POSTGRES_PORT) user=$(POSTGRES_USERNAME) password=$(POSTGRES_PASSWORD) dbname=$(POSTGRES_DATABASE)"
+#=======
+	docker exec -it postgres psql -h $(POSTGRES_HOST) -p $(POSTGRES_PORT) -U $(POSTGRES_USERNAME) -d $(POSTGRES_DATABASE)
+#>>>>>>> Stashed changes
 
 .PHONY: format lint check start_postgres_test test test-db-create test-db-ingest test-along-track test-eddy-nearalong
 
