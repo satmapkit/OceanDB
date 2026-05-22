@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Iterable, Literal
+from typing import Any, Generator, Iterable, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -64,6 +64,46 @@ class Eddy(BaseReadQuery):
             cur.execute(query, params)
             return [row[0] for row in cur.fetchall()]
 
+    def get_eddy_tracks_from_times_batch(
+        self,
+        start_dates: list[datetime],
+        end_dates: list[datetime],
+    ) -> Generator[list[int]]:
+        """
+        Retrieve eddy track ids for multiple time windows.
+
+        Yields one list of track ids per time window.
+        """
+
+        query = """
+        SELECT DISTINCT (track * eddy.cyclonic_type) AS track_id
+        FROM eddy
+        WHERE date_time >= %(start_date)s
+          AND date_time <  %(end_date)s
+        ORDER BY track_id;
+        """
+
+        params_batch = [
+            {"start_date": start_date, "end_date": end_date}
+            for start_date, end_date in zip(start_dates, end_dates, strict=True)
+        ]
+
+        if not params_batch:
+            return
+
+        with self.cursor() as cur:
+            cur.executemany(
+                query,
+                params_batch,
+                returning=True,
+            )
+
+            while True:
+                yield [row[0] for row in cur.fetchall()]
+
+                if not cur.nextset():
+                    break
+
     def eddy_with_track_id(
         self,
         fields: list[eddy_columns],
@@ -92,6 +132,31 @@ class Eddy(BaseReadQuery):
 
         return self.execute_read_query(
             query_spec=query_spec, fields=fields, params=params, dataset_name="eddy"
+        )
+
+    def eddy_with_track_id_batch(
+        self,
+        fields: list[eddy_columns],
+        track_ids: list[int],
+    ) -> Generator[Dataset[eddy_columns, npt.NDArray[np.floating]] | None]:
+        """
+        Retrieve observations for multiple eddy tracks.
+
+        Yields one Dataset per track id, or None where no rows are returned.
+        """
+
+        query_spec = QuerySpec(
+            sql_template=self.load_sql_file(self._eddy_with_id_query),
+            schema=eddy_columns_schema,
+        )
+
+        params_batch = [{"track_id": track_id} for track_id in track_ids]
+
+        return self.execute_batch_read_query(
+            query_spec=query_spec,
+            fields=fields,
+            params_batch=params_batch,
+            dataset_name="eddy",
         )
 
     def eddy_envelope_query(
@@ -124,6 +189,30 @@ class Eddy(BaseReadQuery):
             query_spec=query_spec,
             fields=fields,
             params=params,
+            dataset_name="eddy",
+        )
+
+    def eddy_envelope_query_batch(
+        self,
+        track_ids: list[int],
+    ) -> Generator[Dataset[envelope_fields, Any] | None]:
+        """
+        Compute spatiotemporal envelopes for multiple eddy tracks.
+
+        Yields one single-row Dataset per track id, or None if no eddy exists.
+        """
+
+        query_spec = QuerySpec(
+            sql_template=self.load_sql_file(self._envelope_query),
+            schema=eddy_schema,
+        )
+        fields: list[envelope_fields] = ["max_date", "min_date", "basin_ids"]
+        params_batch = [{"track_id": track_id} for track_id in track_ids]
+
+        return self.execute_batch_read_query(
+            query_spec=query_spec,
+            fields=fields,
+            params_batch=params_batch,
             dataset_name="eddy",
         )
 
@@ -187,3 +276,67 @@ class Eddy(BaseReadQuery):
             params=params,
             dataset_name="along_track_near_eddy",
         )
+
+    def along_track_points_near_eddy_batch(
+        self,
+        *,
+        track_ids: list[int],
+        fields: Iterable[along_track_fields] | None = None,
+    ) -> Generator[Dataset[along_track_fields, Any] | None]:
+        """
+        Retrieve along-track points for multiple eddy tracks.
+
+        Yields one Dataset per track id, or None where the eddy does not exist
+        or no along-track rows are found.
+        """
+
+        if fields is None:
+            fields = self.default_along_track_fields
+
+        envelope_results = list(self.eddy_envelope_query_batch(track_ids=track_ids))
+        if not envelope_results:
+            return
+
+        query_spec = QuerySpec(
+            sql_template=self.load_sql_file(self._along_track_near_eddy_query),
+            schema=along_track_eddy_schema,
+        )
+
+        params_batch = []
+        valid_indices = []
+
+        for index, (track_id, eddy_track) in enumerate(
+            zip(track_ids, envelope_results, strict=True)
+        ):
+            if eddy_track is None:
+                continue
+
+            params_batch.append(
+                {
+                    "track_id": track_id,
+                    "min_date": eddy_track["min_date"][0],
+                    "max_date": eddy_track["max_date"][0],
+                    "basin_ids": list(eddy_track["basin_ids"][0]),
+                    "speed_radius_scale_factor": 100,
+                }
+            )
+            valid_indices.append(index)
+
+        batch_results: list[Dataset[along_track_fields, Any] | None] = [None] * len(
+            track_ids
+        )
+
+        if params_batch:
+            for index, result in zip(
+                valid_indices,
+                self.execute_batch_read_query(
+                    query_spec=query_spec,
+                    fields=fields,
+                    params_batch=params_batch,
+                    dataset_name="along_track_near_eddy",
+                ),
+                strict=True,
+            ):
+                batch_results[index] = result
+
+        yield from batch_results

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Generator, Iterable, Mapping
 
 import numpy as np
 from psycopg import sql
@@ -115,6 +115,74 @@ class BaseReadQuery(OceanDB):
             rows=rows,
             dataset_name=dataset_name,
         )
+
+    def execute_batch_read_query(
+        self,
+        query_spec: QuerySpec,
+        *,
+        fields: Iterable[K],
+        params_batch: Iterable[Mapping[str, Any]],
+        dataset_name: str = "query_result",
+    ) -> Generator[Dataset[K, Any] | None, None, None]:
+        """
+        Execute the same query over many different parameters.
+        For each result, yield a Dataset, or None if empty.
+
+        :param query_spec:
+            The specification for the query to be made
+
+        :param fields:
+            Set of fields to be extracted from the query
+
+        :param params:
+            Iterable of desired query params, one for each query.
+
+        :param dataset_name:
+            Name to give to the resulting dataset
+            (this is mostly used for output to NETCDF)
+        """
+
+        sql_query = query_spec.sql_projection_compiler(fields)
+        params_batch_list = list(params_batch)
+
+        if not params_batch_list:
+            return
+
+        with self.cursor(
+            row_factory=dict_row, debug=self.query_observer is not None
+        ) as cur:
+            if self.query_observer is not None:
+                rendered_query = render_query(
+                    conn=cur.connection,
+                    cursor=cur,
+                    query=sql_query,
+                    params=params_batch_list[0],
+                )
+                self.query_observer(
+                    sql_query,
+                    params_batch_list[0],
+                    rendered_query,
+                )
+
+            cur.executemany(
+                sql_query,
+                params_batch_list,
+                returning=True,
+            )
+            while True:
+                rows: list[Mapping[str, Any]] = cur.fetchall()
+
+                if not rows:
+                    yield None
+                else:
+                    yield self._build_dataset(
+                        schema=query_spec.schema,
+                        rows=rows,
+                        dataset_name=dataset_name,
+                    )
+
+                if not cur.nextset():
+                    break
 
     def _build_dataset(
         self,
