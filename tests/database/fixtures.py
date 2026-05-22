@@ -9,11 +9,34 @@ from OceanDB.OceanDB_Initializer import OceanDBInit
 
 TEST_PARTITION_START = "2012-12-01"
 TEST_PARTITION_END = "2013-02-01"
+TEST_ENV_PATH = Path(__file__).resolve().parents[1] / ".env.test"
+
+
+def _load_test_settings() -> dict[str, str]:
+    settings: dict[str, str] = {}
+    for line in TEST_ENV_PATH.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        key, value = stripped.split("=", 1)
+        settings[key] = value
+    return settings
 
 
 @pytest.fixture
 def config():
-    return Config(_env_file="tests/.env.test")
+    settings = _load_test_settings()
+    return Config(
+        postgres_host=settings["POSTGRES_HOST"],
+        postgres_username=settings["POSTGRES_USERNAME"],
+        postgres_password=settings["POSTGRES_PASSWORD"],
+        postgres_port=int(settings["POSTGRES_PORT"]),
+        postgres_database=settings["POSTGRES_DATABASE"],
+        along_track_data_directory=settings["ALONG_TRACK_DATA_DIRECTORY"],
+        eddy_data_directory=settings["EDDY_DATA_DIRECTORY"],
+        copernicus_password=settings["COPERNICUS_PASSWORD"],
+        copernicus_username=settings["COPERNICUS_USERNAME"],
+    )
 
 
 @pytest.fixture

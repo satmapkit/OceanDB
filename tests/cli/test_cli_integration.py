@@ -2,6 +2,8 @@ import pytest
 from click.testing import CliRunner
 
 from OceanDB import cli as cli_module
+from OceanDB.commands import index as index_commands
+from OceanDB.commands import summary as summary_commands
 from OceanDB.etl.along_track_etl import AlongTrackETL
 from tests.database.fixtures import *
 
@@ -10,13 +12,13 @@ pytestmark = pytest.mark.uses_database
 
 def test_along_track_summary_command(db_with_alongtrack_data):
     runner = CliRunner()
-    original_factory = cli_module._create_along_track_etl
+    original_factory = summary_commands.create_along_track_etl
 
     try:
-        cli_module._create_along_track_etl = lambda: db_with_alongtrack_data
-        result = runner.invoke(cli_module.cli, ["summary", "alongtrack"])
+        summary_commands.create_along_track_etl = lambda: db_with_alongtrack_data
+        result = runner.invoke(cli_module.cli, ["summary", "along-track"])
     finally:
-        cli_module._create_along_track_etl = original_factory
+        summary_commands.create_along_track_etl = original_factory
 
     assert result.exit_code == 0
     assert "Mission" in result.output
@@ -27,13 +29,13 @@ def test_along_track_summary_command(db_with_alongtrack_data):
 
 def test_along_track_summary_command_supports_color(db_with_alongtrack_data):
     runner = CliRunner()
-    original_factory = cli_module._create_along_track_etl
+    original_factory = summary_commands.create_along_track_etl
 
     try:
-        cli_module._create_along_track_etl = lambda: db_with_alongtrack_data
-        result = runner.invoke(cli_module.cli, ["summary", "alongtrack"], color=True)
+        summary_commands.create_along_track_etl = lambda: db_with_alongtrack_data
+        result = runner.invoke(cli_module.cli, ["summary", "along-track"], color=True)
     finally:
-        cli_module._create_along_track_etl = original_factory
+        summary_commands.create_along_track_etl = original_factory
 
     assert result.exit_code == 0
     assert "\x1b[" in result.output
@@ -44,13 +46,13 @@ def test_along_track_summary_command_supports_color(db_with_alongtrack_data):
 def test_along_track_summary_command_with_no_data(db_with_basin_data):
     along_track_etl = AlongTrackETL(db_with_basin_data.config)
     runner = CliRunner()
-    original_factory = cli_module._create_along_track_etl
+    original_factory = summary_commands.create_along_track_etl
 
     try:
-        cli_module._create_along_track_etl = lambda: along_track_etl
-        result = runner.invoke(cli_module.cli, ["summary", "alongtrack"])
+        summary_commands.create_along_track_etl = lambda: along_track_etl
+        result = runner.invoke(cli_module.cli, ["summary", "along-track"])
     finally:
-        cli_module._create_along_track_etl = original_factory
+        summary_commands.create_along_track_etl = original_factory
 
     assert result.exit_code == 0
     assert "No along-track data has been ingested yet." in result.output
@@ -58,13 +60,13 @@ def test_along_track_summary_command_with_no_data(db_with_basin_data):
 
 def test_index_list_command(db_with_indices):
     runner = CliRunner()
-    original_init = cli_module.OceanDBInit
+    original_init = index_commands.OceanDBInit
 
     try:
-        cli_module.OceanDBInit = lambda: db_with_indices
+        index_commands.OceanDBInit = lambda: db_with_indices
         result = runner.invoke(cli_module.cli, ["index", "list"])
     finally:
-        cli_module.OceanDBInit = original_init
+        index_commands.OceanDBInit = original_init
 
     assert result.exit_code == 0
     assert "INDICES" in result.output

@@ -95,7 +95,7 @@ class OceanDBCopernicusMarine:
             except ImportError as ex:
                 raise ImportError(
                     "The copernicusmarine package is required for downloads. "
-                    "Install OceanDB dependencies before running `oceandb download`."
+                    "Install OceanDB dependencies before running `oceandb download along-track`."
                 ) from ex
             client = copernicusmarine
         self.client = client

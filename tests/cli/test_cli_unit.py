@@ -5,6 +5,12 @@ import pytest
 from click.testing import CliRunner
 
 from OceanDB import cli as cli_module
+from OceanDB.commands import core as core_commands
+from OceanDB.commands import download as download_commands
+from OceanDB.commands import index as index_commands
+from OceanDB.commands import ingest as ingest_commands
+from OceanDB.commands import shared as shared_commands
+from OceanDB.commands import summary as summary_commands
 
 pytestmark = pytest.mark.unit
 
@@ -136,10 +142,12 @@ def test_along_track_summary_command_formats_rows(monkeypatch):
     runner = CliRunner()
 
     monkeypatch.setattr(
-        cli_module, "_create_along_track_etl", lambda: FakeAlongTrackETLReturningRows()
+        summary_commands,
+        "create_along_track_etl",
+        lambda: FakeAlongTrackETLReturningRows(),
     )
 
-    result = runner.invoke(cli_module.cli, ["summary", "alongtrack"])
+    result = runner.invoke(cli_module.cli, ["summary", "along-track"])
 
     assert result.exit_code == 0
     assert "Mission" in result.output
@@ -153,10 +161,12 @@ def test_along_track_summary_command_supports_color(monkeypatch):
     runner = CliRunner()
 
     monkeypatch.setattr(
-        cli_module, "_create_along_track_etl", lambda: FakeAlongTrackETLReturningRows()
+        summary_commands,
+        "create_along_track_etl",
+        lambda: FakeAlongTrackETLReturningRows(),
     )
 
-    result = runner.invoke(cli_module.cli, ["summary", "alongtrack"], color=True)
+    result = runner.invoke(cli_module.cli, ["summary", "along-track"], color=True)
 
     assert result.exit_code == 0
     assert "\x1b[" in result.output
@@ -168,10 +178,12 @@ def test_along_track_summary_command_with_no_data(monkeypatch):
     runner = CliRunner()
 
     monkeypatch.setattr(
-        cli_module, "_create_along_track_etl", lambda: FakeAlongTrackETLReturningEmpty()
+        summary_commands,
+        "create_along_track_etl",
+        lambda: FakeAlongTrackETLReturningEmpty(),
     )
 
-    result = runner.invoke(cli_module.cli, ["summary", "alongtrack"])
+    result = runner.invoke(cli_module.cli, ["summary", "along-track"])
 
     assert result.exit_code == 0
     assert "No along-track data has been ingested yet." in result.output
@@ -181,10 +193,12 @@ def test_along_track_summary_command_with_database_error(monkeypatch):
     runner = CliRunner()
 
     monkeypatch.setattr(
-        cli_module, "_create_along_track_etl", lambda: FailingAlongTrackETL()
+        summary_commands,
+        "create_along_track_etl",
+        lambda: FailingAlongTrackETL(),
     )
 
-    result = runner.invoke(cli_module.cli, ["summary", "alongtrack"])
+    result = runner.invoke(cli_module.cli, ["summary", "along-track"])
 
     assert result.exit_code != 0
     assert "Unable to access database" in result.output
@@ -215,8 +229,8 @@ def test_init_exits_early_when_database_exists(monkeypatch):
         def insert_basin_connections_data(self):
             calls.append("insert_basin_connections_data")
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInit)
-    monkeypatch.setattr(cli_module, "_create_basins_etl", lambda: FakeBasinsETL())
+    monkeypatch.setattr(core_commands, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(core_commands, "create_basins_etl", lambda: FakeBasinsETL())
 
     result = runner.invoke(cli_module.cli, ["init"])
 
@@ -225,9 +239,87 @@ def test_init_exits_early_when_database_exists(monkeypatch):
 
 
 def test_ingest_mode_status_line_formats():
-    rendered = cli_module._render_ingest_mode("copy")
+    rendered = shared_commands.render_ingest_mode("copy")
     assert "MODE" in rendered
     assert "Using COPY ingest mode." in rendered
+
+
+def test_top_level_help_lists_download_and_ingest_groups():
+    runner = CliRunner()
+
+    result = runner.invoke(cli_module.cli, ["--help"])
+
+    assert result.exit_code == 0
+    assert "download" in result.output
+    assert "ingest" in result.output
+    assert "along_track" not in result.output
+    assert "download-eddy" not in result.output
+    assert "ingest-eddy" not in result.output
+    assert "ingest-along-track" not in result.output
+
+
+def test_summary_help_lists_canonical_along_track_command():
+    runner = CliRunner()
+
+    result = runner.invoke(cli_module.cli, ["summary", "--help"])
+
+    assert result.exit_code == 0
+    assert "along-track" in result.output
+    assert "alongtrack" not in result.output
+
+
+def test_download_along_track_group_routes_to_shared_handler(monkeypatch):
+    runner = CliRunner()
+    captured = {}
+
+    def fake_download_along_track(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(download_commands, "_download_along_track", fake_download_along_track)
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "download",
+            "along-track",
+            "j3",
+            "--dry-run",
+            "--dataset-version",
+            "202411",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["missions"] == ("j3",)
+    assert captured["dry_run"] is True
+    assert captured["dataset_version"] == "202411"
+
+
+def test_ingest_along_track_group_routes_to_shared_handler(monkeypatch):
+    runner = CliRunner()
+    captured = {}
+
+    def fake_ingest_along_track(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(ingest_commands, "_ingest_along_track", fake_ingest_along_track)
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "ingest",
+            "along-track",
+            "j3",
+            "--workers",
+            "2",
+            "--debug",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["missions"] == ("j3",)
+    assert captured["workers"] == 2
+    assert captured["debug"] is True
 
 
 def test_index_create_all_command_creates_all_indices(monkeypatch):
@@ -241,7 +333,7 @@ def test_index_create_all_command_creates_all_indices(monkeypatch):
         def create_eddy_indices(self):
             calls.append("create_eddy_indices")
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
 
     result = runner.invoke(cli_module.cli, ["index", "create", "--all"])
 
@@ -261,7 +353,7 @@ def test_create_indices_alias_creates_all_indices(monkeypatch):
         def create_eddy_indices(self):
             calls.append("create_eddy_indices")
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(core_commands, "OceanDBInit", FakeInit)
 
     result = runner.invoke(cli_module.cli, ["create-indices"])
 
@@ -285,7 +377,7 @@ def test_index_create_command_prompts_for_partitioned_creation(monkeypatch):
                 "missing_partitions": ["along_track_2024_03"],
             }
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
 
     result = runner.invoke(
         cli_module.cli,
@@ -320,7 +412,7 @@ def test_index_create_command_accepts_explicit_partition_range(monkeypatch):
                 "missing_partitions": [],
             }
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
 
     result = runner.invoke(
         cli_module.cli,
@@ -385,7 +477,7 @@ def test_index_create_command_rejects_reversed_dates():
 def test_index_create_command_with_database_error(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FailingPartitionCreateInit)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FailingPartitionCreateInit)
 
     result = runner.invoke(
         cli_module.cli,
@@ -408,7 +500,7 @@ def test_index_create_command_with_database_error(monkeypatch):
 def test_index_list_command_formats_rows(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInitReturningIndices)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInitReturningIndices)
 
     result = runner.invoke(cli_module.cli, ["index", "list"])
 
@@ -424,7 +516,7 @@ def test_index_list_command_formats_rows(monkeypatch):
 def test_index_list_command_can_show_definitions(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInitReturningIndices)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInitReturningIndices)
 
     result = runner.invoke(cli_module.cli, ["index", "list", "--show-definition"])
 
@@ -436,7 +528,7 @@ def test_index_list_command_can_show_definitions(monkeypatch):
 def test_index_list_command_defaults_to_managed_indices_only(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInitReturningAllIndices)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInitReturningAllIndices)
 
     result = runner.invoke(cli_module.cli, ["index", "list"])
 
@@ -448,7 +540,7 @@ def test_index_list_command_defaults_to_managed_indices_only(monkeypatch):
 def test_index_list_command_can_include_all_indices(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInitReturningAllIndices)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInitReturningAllIndices)
 
     result = runner.invoke(cli_module.cli, ["index", "list", "--all"])
 
@@ -460,7 +552,7 @@ def test_index_list_command_can_include_all_indices(monkeypatch):
 def test_index_show_command_formats_ranges(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInitReturningIndexRanges)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInitReturningIndexRanges)
 
     result = runner.invoke(cli_module.cli, ["index", "show"])
 
@@ -477,7 +569,7 @@ def test_index_show_command_formats_ranges(monkeypatch):
 def test_index_show_command_can_filter_by_index_name(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInitReturningIndexRanges)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInitReturningIndexRanges)
 
     result = runner.invoke(
         cli_module.cli,
@@ -493,7 +585,7 @@ def test_index_show_command_can_filter_by_index_name(monkeypatch):
 def test_index_show_command_supports_multiple_ranges_for_one_index(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInitReturningIndexRanges)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInitReturningIndexRanges)
 
     result = runner.invoke(
         cli_module.cli,
@@ -510,7 +602,7 @@ def test_index_show_command_supports_multiple_ranges_for_one_index(monkeypatch):
 def test_index_show_command_with_database_error(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FailingShowInit)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FailingShowInit)
 
     result = runner.invoke(cli_module.cli, ["index", "show"])
 
@@ -521,7 +613,7 @@ def test_index_show_command_with_database_error(monkeypatch):
 def test_index_list_command_with_no_indices(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInitReturningNoIndices)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInitReturningNoIndices)
 
     result = runner.invoke(cli_module.cli, ["index", "list"])
 
@@ -532,7 +624,7 @@ def test_index_list_command_with_no_indices(monkeypatch):
 def test_index_list_command_with_database_error(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FailingInit)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FailingInit)
 
     result = runner.invoke(cli_module.cli, ["index", "list"])
 
@@ -551,7 +643,7 @@ def test_index_drop_all_command_drops_all_indices(monkeypatch):
         def drop_eddy_indices(self):
             calls.append("drop_eddy_indices")
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
 
     result = runner.invoke(cli_module.cli, ["index", "drop", "--all", "--yes"])
 
@@ -580,7 +672,7 @@ def test_index_drop_all_command_supports_confirmation(monkeypatch):
         def drop_eddy_indices(self):
             calls.append("drop_eddy_indices")
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
 
     result = runner.invoke(cli_module.cli, ["index", "drop", "--all"], input="y\n")
 
@@ -598,7 +690,7 @@ def test_index_drop_all_command_can_be_canceled(monkeypatch):
         def drop_eddy_indices(self):
             raise AssertionError("should not be called")
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
 
     result = runner.invoke(cli_module.cli, ["index", "drop", "--all"], input="n\n")
 
@@ -609,7 +701,7 @@ def test_index_drop_all_command_can_be_canceled(monkeypatch):
 def test_index_drop_all_command_with_database_error(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(cli_module, "OceanDBInit", FailingDropInit)
+    monkeypatch.setattr(index_commands, "OceanDBInit", FailingDropInit)
 
     result = runner.invoke(cli_module.cli, ["index", "drop", "--all", "--yes"])
 
