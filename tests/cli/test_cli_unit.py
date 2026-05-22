@@ -5,6 +5,7 @@ import pytest
 from click.testing import CliRunner
 
 from OceanDB import cli as cli_module
+from OceanDB import query_analysis as query_analysis_module
 
 pytestmark = pytest.mark.unit
 
@@ -248,25 +249,6 @@ def test_index_create_all_command_creates_all_indices(monkeypatch):
     assert result.exit_code == 0
     assert calls == ["create_indices", "create_eddy_indices"]
     assert "All OceanDB-managed indices were created." in result.output
-
-
-def test_create_indices_alias_creates_all_indices(monkeypatch):
-    runner = CliRunner()
-    calls = []
-
-    class FakeInit:
-        def create_indices(self):
-            calls.append("create_indices")
-
-        def create_eddy_indices(self):
-            calls.append("create_eddy_indices")
-
-    monkeypatch.setattr(cli_module, "OceanDBInit", FakeInit)
-
-    result = runner.invoke(cli_module.cli, ["create-indices"])
-
-    assert result.exit_code == 0
-    assert calls == ["create_indices", "create_eddy_indices"]
 
 
 def test_index_create_command_prompts_for_partitioned_creation(monkeypatch):
@@ -615,3 +597,38 @@ def test_index_drop_all_command_with_database_error(monkeypatch):
 
     assert result.exit_code != 0
     assert "Unable to access database" in result.output
+
+
+def test_analyze_queries_command_prints_metrics_table(monkeypatch):
+    runner = CliRunner()
+
+    class FakeQueryAnalysisRunner:
+        index_names = {"along_track_point_date_idx", "unused_idx"}
+
+        def analyze_queries(self):
+            return [
+                query_analysis_module.QueryAnalysisRow(
+                    scenario_name="AlongTrack.geographic_point_in_r_dt",
+                    tables={"along_track"},
+                    candidate_indices={"along_track_point_date_idx"},
+                    used_indices={"along_track_point_date_idx"},
+                    sql="",
+                    explain_result_dict=[],
+                    explain_result_str="",
+                    total_cost=48778.67,
+                    total_time=20.984,
+                )
+            ]
+
+    monkeypatch.setattr(
+        query_analysis_module, "QueryAnalysisRunner", FakeQueryAnalysisRunner
+    )
+
+    result = runner.invoke(cli_module.cli, ["analyze-queries"])
+
+    assert result.exit_code == 0
+    assert "Total Cost" in result.output
+    assert "Total Time" in result.output
+    assert "48778.670" in result.output
+    assert "20.984" in result.output
+    assert "along_track_point_date_idx" in result.output

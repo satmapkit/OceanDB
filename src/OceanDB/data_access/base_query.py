@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 import numpy as np
+from psycopg import sql
 from psycopg.rows import dict_row
 
 from OceanDB.ocean_data.dataset import Dataset, K
 from OceanDB.ocean_data.ocean_data import OceanDataField
 from OceanDB.OceanDB import OceanDB
-from OceanDB.query_spec import QuerySpec, log_query
+from OceanDB.query_spec import QuerySpec, render_query
+
+QueryObserver = Callable[[sql.Composed, Mapping[str, Any], str], None]
 
 
 class BaseReadQuery(OceanDB):
@@ -27,7 +30,37 @@ class BaseReadQuery(OceanDB):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.debug = False
+        self.query_observer: QueryObserver | None = None
+
+    def start_debug(self, query_observer: QueryObserver):
+        """
+        Enable SQL rendering callbacks for subsequent read queries.
+
+        When active, each executed query is rendered with bound parameters and
+        passed to ``query_observer`` before execution. This is intended for
+        lightweight debugging/profiling workflows such as capturing SQL for
+        ``EXPLAIN ANALYZE``.
+
+        Example:
+
+        .. code-block:: python
+
+            along_track.start_debug(lambda x,y,z: print(z))
+            along_track.geographic_nearest_neighbors(...)
+
+        :param query_observer:
+            Callback invoked with the fully rendered SQL string.
+        """
+        self.query_observer = query_observer
+
+    def stop_debug(self):
+        """
+        Disable SQL rendering callbacks for subsequent read queries.
+
+        After this is called, queries execute normally without rendering SQL for
+        observation.
+        """
+        self.query_observer = None
 
     def execute_read_query(
         self,
@@ -55,11 +88,20 @@ class BaseReadQuery(OceanDB):
         """
 
         sql_query = query_spec.sql_projection_compiler(fields)
+        should_render_query = self.query_observer is not None
 
-        with self.cursor(row_factory=dict_row, debug=self.debug) as cur:
-            if self.debug:
-                log_query(
-                    conn=cur.connection, cursor=cur, query=sql_query, params=params
+        with self.cursor(row_factory=dict_row, debug=should_render_query) as cur:
+            if self.query_observer is not None:
+                rendered_query = render_query(
+                    conn=cur.connection,
+                    cursor=cur,
+                    query=sql_query,
+                    params=params,
+                )
+                self.query_observer(
+                    sql_query,
+                    params,
+                    rendered_query,
                 )
 
             cur.execute(sql_query, params)

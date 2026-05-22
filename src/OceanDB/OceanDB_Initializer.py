@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from typing import LiteralString
 
 from dateutil.relativedelta import relativedelta
 from psycopg import sql
@@ -222,6 +223,25 @@ PARTITIONED_ALONG_TRACK_INDEX_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 
+INDEX_SQL_PATTERN = re.compile(
+    r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+(?P<index_name>\S+)\s+ON\s+"
+    r"(?P<table_name>(?:public\.)?[A-Za-z_][A-Za-z0-9_]*)",
+    flags=re.IGNORECASE,
+)
+
+
+def load_index_metadata(oceandb, index: dict[str, str]) -> dict[str, str]:
+    sql_statement = oceandb.load_sql_file(index["filepath"])
+    match = INDEX_SQL_PATTERN.search(sql_statement)
+    if not match:
+        raise ValueError(f"Unable to parse index SQL for '{index['name']}'")
+
+    return {
+        **index,
+        "index_name": match.group("index_name").replace("public.", ""),
+        "table_name": match.group("table_name").replace("public.", ""),
+    }
+
 
 EXPECTED_TABLE_INDEXES = {
     "along_track": {
@@ -375,7 +395,10 @@ class OceanDBInit(BaseWriteQuery):
                 "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %s)",
                 (self.db_name,),
             )
-            exists = cur.fetchone()[0]
+            out = cur.fetchone()
+            if out is None:
+                raise ValueError("Bad result from database when looking for database")
+            exists = out[0]
             if exists:
                 print(f"Database '{self.db_name}' already exists.")
             else:
@@ -395,8 +418,8 @@ class OceanDBInit(BaseWriteQuery):
 
     def create_tables(self):
         for table in table_definitions:
+            table_name = table["name"]
             try:
-                table_name = table["name"]
                 query = self.parametrize_sql_statements(table)
                 self.execute_write_query(query)
                 self.logger.info(f"Executing {table_name}")
@@ -684,7 +707,7 @@ class OceanDBInit(BaseWriteQuery):
         query = sql.SQL(sql_statement).format(**safe_params)
         return RawSpec(query)
 
-    def load_sql(self, filename: str) -> str:
+    def load_sql(self, filename: str) -> LiteralString:
         # with resources.files(self.sql_pkg).joinpath(filename).open("r", encoding="utf-8") as f:
         #     tokenized_query = f.read()
         with self.load_module_file(
