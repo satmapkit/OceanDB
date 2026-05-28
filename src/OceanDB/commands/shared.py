@@ -5,7 +5,7 @@ from pathlib import Path
 
 import click
 
-from OceanDB.OceanDB_Initializer import sql_index_files
+from OceanDB.OceanDB_Initializer import eddy_index_files, sql_index_files
 from OceanDB.cli_utils import format_key_value, format_status_line
 from OceanDB.utils.logging import get_logger
 
@@ -60,6 +60,12 @@ def partitioned_index_choices() -> list[str]:
         index["name"]
         for index in sql_index_files
         if index["filepath"].startswith("indices/along_track/")
+    ]
+
+
+def defined_index_choices() -> list[str]:
+    return [index["name"] for index in sql_index_files] + [
+        index["name"] for index in eddy_index_files
     ]
 
 
