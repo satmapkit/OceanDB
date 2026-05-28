@@ -50,6 +50,8 @@ oceandb ingest-along-track s6a --start-date 2024-01-01
 oceandb summary alongtrack
 ```
 
+Use `oceandb summary alongtrack` to see what along-track data has already been ingested into Postgres.
+
 ## Eddy Ingest
 
 Before ingesting eddy data, modify the root `.env` file so OceanDB knows where the downloaded eddy files are stored.
