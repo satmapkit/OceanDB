@@ -12,9 +12,7 @@ from OceanDB.config import Config
 from OceanDB.data_access.along_track import AlongTrack
 from OceanDB.data_access.base_query import BaseReadQuery, QueryObserver
 from OceanDB.data_access.eddy import Eddy
-from OceanDB.OceanDB import OceanDB
-from OceanDB.OceanDB_Initializer import (eddy_index_files, load_index_metadata,
-                                         sql_index_files)
+from OceanDB.managed_index_oceandb import ManagedIndexOceanDB
 from OceanDB.schemas.along_track_schema import along_track_schema
 from OceanDB.schemas.eddy_schema import eddy_columns_schema
 
@@ -69,7 +67,7 @@ class QueryAnalysisRow:
     total_time: float | None
 
 
-class QueryAnalysisRunner(OceanDB):
+class QueryAnalysisRunner(ManagedIndexOceanDB):
     def __init__(
         self,
         config: Config | None = None,
@@ -127,10 +125,7 @@ class QueryAnalysisRunner(OceanDB):
         ]
 
     def default_indices(self):
-        return tuple(
-            load_index_metadata(self, index)
-            for index in (sql_index_files + eddy_index_files)
-        )
+        return tuple(self.managed_index_definitions())
 
     def analyze_queries(self) -> list[QueryAnalysisRow]:
         return [self.analyze_statement(scenario) for scenario in self.scenarios]

@@ -1,12 +1,15 @@
 import re
 from datetime import datetime
-from typing import LiteralString
+from typing import LiteralString, cast
 
 from dateutil.relativedelta import relativedelta
 from psycopg import sql
 from sqlalchemy import text
 
 from OceanDB.base_write_query import BaseWriteQuery
+from OceanDB.managed_index_oceandb import (
+    PARTITIONED_ALONG_TRACK_INDEX_PATTERN, eddy_index_files,
+    load_index_metadata, normalize_sql, sql_index_files)
 from OceanDB.query_spec import RawSpec
 
 table_definitions = [
@@ -43,118 +46,6 @@ eddy_tables = [
         "name": "chelton_eddy",
         "filepath": "tables/eddy/create_chelton_eddy_table.sql",
         "params": {"table_name": "chelton_eddy"},
-    },
-]
-
-
-sql_index_files = [
-    {
-        "name": "along_track_index_basin",
-        "filepath": "indices/along_track/create_along_track_index_basin.sql",
-        "params": {"index_name": "along_track_index_basin"},
-    },
-    {
-        "name": "along_track_index_date",
-        "filepath": "indices/along_track/create_along_track_index_date.sql",
-        "params": {"index_name": "along_track_index_date"},
-    },
-    {
-        "name": "along_track_index_filename",
-        "filepath": "indices/along_track/create_along_track_index_filename.sql",
-        "params": {"index_name": "along_track_index_filename"},
-    },
-    {
-        "name": "along_track_index_mission",
-        "filepath": "indices/along_track/create_along_track_index_mission.sql",
-        "params": {"index_name": "along_track_index_mission"},
-    },
-    {
-        "name": "along_track_index_point",
-        "filepath": "indices/along_track/create_along_track_index_point.sql",
-        "params": {"index_name": "along_track_index_point"},
-    },
-    {
-        "name": "along_track_index_point_date",
-        "filepath": "indices/along_track/create_along_track_index_point_date.sql",
-        "params": {"index_name": "along_track_index_point_date"},
-    },
-    {
-        "name": "along_track_index_point_date_mission",
-        "filepath": "indices/along_track/create_along_track_index_point_date_mission.sql",
-        "params": {"index_name": "along_track_index_point_date_mission"},
-    },
-    {
-        "name": "along_track_index_point_date_mission_basin",
-        "filepath": "indices/along_track/create_along_track_index_point_date_mission_basin.sql",
-        "params": {"index_name": "along_track_index_point_date_mission_basin"},
-    },
-    {
-        "name": "along_track_index_point_geom",
-        "filepath": "indices/along_track/create_along_track_index_point_geom.sql",
-        "params": {"index_name": "along_track_index_point_geom"},
-    },
-    {
-        "name": "along_track_index_time",
-        "filepath": "indices/along_track/create_along_track_index_time.sql",
-        "params": {"index_name": "along_track_index_time"},
-    },
-    {
-        "name": "basin_connection_index_basin_id",
-        "filepath": "indices/basin/create_basin_connection_index_basin_id.sql",
-        "params": {"index_name": "basin_connection_index_basin_id"},
-    },
-    {
-        "name": "basin_index_geom",
-        "filepath": "indices/basin/create_basin_index_geom.sql",
-        "params": {"index_name": "basin_index_geom"},
-    },
-    # {
-    #     "name": "chelton_eddy_index_point",
-    #     "filepath": "indices/create_chelton_eddy_index_point.sql",
-    #     "params": {"index_name": "chelton_eddy_index_point"},
-    # },
-    # {
-    #     "name": "chelton_eddy_index_track_cyclonic_type",
-    #     "filepath": "indices/create_chelton_eddy_index_track_cyclonic_type.sql",
-    #     "params": {"index_name": "chelton_eddy_index_track_cyclonic_type"},
-    # },
-    # {
-    #     "name": "eddy_index_point",
-    #     "filepath": "indices/create_eddy_index_point.sql",
-    #     "params": {"index_name": "eddy_index_point"},
-    # },
-    # {
-    #     "name": "eddy_index_track_cyclonic_type",
-    #     "filepath": "indices/create_eddy_index_track_cyclonic_type.sql",
-    #     "params": {"index_name": "eddy_index_track_cyclonic_type"},
-    # },
-    # {
-    #     "name": "eddy_index_track_cyclonic_type",
-    #     "filepath": "indices/create_eddy_index_track_cyclonic_type.sql",
-    #     "params": {"index_name": "eddy_index_track_cyclonic_type"},
-    # },
-    # {
-    #     "name": "eddy_index_track_cyclonic_type",
-    #     "filepath": "indices/create_eddy_index_track_cyclonic_type.sql",
-    #     "params": {"index_name": "eddy_index_track_cyclonic_type"},
-    # },
-    # {
-    #     "name": "eddy_index_track_cyclonic_type",
-    #     "filepath": "indices/create_eddy_index_track_cyclonic_type.sql",
-    #     "params": {"index_name": "eddy_index_track_cyclonic_type"},
-    # }
-]
-
-eddy_index_files = [
-    {
-        "name": "eddy_index_point",
-        "filepath": "indices/eddy/create_eddy_index_point.sql",
-        "params": {"index_name": "eddy_index_point"},
-    },
-    {
-        "name": "eddy_index_track_cyclonic_type",
-        "filepath": "indices/eddy/create_eddy_index_track_cyclonic_type.sql",
-        "params": {"index_name": "eddy_index_track_cyclonic_type"},
     },
 ]
 
@@ -215,36 +106,6 @@ drop_eddy_index_files = [
         "filepath": "drop/drop_eddy_index_track_cyclonic_type.sql",
     },
 ]
-
-
-PARTITIONED_ALONG_TRACK_INDEX_PATTERN = re.compile(
-    r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+(?P<index_name>\S+)\s+ON\s+"
-    r"(?P<table_name>(?:public\.)?along_track)",
-    flags=re.IGNORECASE,
-)
-
-INDEX_SQL_PATTERN = re.compile(
-    r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+(?P<index_name>\S+)\s+ON\s+"
-    r"(?P<table_name>(?:public\.)?[A-Za-z_][A-Za-z0-9_]*)",
-    flags=re.IGNORECASE,
-)
-
-
-def load_index_metadata(oceandb, index: dict[str, str]) -> dict[str, str]:
-    sql_statement = oceandb.load_sql_file(index["filepath"])
-    match = INDEX_SQL_PATTERN.search(sql_statement)
-    if not match:
-        raise ValueError(f"Unable to parse index SQL for '{index['name']}'")
-
-    return {
-        **index,
-        "index_name": match.group("index_name").replace("public.", ""),
-        "table_name": match.group("table_name").replace("public.", ""),
-    }
-
-
-def normalize_sql(sql_statement: str) -> str:
-    return " ".join(sql_statement.split())
 
 
 EXPECTED_TABLE_INDEXES = {
@@ -309,59 +170,13 @@ class OceanDBInit(BaseWriteQuery):
         return datetime(year, month, 1)
 
     def _get_partitionable_along_track_index(self, logical_name: str) -> dict:
-        for index in sql_index_files:
-            if index["name"] != logical_name:
-                continue
-            if not index["filepath"].startswith("indices/along_track/"):
-                raise ValueError(
-                    f"Index '{logical_name}' is not available for partitioned creation"
-                )
-
-            sql_statement = self.load_sql(index["filepath"])
-            match = PARTITIONED_ALONG_TRACK_INDEX_PATTERN.search(sql_statement)
-            if not match:
-                raise ValueError(
-                    f"Unable to parse partitioned index SQL for '{logical_name}'"
-                )
-
-            return {
-                "logical_name": logical_name,
-                "filepath": index["filepath"],
-                "base_index_name": match.group("index_name"),
-            }
-
-        raise ValueError(f"Unknown index '{logical_name}'")
+        return self.partitionable_along_track_index_definition(logical_name)
 
     def _partitionable_along_track_index_info(self) -> list[dict[str, str]]:
-        return [
-            self._get_partitionable_along_track_index(index["name"])
-            for index in sql_index_files
-            if index["filepath"].startswith("indices/along_track/")
-        ]
+        return self.partitionable_along_track_index_definitions()
 
     def _managed_index_names(self) -> set[str]:
-        managed_names = set()
-
-        for index in sql_index_files:
-            sql_statement = self.load_sql(index["filepath"])
-            match = PARTITIONED_ALONG_TRACK_INDEX_PATTERN.search(sql_statement)
-            if match:
-                managed_names.add(match.group("index_name"))
-                continue
-
-            normalized_sql = normalize_sql(sql_statement)
-            token = normalized_sql.split("CREATE INDEX IF NOT EXISTS ", 1)
-            if len(token) == 2:
-                managed_names.add(token[1].split(" ", 1)[0].replace("public.", ""))
-
-        for index in eddy_index_files:
-            sql_statement = self.load_sql(index["filepath"])
-            normalized_sql = normalize_sql(sql_statement)
-            token = normalized_sql.split("CREATE INDEX IF NOT EXISTS ", 1)
-            if len(token) == 2:
-                managed_names.add(token[1].split(" ", 1)[0].replace("public.", ""))
-
-        return managed_names
+        return self.managed_index_names()
 
     def _is_managed_index_name(self, index_name: str) -> bool:
         managed_names = self._managed_index_names()
@@ -514,7 +329,9 @@ class OceanDBInit(BaseWriteQuery):
             self.logger.info(
                 f"Starting index creation for {partition_index_name} on partition {partition_name}"
             )
-            self.execute_write_query(RawSpec(sql.SQL(partition_sql)))
+            partition_statement = cast(LiteralString, partition_sql)
+            partition_query = cast(sql.Composed, sql.SQL(partition_statement))
+            self.execute_write_query(RawSpec(partition_query))
             self.logger.info(f"Executing {logical_name} for partition {partition_name}")
             created_partitions.append(partition_name)
 
@@ -527,7 +344,8 @@ class OceanDBInit(BaseWriteQuery):
 
     def _execute_raw_sql_file(self, filepath: str):
         sql_statement = self.load_sql(filepath)
-        query = RawSpec(sql.SQL(sql_statement))
+        raw_query = cast(sql.Composed, sql.SQL(sql_statement))
+        query = RawSpec(raw_query)
         self.execute_write_query(query)
 
     def drop_indices(self):
@@ -574,25 +392,7 @@ class OceanDBInit(BaseWriteQuery):
         ]
 
     def list_defined_indices(self) -> list[dict[str, str]]:
-        defined_rows = []
-        for index in sql_index_files + eddy_index_files:
-            metadata = load_index_metadata(self, index)
-            raw_sql = self.load_sql(index["filepath"]).strip()
-            defined_rows.append(
-                {
-                    "logical_name": index["name"],
-                    "table_name": metadata["table_name"],
-                    "index_name": metadata["index_name"],
-                    "index_definition": normalize_sql(raw_sql),
-                    "index_definition_multiline": raw_sql,
-                    "filepath": index["filepath"],
-                }
-            )
-
-        return sorted(
-            defined_rows,
-            key=lambda row: (row["table_name"], row["index_name"]),
-        )
+        return self.managed_index_definitions()
 
     def show_index_definitions(
         self, identifier: str | None = None
@@ -749,13 +549,7 @@ class OceanDBInit(BaseWriteQuery):
         return RawSpec(query)
 
     def load_sql(self, filename: str) -> LiteralString:
-        # with resources.files(self.sql_pkg).joinpath(filename).open("r", encoding="utf-8") as f:
-        #     tokenized_query = f.read()
-        with self.load_module_file(
-            "OceanDB.sql", filename, mode="r", encoding="utf-8"
-        ) as f:
-            tokenized_query = f.read()
-            return tokenized_query
+        return self.load_sql_file(filename)
 
     def validate_schema(self):
         """
