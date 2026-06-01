@@ -40,7 +40,7 @@ def analyze_queries():
     summary_headers = [
         ("Query", "scenario_name"),
         ("Total Cost", "total_cost"),
-        ("Total Time (s)", "total_time"),
+        ("Total Time (ms)", "total_time"),
     ]
     summary_rows = [
         {

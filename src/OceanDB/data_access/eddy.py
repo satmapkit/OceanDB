@@ -8,9 +8,13 @@ from OceanDB.data_access.along_track import BaseReadQuery
 from OceanDB.data_access.base_query import QuerySpec
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas.along_track_schema import along_track_fields
-from OceanDB.schemas.eddy_schema import (along_track_eddy_schema, eddy_columns,
-                                         eddy_columns_schema, eddy_fields,
-                                         eddy_schema)
+from OceanDB.schemas.eddy_schema import (
+    along_track_eddy_schema,
+    eddy_columns,
+    eddy_columns_schema,
+    eddy_fields,
+    eddy_schema,
+)
 
 envelope_fields = Literal["max_date", "min_date", "basin_ids"]
 
@@ -35,6 +39,11 @@ class Eddy(BaseReadQuery):
         "mdt",
         "tpa_correction",
     ]
+
+    def _track_id_to_track_cyclonic_type(self, track_id: int) -> dict[str, int]:
+        track = abs(track_id)
+        cyclonic_type = -1 if track_id <= 0 else 1
+        return {"track": track, "cyclonic_type": cyclonic_type}
 
     def get_eddy_tracks_from_times(
         self,
@@ -128,7 +137,7 @@ class Eddy(BaseReadQuery):
             sql_template=self.load_sql_file(self._eddy_with_id_query),
             schema=eddy_columns_schema,
         )
-        params = {"track_id": track_id}
+        params = self._track_id_to_track_cyclonic_type(track_id)
 
         return self.execute_read_query(
             query_spec=query_spec, fields=fields, params=params, dataset_name="eddy"
@@ -150,7 +159,7 @@ class Eddy(BaseReadQuery):
             schema=eddy_columns_schema,
         )
 
-        params_batch = [{"track_id": track_id} for track_id in track_ids]
+        params_batch = [self._track_id_to_track_cyclonic_type(track_id) for track_id in track_ids]
 
         return self.execute_batch_read_query(
             query_spec=query_spec,
@@ -171,6 +180,7 @@ class Eddy(BaseReadQuery):
         - the set of basins intersecting the eddy over its lifetime.
 
         :param track_id:
+
             Query eddy track id ( - = cyclonic, + = anticyclonic )
 
         :return:
@@ -182,7 +192,7 @@ class Eddy(BaseReadQuery):
             sql_template=self.load_sql_file(self._envelope_query),
             schema=eddy_schema,
         )
-        params = {"track_id": track_id}
+        params = self._track_id_to_track_cyclonic_type(track_id)
         fields: list[envelope_fields] = ["max_date", "min_date", "basin_ids"]
 
         return self.execute_read_query(
@@ -207,7 +217,7 @@ class Eddy(BaseReadQuery):
             schema=eddy_schema,
         )
         fields: list[envelope_fields] = ["max_date", "min_date", "basin_ids"]
-        params_batch = [{"track_id": track_id} for track_id in track_ids]
+        params_batch = [self._track_id_to_track_cyclonic_type(track_id) for track_id in track_ids]
 
         return self.execute_batch_read_query(
             query_spec=query_spec,
@@ -263,7 +273,7 @@ class Eddy(BaseReadQuery):
         )
 
         params = {
-            "track_id": track_id,
+            **self._track_id_to_track_cyclonic_type(track_id),
             "min_date": min_date,
             "max_date": max_date,
             "basin_ids": basin_ids,
@@ -313,7 +323,7 @@ class Eddy(BaseReadQuery):
 
             params_batch.append(
                 {
-                    "track_id": track_id,
+                    **self._track_id_to_track_cyclonic_type(track_id),
                     "min_date": eddy_track["min_date"][0],
                     "max_date": eddy_track["max_date"][0],
                     "basin_ids": list(eddy_track["basin_ids"][0]),
