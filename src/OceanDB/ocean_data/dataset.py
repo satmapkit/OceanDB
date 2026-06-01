@@ -50,6 +50,20 @@ class Dataset(Mapping[K, T], Generic[K, T]):
         # number of columns, not rows
         return len(self._data)
 
+    @property
+    def row_count(self) -> int:
+        """
+        Number of rows represented by this dataset.
+
+        Since Dataset is column-oriented, this is derived from the length of any
+        returned column. All returned columns are expected to have the same row count.
+        """
+        if not self._data:
+            return 0
+
+        first_column = next(iter(self._data.values()))
+        return len(first_column)
+
     def to_xarray(self):
         raise NotImplementedError()
 

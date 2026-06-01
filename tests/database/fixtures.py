@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Generator
 
@@ -9,11 +10,33 @@ from OceanDB.OceanDB_Initializer import OceanDBInit
 
 TEST_PARTITION_START = "2012-12-01"
 TEST_PARTITION_END = "2013-02-01"
+TESTS_DIR = Path(__file__).resolve().parent.parent
+REPO_ROOT = TESTS_DIR.parent
 
 
 @pytest.fixture
 def config():
-    return Config(_env_file="tests/.env.test")
+    along_track_data_directory = os.environ.get(
+        "OCEANDB_TEST_ALONG_TRACK_DATA_DIRECTORY",
+        str(REPO_ROOT / "tests" / "data" / "along_track"),
+    )
+    eddy_data_directory = os.environ.get(
+        "OCEANDB_TEST_EDDY_DATA_DIRECTORY",
+        str(REPO_ROOT / "tests" / "data" / "eddy"),
+    )
+
+    return Config(
+        _env_file=None,
+        postgres_host=os.environ.get("OCEANDB_TEST_POSTGRES_HOST", "localhost"),
+        postgres_port=int(os.environ.get("OCEANDB_TEST_POSTGRES_PORT", "5433")),
+        postgres_username=os.environ.get("OCEANDB_TEST_POSTGRES_USERNAME", "postgres"),
+        postgres_password=os.environ.get("OCEANDB_TEST_POSTGRES_PASSWORD", "postgres"),
+        postgres_database=os.environ.get("OCEANDB_TEST_POSTGRES_DATABASE", "ocean"),
+        along_track_data_directory=along_track_data_directory,
+        eddy_data_directory=eddy_data_directory,
+        copernicus_username=os.environ.get("OCEANDB_TEST_COPERNICUS_USERNAME", "none"),
+        copernicus_password=os.environ.get("OCEANDB_TEST_COPERNICUS_PASSWORD", "none"),
+    )
 
 
 @pytest.fixture

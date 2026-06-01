@@ -14,7 +14,8 @@ This file gives coding agents the project-specific context needed to make safe c
 
 ## Repository Map
 
-- `src/OceanDB/cli.py`: CLI entrypoints such as `oceandb init`, `oceandb ingest-along-track`, and `oceandb ingest-eddy`.
+- `src/OceanDB/cli.py`: thin Click CLI registrar that wires top-level commands and groups together.
+- `src/OceanDB/commands/`: command implementations for CLI areas such as analysis, download, index, ingest, and summary.
 - `src/OceanDB/OceanDB.py`: shared database/resource-loading base class.
 - `src/OceanDB/OceanDB_Initializer.py`: database/table/index/partition creation logic.
 - `src/OceanDB/etl/`: ingest and download flows.
@@ -23,6 +24,7 @@ This file gives coding agents the project-specific context needed to make safe c
 - `src/OceanDB/ocean_data/`: typed dataset/domain abstractions.
 - `src/OceanDB/sql/`: packaged SQL for tables, indices, drops, and queries.
 - `src/OceanDB/data/`: packaged NetCDF and CSV assets used by the library.
+- `markdown/`: maintained end-user markdown documentation for setup, downloads, ingest, indices, and query usage.
 - `tests/`: pytest suite, including integration tests that create/drop a real database.
 - `docker-compose.postgres.yml` and `docker-compose.postgres.test.yml`: local Postgres/PostGIS environments.
 
@@ -51,7 +53,7 @@ Runtime configuration is expected from a `.env` file at the repo root. Important
 - `COPERNICUS_USERNAME`
 - `COPERNICUS_PASSWORD`
 
-Tests also use `tests/.env.test` through `Config(_env_file="tests/.env.test")`.
+Tests also use `tests/.env.test`, and the test fixtures currently load that configuration through `Config(_env_file="tests/.env.test")`.
 
 ## Common Commands
 
@@ -116,6 +118,11 @@ make down_agent_sandbox
 - Before changing ingest logic, inspect the matching fixtures in `tests/data/along_track/` and `tests/data/eddy/`.
 - Be careful with date-range and mission filtering logic in the CLI and ETL layers; those paths control which files are discovered and ingested.
 
+### CLI and documentation changes
+
+- The CLI is modularized under `src/OceanDB/commands/`; when changing command behavior, update the relevant command module rather than re-expanding `src/OceanDB/cli.py`.
+- End-user docs are split across the root `README.md` and the `markdown/` directory; keep those in sync with the actual CLI and API behavior.
+
 ### Architecture notes
 
 The repo’s `architecture.md` emphasizes a schema-contract-driven approach:
@@ -134,9 +141,10 @@ Changes should reinforce that direction rather than bypass it.
 - Do not assume tests are isolated from PostgreSQL; verify whether a change requires a running test database.
 - For containerized agent work, prefer `docker-compose.agent.yml` over the older externally-networked client container setup.
 - If touching CLI or ETL behavior, update `README.md` when the user-facing workflow changes.
+- If touching API behavior, query surfaces, public method signatures, or user-facing CLI semantics, update the relevant files under `markdown/` in the same change.
 - If touching schemas, queries, or typed dataset objects, run the most relevant query/integration tests before finishing when possible.
 
 ## Current Observations
 
-- The worktree already has an unrelated modification in `src/OceanDB/utils/date_time_conversion.py`.
+- The repository now maintains end-user docs in `markdown/`; those docs should be treated as part of the supported surface area.
 - Leave unrelated user changes intact.

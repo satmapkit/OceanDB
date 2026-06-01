@@ -65,16 +65,16 @@ lint:
 check: format lint
 
 test: start_postgres_test
-	pytest
+	PYTHONPATH=src:. pytest
 
 test-db-create: start_postgres_test
-	pytest tests/database/test_create.py
+	PYTHONPATH=src:. pytest tests/database/test_create.py
 
 test-db-ingest: start_postgres_test
-	pytest tests/database/test_ingest.py
+	PYTHONPATH=src:. pytest tests/database/test_ingest.py
 
 test-along-track: start_postgres_test
-	pytest tests/along_track/test_spatiotemporal_queries.py
+	PYTHONPATH=src:. pytest tests/along_track/test_spatiotemporal_queries.py
 
 test-eddy-nearalong: start_postgres_test
-	pytest tests/eddy/test_eddy_points_nearalong_track.py
+	PYTHONPATH=src:. pytest tests/eddy/test_eddy_points_nearalong_track.py

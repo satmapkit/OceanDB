@@ -243,6 +243,10 @@ def load_index_metadata(oceandb, index: dict[str, str]) -> dict[str, str]:
     }
 
 
+def normalize_sql(sql_statement: str) -> str:
+    return " ".join(sql_statement.split())
+
+
 EXPECTED_TABLE_INDEXES = {
     "along_track": {
         "along_track_basin_idx",
@@ -345,14 +349,14 @@ class OceanDBInit(BaseWriteQuery):
                 managed_names.add(match.group("index_name"))
                 continue
 
-            normalized_sql = " ".join(sql_statement.split())
+            normalized_sql = normalize_sql(sql_statement)
             token = normalized_sql.split("CREATE INDEX IF NOT EXISTS ", 1)
             if len(token) == 2:
                 managed_names.add(token[1].split(" ", 1)[0].replace("public.", ""))
 
         for index in eddy_index_files:
             sql_statement = self.load_sql(index["filepath"])
-            normalized_sql = " ".join(sql_statement.split())
+            normalized_sql = normalize_sql(sql_statement)
             token = normalized_sql.split("CREATE INDEX IF NOT EXISTS ", 1)
             if len(token) == 2:
                 managed_names.add(token[1].split(" ", 1)[0].replace("public.", ""))
@@ -568,6 +572,43 @@ class OceanDBInit(BaseWriteQuery):
         return [
             row for row in index_rows if self._is_managed_index_name(row["index_name"])
         ]
+
+    def list_defined_indices(self) -> list[dict[str, str]]:
+        defined_rows = []
+        for index in sql_index_files + eddy_index_files:
+            metadata = load_index_metadata(self, index)
+            raw_sql = self.load_sql(index["filepath"]).strip()
+            defined_rows.append(
+                {
+                    "logical_name": index["name"],
+                    "table_name": metadata["table_name"],
+                    "index_name": metadata["index_name"],
+                    "index_definition": normalize_sql(raw_sql),
+                    "index_definition_multiline": raw_sql,
+                    "filepath": index["filepath"],
+                }
+            )
+
+        return sorted(
+            defined_rows,
+            key=lambda row: (row["table_name"], row["index_name"]),
+        )
+
+    def show_index_definitions(
+        self, identifier: str | None = None
+    ) -> list[dict[str, str]]:
+        index_rows = self.list_defined_indices()
+        if identifier is None:
+            return index_rows
+
+        matching_rows = [
+            row
+            for row in index_rows
+            if row["logical_name"] == identifier or row["index_name"] == identifier
+        ]
+        if not matching_rows:
+            raise ValueError(f"Unknown index '{identifier}'")
+        return matching_rows
 
     def show_partitioned_index_ranges(
         self, logical_name: str | None = None

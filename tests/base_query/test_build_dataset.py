@@ -39,6 +39,7 @@ def test_build_dataset_skips_missing_fields(config):
 
     assert "x" in result
     assert "y" not in result
+    assert result.row_count == 2
     assert list(result["x"]) == [1.0, 2.0]
 
 
@@ -96,6 +97,40 @@ def test_build_dataset_parses_datetime_values(config):
         datetime(2013, 1, 1, 0, 0),
         datetime(2013, 1, 2, 0, 0),
     ]
+
+
+def test_build_dataset_row_count_matches_returned_columns(config):
+    base_query = BaseReadQuery(config=config)
+    schema = {
+        "x": ColumnField(
+            export_name="x_value",
+            postgres_table_name="dummy",
+            postgres_column_name="x_value",
+            python_type=float,
+        ),
+        "y": ColumnField(
+            export_name="y_value",
+            postgres_table_name="dummy",
+            postgres_column_name="y_value",
+            python_type=float,
+        ),
+    }
+
+    rows: list[Mapping[str, Any]] = [
+        {"x_value": 1.0, "y_value": 10.0},
+        {"x_value": 2.0, "y_value": 20.0},
+        {"x_value": 3.0, "y_value": 30.0},
+    ]
+
+    result = base_query._build_dataset(
+        schema=schema,
+        rows=rows,
+    )
+
+    assert result.row_count == 3
+    assert len(result) == 2
+    assert len(result["x"]) == result.row_count
+    assert len(result["y"]) == result.row_count
 
 
 def test_build_dataset_raises_on_empty_rows(config):

@@ -23,15 +23,15 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: 5432
-      POSTGRES_USERNAME: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DATABASE: ocean
-      ALONG_TRACK_DATA_DIRECTORY: tests/data/along_track
-      EDDY_DATA_DIRECTORY: tests/data/eddy
-      COPERNICUS_USERNAME: none
-      COPERNICUS_PASSWORD: none
+      OCEANDB_TEST_POSTGRES_HOST: localhost
+      OCEANDB_TEST_POSTGRES_PORT: 5432
+      OCEANDB_TEST_POSTGRES_USERNAME: postgres
+      OCEANDB_TEST_POSTGRES_PASSWORD: postgres
+      OCEANDB_TEST_POSTGRES_DATABASE: ocean
+      OCEANDB_TEST_ALONG_TRACK_DATA_DIRECTORY: tests/data/along_track
+      OCEANDB_TEST_EDDY_DATA_DIRECTORY: tests/data/eddy
+      OCEANDB_TEST_COPERNICUS_USERNAME: none
+      OCEANDB_TEST_COPERNICUS_PASSWORD: none
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5

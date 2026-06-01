@@ -68,7 +68,7 @@ class Eddy(BaseReadQuery):
         self,
         start_dates: list[datetime],
         end_dates: list[datetime],
-    ) -> Generator[list[int]]:
+    ) -> Generator[list[int], None, None]:
         """
         Retrieve eddy track ids for multiple time windows.
 
@@ -138,7 +138,7 @@ class Eddy(BaseReadQuery):
         self,
         fields: list[eddy_columns],
         track_ids: list[int],
-    ) -> Generator[Dataset[eddy_columns, npt.NDArray[np.floating]] | None]:
+    ) -> Generator[Dataset[eddy_columns, npt.NDArray[np.floating]] | None, None, None]:
         """
         Retrieve observations for multiple eddy tracks.
 
@@ -195,7 +195,7 @@ class Eddy(BaseReadQuery):
     def eddy_envelope_query_batch(
         self,
         track_ids: list[int],
-    ) -> Generator[Dataset[envelope_fields, Any] | None]:
+    ) -> Generator[Dataset[envelope_fields, Any] | None, None, None]:
         """
         Compute spatiotemporal envelopes for multiple eddy tracks.
 
@@ -282,7 +282,7 @@ class Eddy(BaseReadQuery):
         *,
         track_ids: list[int],
         fields: Iterable[along_track_fields] | None = None,
-    ) -> Generator[Dataset[along_track_fields, Any] | None]:
+    ) -> Generator[Dataset[along_track_fields, Any] | None, None, None]:
         """
         Retrieve along-track points for multiple eddy tracks.
 
