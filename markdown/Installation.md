@@ -8,36 +8,24 @@ OceanDB should be installed in a parallel directory to other projects. For examp
 ```
 satmapkit-dev/
 ├─ OceanDB/
-├─ MapInterp/
-
 ```
 
-From the command-line create the directory,
-```bash
-mkdir satmapkit-dev
-```
-and then create a new python virtual environment within that directory
   ```bash
-cd satmapkit-dev
 python3 -m venv .venv
 source .venv/bin/activate
   ```
 
 ### 2.  Clone  and install OceanDB
-  
-  Clone the repo,
+Clone the repo & create the virtual environment
   ```bash
 git clone https://github.com/Nazanne/OceanDB.git
-```
-and install it
-  ```bash
 cd OceanDB
-pip install --upgrade pip
- pip install -e . // Installs in editable mode
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e . // Installs in editable mode
 ```
-  
-  
- ### 3a. Install the the PostgreSQL server from a macOS download
+
+### 3a. Install the the PostgreSQL server from a macOS download
   
  Download [the installer](https://postgresapp.com), copy the `Postgres.app` to your applications folder, open up the app and then hit `initialize`.  Th PostgreSQL server is running locally on our machine.
 
@@ -54,21 +42,9 @@ POSTGRES_PORT=5432
 POSTGRES_DATABASE=ocean
 ```
 
-### 4. Initial the database
+### 4. Initialize the database
 
 ```bash
 oceandb init
-```
-
-
-### 5. Install MapInterp
-
-Go back to the root directory, check out MapInterp, and install it
-
-```
-cd ..
-git clone https://github.com/satmapkit/MapInterp.git
-cd MapInterp
-pip install .
 ```
 
