@@ -10,28 +10,127 @@ This page documents each query method currently implemented and exercised by the
 ## Common Setup
 
 Most query examples follow this pattern:
+To request a broad set of fields:
+
+```python
+from OceanDB.schemas.along_track_schema import along_track_schema
+from OceanDB.schemas.eddy_schema import eddy_columns_schema
+along_track_fields = list(along_track_schema.keys())
+eddy_fields = list(eddy_columns_schema.keys())
+```
+
+## Consumer Query Workflow
+
+Many downstream workflows do not issue one query at a time. Instead, they:
+
+1. build a list of query points,
+2. call a batch query method once,
+3. iterate over the returned `Dataset | None` results,
+4. consume NumPy arrays from each dataset such as `result["sla_filtered"]`.
+
+This pattern is especially useful for interpolation, gridding, and repeated map sampling.
+
+Example:
 
 ```python
 from datetime import datetime, timedelta
 
-from OceanDB.config import Config
 from OceanDB.data_access.along_track import AlongTrack
-from OceanDB.data_access.eddy import Eddy
-from OceanDB.schemas.along_track_schema import along_track_schema
-from OceanDB.schemas.eddy_schema import eddy_columns_schema
 
-config = Config()
+along_track = AlongTrack()
 
-along_track = AlongTrack(config=config)
-eddy = Eddy(config=config)
+latitudes = [-39.1, 58.9, -69.0]
+longitudes = [54.7, -65.9, 28.1]
+dates = [
+    datetime(2013, 1, 4, 23),
+    datetime(2013, 1, 4, 23),
+    datetime(2013, 3, 14, 23),
+]
+
+results = along_track.geographic_point_in_r_dt_batch(
+    fields=["sla_filtered", "distance", "latitude", "longitude"],
+    latitudes=latitudes,
+    longitudes=longitudes,
+    dates=dates,
+    radius=500_000,
+    time_window=timedelta(days=10),
+)
+
+for latitude, longitude, date, result in zip(
+    latitudes, longitudes, dates, results, strict=True
+):
+    if result is None:
+        print(f"No data found for ({latitude}, {longitude}) at {date.isoformat()}")
+        continue
+
+    sla = result["sla_filtered"]
+    distance = result["distance"]
+
+    print(
+        f"Found {result.row_count} observations for ({latitude}, {longitude}) "
+        f"at {date.isoformat()}"
+    )
+    print(f"Closest distance: {distance.min():.1f} m")
 ```
 
-To request a broad set of fields:
+Notes:
+
+- Batch query methods yield one result per input query point.
+- Each yielded value is either a `Dataset` or `None`.
+- Batch result order matches input order.
+- The arrays in each returned dataset are ready for NumPy-based downstream processing.
+
+## Dataset Semantics
+
+OceanDB query methods return `Dataset` objects when rows are found.
+
+`Dataset` behaves like an immutable mapping from field name to column array:
+
+- `result["sla_filtered"]` returns a NumPy array for that field.
+- `field in result` checks whether that field was returned.
+- Iterating over the dataset yields field names.
+
+Important behavior for downstream consumers:
+
+- `Dataset` is column-oriented, not row-oriented.
+- `len(dataset)` is the number of returned columns, not the number of rows.
+- Use `dataset.row_count` to get the number of returned rows.
+- Query methods return `None` when no rows match, rather than an empty `Dataset`.
+- Every returned field maps to an array with the same row count as every other returned field.
+- Column values are aligned by row position across the dataset.
+
+Example:
 
 ```python
-along_track_fields = list(along_track_schema.keys())
-eddy_fields = list(eddy_columns_schema.keys())
+from datetime import datetime, timedelta
+
+from OceanDB.data_access.along_track import AlongTrack
+
+along_track = AlongTrack()
+
+result = along_track.geographic_nearest_neighbors(
+    fields=["latitude", "longitude", "sla_filtered", "distance"],
+    latitude=-69.0,
+    longitude=28.1,
+    date=datetime(2013, 3, 14, 23),
+    time_window=timedelta(days=10),
+)
+
+if result is not None:
+    print(result.row_count)
+    print(result["latitude"].shape)
+    print(result["longitude"].shape)
+    print(result["sla_filtered"].shape)
+    print(result["distance"].shape)
+
+    assert result["latitude"].shape[0] == result.row_count
+    assert result["longitude"].shape[0] == result.row_count
+    assert result["sla_filtered"].shape[0] == result.row_count
+    assert result["distance"].shape[0] == result.row_count
 ```
+
+This makes `Dataset` a good fit for array-oriented workflows such as interpolation,
+distance-weighted averaging, and plotting.
 
 ## Along-Track Queries
 
@@ -51,6 +150,11 @@ Parameters:
 Example:
 
 ```python
+from OceanDB.data_access.along_track import AlongTrack
+from OceanDB.schemas.along_track_schema import along_track_schema
+from datetime import datetime, timedelta
+along_track = AlongTrack()
+
 result = along_track.geographic_point_in_r_dt(
     fields=list(along_track_schema.keys()),
     latitude=-39.1,
@@ -86,6 +190,11 @@ Parameters:
 Example:
 
 ```python
+from OceanDB.data_access.along_track import AlongTrack
+from OceanDB.schemas.along_track_schema import along_track_schema
+
+from datetime import datetime, timedelta
+along_track = AlongTrack()
 results = list(
     along_track.geographic_point_in_r_dt_batch(
         fields=list(along_track_schema.keys()),
@@ -125,6 +234,12 @@ Parameters:
 Example:
 
 ```python
+from OceanDB.data_access.along_track import AlongTrack
+from OceanDB.schemas.along_track_schema import along_track_schema
+from datetime import datetime, timedelta
+
+along_track = AlongTrack()
+
 result = along_track.geographic_nearest_neighbors(
     fields=list(along_track_schema.keys()),
     latitude=-69,
@@ -159,6 +274,12 @@ Parameters:
 Example:
 
 ```python
+
+from OceanDB.data_access.along_track import AlongTrack
+from OceanDB.schemas.along_track_schema import along_track_schema
+from datetime import datetime, timedelta
+along_track = AlongTrack()
+
 results = list(
     along_track.geographic_nearest_neighbors_batch(
         fields=list(along_track_schema.keys()),
@@ -200,6 +321,9 @@ Parameters:
 Example:
 
 ```python
+from OceanDB.data_access.eddy import Eddy
+from datetime import datetime, timedelta
+eddy = Eddy()
 track_ids = eddy.get_eddy_tracks_from_times(
     datetime(1900, 1, 1),
     datetime(2100, 1, 1),
@@ -226,6 +350,11 @@ Parameters:
 Example:
 
 ```python
+from OceanDB.data_access.eddy import Eddy
+from datetime import datetime, timedelta
+
+eddy = Eddy()
+
 results = list(
     eddy.get_eddy_tracks_from_times_batch(
         start_dates=[
@@ -260,6 +389,9 @@ Parameters:
 Example:
 
 ```python
+from OceanDB.data_access.eddy import Eddy
+from OceanDB.schemas.eddy_schema import eddy_columns_schema
+eddy = Eddy()
 result = eddy.eddy_with_track_id(
     fields=list(eddy_columns_schema.keys()),
     track_id=-1,
@@ -285,6 +417,9 @@ Parameters:
 Example:
 
 ```python
+from OceanDB.data_access.eddy import Eddy
+from OceanDB.schemas.eddy_schema import eddy_columns_schema
+eddy = Eddy()
 results = list(
     eddy.eddy_with_track_id_batch(
         fields=list(eddy_columns_schema.keys()),
@@ -314,6 +449,9 @@ The envelope consists of:
 Example:
 
 ```python
+from OceanDB.data_access.eddy import Eddy
+eddy = Eddy()
+
 envelope = eddy.eddy_envelope_query(track_id=-1)
 ```
 
@@ -336,6 +474,8 @@ Parameters:
 Example:
 
 ```python
+from OceanDB.data_access.eddy import Eddy
+eddy = Eddy()
 results = list(eddy.eddy_envelope_query_batch(track_ids=[-1, -999999]))
 ```
 
@@ -364,6 +504,9 @@ Parameters:
 Example:
 
 ```python
+from OceanDB.data_access.eddy import Eddy
+from OceanDB.schemas.along_track_schema import along_track_schema
+eddy = Eddy()
 result = eddy.along_track_points_near_eddy(
     track_id=-1,
     fields=list(along_track_schema.keys()),
@@ -391,6 +534,10 @@ Parameters:
 Example:
 
 ```python
+from OceanDB.data_access.eddy import Eddy
+from OceanDB.schemas.eddy_schema import eddy_columns_schema
+from OceanDB.schemas.along_track_schema import along_track_schema
+eddy = Eddy()
 results = list(
     eddy.along_track_points_near_eddy_batch(
         track_ids=[-1],
