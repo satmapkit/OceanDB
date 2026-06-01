@@ -3,7 +3,8 @@ from typing import Literal
 
 import numpy as np
 
-from OceanDB.ocean_data.ocean_data import ColumnField, DerivedField, OceanDataField
+from OceanDB.ocean_data.ocean_data import (ColumnField, DerivedField,
+                                           OceanDataField)
 from OceanDB.schemas.along_track_schema import (along_track_fields,
                                                 along_track_schema)
 from OceanDB.utils.date_time_conversion import compute_date_time

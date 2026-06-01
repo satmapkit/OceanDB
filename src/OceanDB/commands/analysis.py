@@ -82,7 +82,9 @@ def analyze_queries():
             return style_value(value, fg="green", bold=True)
         return style_value(value, fg="white")
 
-    for line in render_table(headers, formatted_rows, cell_styler=_analysis_cell_styler):
+    for line in render_table(
+        headers, formatted_rows, cell_styler=_analysis_cell_styler
+    ):
         click.echo(line)
 
     click.echo(

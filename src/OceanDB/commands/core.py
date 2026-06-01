@@ -5,8 +5,8 @@ from pathlib import Path
 
 import click
 
-from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.commands.shared import create_basins_etl, logger
+from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.utils.basin_visualization import write_basin_map
 
 

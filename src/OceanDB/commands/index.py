@@ -5,9 +5,9 @@ from datetime import datetime
 import click
 import psycopg as pg
 
-from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.cli_utils import format_status_line, render_table, style_value
 from OceanDB.commands.shared import partitioned_index_choices
+from OceanDB.OceanDB_Initializer import OceanDBInit
 
 
 @click.group("index")
@@ -147,7 +147,9 @@ def _render_index_list() -> None:
 def _render_partitioned_index_ranges(index_name: str | None = None) -> None:
     try:
         ocean_db_init = OceanDBInit()
-        range_rows = ocean_db_init.show_partitioned_index_ranges(logical_name=index_name)
+        range_rows = ocean_db_init.show_partitioned_index_ranges(
+            logical_name=index_name
+        )
     except pg.OperationalError as e:
         raise click.ClickException(f"Unable to access database: {e}") from e
     except ValueError as e:
@@ -193,7 +195,9 @@ def _render_partitioned_index_ranges(index_name: str | None = None) -> None:
         cell_styler=lambda column, value: (
             style_value(value, fg="cyan", bold=True)
             if column == "logical_name"
-            else style_value(value, fg="green" if column == "partition_count" else "white")
+            else style_value(
+                value, fg="green" if column == "partition_count" else "white"
+            )
         ),
     ):
         click.echo(line)
@@ -203,7 +207,9 @@ def _render_index_summary(index_name: str | None = None) -> None:
     try:
         ocean_db_init = OceanDBInit()
         built_index_rows = ocean_db_init.list_indices(managed_only=True)
-        range_rows = ocean_db_init.show_partitioned_index_ranges(logical_name=index_name)
+        range_rows = ocean_db_init.show_partitioned_index_ranges(
+            logical_name=index_name
+        )
     except pg.OperationalError as e:
         raise click.ClickException(f"Unable to access database: {e}") from e
     except ValueError as e:
@@ -348,7 +354,9 @@ def create_index_command(
     choice_type = click.Choice(partitioned_index_choices(), case_sensitive=False)
     if index_name is None:
         _render_partitioned_index_choices()
-    selected_index = index_name or click.prompt("Index name", type=choice_type, show_choices=False)
+    selected_index = index_name or click.prompt(
+        "Index name", type=choice_type, show_choices=False
+    )
     selected_start_date = start_date or click.prompt(
         "Start partition date (YYYY-MM-DD)",
         type=click.DateTime(formats=["%Y-%m-%d"]),
@@ -359,7 +367,9 @@ def create_index_command(
     )
 
     if selected_end_date < selected_start_date:
-        raise click.UsageError("--end-date must be greater than or equal to --start-date.")
+        raise click.UsageError(
+            "--end-date must be greater than or equal to --start-date."
+        )
 
     try:
         ocean_db_init = OceanDBInit()
@@ -381,7 +391,10 @@ def create_index_command(
         )
     )
 
-    created_rows = [{"partition_name": partition_name} for partition_name in result["created_partitions"]]
+    created_rows = [
+        {"partition_name": partition_name}
+        for partition_name in result["created_partitions"]
+    ]
     if created_rows:
         for line in render_table(
             [("Partition", "partition_name")],

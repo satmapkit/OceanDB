@@ -1,14 +1,13 @@
 import click
+
 from OceanDB.commands.analysis import analyze_queries
 from OceanDB.commands.core import init, process, visualize_basins
 from OceanDB.commands.download import download, download_eddy
 from OceanDB.commands.index import index_group
 from OceanDB.commands.ingest import ingest_along_track, ingest_eddy
-from OceanDB.commands.summary import (
-    along_track_group,
-    summarize_along_track_legacy,
-    summary_group,
-)
+from OceanDB.commands.summary import (along_track_group,
+                                      summarize_along_track_legacy,
+                                      summary_group)
 
 
 def create_cli() -> click.Group:
