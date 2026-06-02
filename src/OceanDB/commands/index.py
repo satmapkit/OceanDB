@@ -21,6 +21,11 @@ def _create_all_indices() -> None:
     ocean_db_init.create_eddy_indices()
 
 
+def _create_default_indices() -> None:
+    ocean_db_init = OceanDBInit()
+    ocean_db_init.create_default_indices()
+
+
 def _render_partitioned_index_choices() -> None:
     click.echo(
         format_status_line(
@@ -309,6 +314,12 @@ def _render_index_summary(index_name: str | None = None) -> None:
 
 @index_group.command("create")
 @click.option(
+    "--default",
+    "create_default",
+    is_flag=True,
+    help="Create the default curated set of OceanDB-managed indices.",
+)
+@click.option(
     "--all",
     "create_all",
     is_flag=True,
@@ -330,12 +341,31 @@ def _render_index_summary(index_name: str | None = None) -> None:
     help="End date used to select monthly along-track partitions.",
 )
 def create_index_command(
+    create_default: bool,
     create_all: bool,
     index_name: str | None,
     start_date: datetime | None,
     end_date: datetime | None,
 ):
     """Create OceanDB indices."""
+    if create_default and create_all:
+        raise click.UsageError("Do not combine --default with --all.")
+
+    if create_default:
+        if index_name or start_date or end_date:
+            raise click.UsageError(
+                "Do not combine --default with --index-name, --start-date, or --end-date."
+            )
+        _create_default_indices()
+        click.echo(
+            format_status_line(
+                "CREATED",
+                "Default OceanDB-managed indices were created.",
+                label_color="green",
+            )
+        )
+        return
+
     if create_all:
         if index_name or start_date or end_date:
             raise click.UsageError(

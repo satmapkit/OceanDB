@@ -358,6 +358,23 @@ def test_index_create_all_command_creates_all_indices(monkeypatch):
     assert "All OceanDB-managed indices were created." in result.output
 
 
+def test_index_create_default_command_creates_default_indices(monkeypatch):
+    runner = CliRunner()
+    calls = []
+
+    class FakeInit:
+        def create_default_indices(self):
+            calls.append("create_default_indices")
+
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
+
+    result = runner.invoke(cli_module.cli, ["index", "create", "--default"])
+
+    assert result.exit_code == 0
+    assert calls == ["create_default_indices"]
+    assert "Default OceanDB-managed indices were created." in result.output
+
+
 def test_index_create_command_prompts_for_partitioned_creation(monkeypatch):
     runner = CliRunner()
     calls = []
@@ -448,6 +465,41 @@ def test_index_create_command_rejects_mixed_all_and_partition_flags():
 
     assert result.exit_code != 0
     assert "Do not combine --all" in result.output
+
+
+def test_index_create_command_rejects_mixed_default_and_all_flags():
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "index",
+            "create",
+            "--default",
+            "--all",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Do not combine --default with --all." in result.output
+
+
+def test_index_create_command_rejects_mixed_default_and_partition_flags():
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "index",
+            "create",
+            "--default",
+            "--index-name",
+            "along_track_index_time",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Do not combine --default" in result.output
 
 
 def test_index_create_command_rejects_reversed_dates():

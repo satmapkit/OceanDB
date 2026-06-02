@@ -1,4 +1,5 @@
 import re
+from functools import cached_property
 
 from OceanDB.OceanDB import OceanDB
 
@@ -78,6 +79,14 @@ eddy_index_files = [
     },
 ]
 
+DEFAULT_INDEX_LOGICAL_NAMES = {
+    "eddy_index_track_cyclonic_type",
+    "along_track_index_point_date",
+    "along_track_index_point_date_mission_basin",
+    "basin_index_geom",
+    "basin_connection_index_basin_id",
+}
+
 PARTITIONED_ALONG_TRACK_INDEX_PATTERN = re.compile(
     r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+(?P<index_name>\S+)\s+ON\s+"
     r"(?P<table_name>(?:public\.)?along_track)",
@@ -109,6 +118,20 @@ def load_index_metadata(oceandb: OceanDB, index: dict[str, str]) -> dict[str, st
 
 
 class ManagedIndexOceanDB(OceanDB):
+    def default_index_files(self) -> list[dict[str, str | dict[str, str]]]:
+        return [
+            index
+            for index in sql_index_files + eddy_index_files
+            if index["name"] in DEFAULT_INDEX_LOGICAL_NAMES
+        ]
+
+    def default_index_definitions(self) -> list[dict[str, str]]:
+        return [
+            index
+            for index in self.managed_index_definitions()
+            if index["logical_name"] in DEFAULT_INDEX_LOGICAL_NAMES
+        ]
+
     def managed_index_definitions(self) -> list[dict[str, str]]:
         defined_rows = []
         for index in sql_index_files + eddy_index_files:
@@ -171,3 +194,27 @@ class ManagedIndexOceanDB(OceanDB):
 
     def managed_index_names(self) -> set[str]:
         return {index["index_name"] for index in self.managed_index_definitions()}
+
+    @cached_property
+    def partition_index_name_map(self) -> dict[str, str]:
+        return self._load_partition_index_name_map()
+
+    def _load_partition_index_name_map(self) -> dict[str, str]:
+        with self.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    child_idx.relname AS child_index_name,
+                    parent_idx.relname AS parent_index_name
+                FROM pg_inherits inh
+                JOIN pg_class child_idx
+                    ON child_idx.oid = inh.inhrelid
+                JOIN pg_class parent_idx
+                    ON parent_idx.oid = inh.inhparent
+                """)
+            rows = cur.fetchall()
+
+        return {
+            child_index_name: parent_index_name
+            for child_index_name, parent_index_name in rows
+            if parent_index_name in self.managed_index_names()
+        }

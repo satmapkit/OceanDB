@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import LiteralString, cast
+from typing import LiteralString, Mapping, Sequence, cast
 
 from dateutil.relativedelta import relativedelta
 from psycopg import sql
@@ -8,8 +8,7 @@ from sqlalchemy import text
 
 from OceanDB.base_write_query import BaseWriteQuery
 from OceanDB.managed_index_oceandb import (
-    PARTITIONED_ALONG_TRACK_INDEX_PATTERN, eddy_index_files,
-    load_index_metadata, normalize_sql, sql_index_files)
+    PARTITIONED_ALONG_TRACK_INDEX_PATTERN, eddy_index_files, sql_index_files)
 from OceanDB.query_spec import RawSpec
 
 table_definitions = [
@@ -139,7 +138,6 @@ EXPECTED_TABLE_INDEXES = {
 
 
 class OceanDBInit(BaseWriteQuery):
-
     def _normalize_month_start(self, value: datetime) -> datetime:
         return value.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
@@ -169,17 +167,8 @@ class OceanDBInit(BaseWriteQuery):
         month = int(match.group(2))
         return datetime(year, month, 1)
 
-    def _get_partitionable_along_track_index(self, logical_name: str) -> dict:
-        return self.partitionable_along_track_index_definition(logical_name)
-
-    def _partitionable_along_track_index_info(self) -> list[dict[str, str]]:
-        return self.partitionable_along_track_index_definitions()
-
-    def _managed_index_names(self) -> set[str]:
-        return self.managed_index_names()
-
     def _is_managed_index_name(self, index_name: str) -> bool:
-        managed_names = self._managed_index_names()
+        managed_names = self.managed_index_names()
         if index_name in managed_names:
             return True
 
@@ -257,26 +246,29 @@ class OceanDBInit(BaseWriteQuery):
                 self.logger.info(f"{table}")
                 self.logger.info(ex)
 
-    def create_indices(self):
-        for index in sql_index_files:
+    def _create_index_group(
+        self, indices: Sequence[Mapping[str, str | dict[str, str]]]
+    ) -> None:
+        for index in indices:
             table_name = index["name"]
             self.logger.info(f"Starting index creation for {table_name}")
             query = self.parametrize_sql_statements(index)
             self.execute_write_query(query)
             self.logger.info(f"Executing {table_name}")
 
+    def create_indices(self):
+        self._create_index_group(sql_index_files)
+
+    def create_default_indices(self):
+        self._create_index_group(self.default_index_files())
+
     def create_eddy_indices(self):
-        for index in eddy_index_files:
-            table_name = index["name"]
-            self.logger.info(f"Starting index creation for {table_name}")
-            query = self.parametrize_sql_statements(index)
-            self.execute_write_query(query)
-            self.logger.info(f"Executing {table_name}")
+        self._create_index_group(eddy_index_files)
 
     def list_partitionable_along_track_indices(self) -> list[str]:
         return [
             index["logical_name"]
-            for index in self._partitionable_along_track_index_info()
+            for index in self.partitionable_along_track_index_definitions()
         ]
 
     def list_along_track_partitions(self) -> list[str]:
@@ -302,8 +294,8 @@ class OceanDBInit(BaseWriteQuery):
         start_date: datetime,
         end_date: datetime,
     ) -> dict[str, list[str] | str]:
-        index_info = self._get_partitionable_along_track_index(logical_name)
-        sql_statement = self.load_sql(index_info["filepath"])
+        index_info = self.partitionable_along_track_index_definition(logical_name)
+        sql_statement = self.load_sql_file(index_info["filepath"])
         existing_partitions = set(self.list_along_track_partitions())
 
         created_partitions = []
@@ -343,7 +335,7 @@ class OceanDBInit(BaseWriteQuery):
         }
 
     def _execute_raw_sql_file(self, filepath: str):
-        sql_statement = self.load_sql(filepath)
+        sql_statement = self.load_sql_file(filepath)
         raw_query = cast(sql.Composed, sql.SQL(sql_statement))
         query = RawSpec(raw_query)
         self.execute_write_query(query)
@@ -423,7 +415,9 @@ class OceanDBInit(BaseWriteQuery):
         rows_by_logical_name = []
 
         for current_logical_name in logical_names:
-            index_info = self._get_partitionable_along_track_index(current_logical_name)
+            index_info = self.partitionable_along_track_index_definition(
+                current_logical_name
+            )
             base_index_name = index_info["base_index_name"]
             matching_rows = [
                 row
@@ -499,7 +493,7 @@ class OceanDBInit(BaseWriteQuery):
         table_name = "along_track"
         current = min_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-        sql_statement = self.load_sql(query_filepath)
+        sql_statement = self.load_sql_file(query_filepath)
 
         while current < max_date:
             next_month = (current + relativedelta(months=1)).replace(day=1)
@@ -535,7 +529,7 @@ class OceanDBInit(BaseWriteQuery):
         """
         query_filepath = table["filepath"]
         query_params = table["params"]
-        sql_statement = self.load_sql(query_filepath)
+        sql_statement = self.load_sql_file(query_filepath)
         safe_params = {}
         for key, value in query_params.items():
             if "name" in key:
@@ -547,9 +541,6 @@ class OceanDBInit(BaseWriteQuery):
         # Render query safely
         query = sql.SQL(sql_statement).format(**safe_params)
         return RawSpec(query)
-
-    def load_sql(self, filename: str) -> LiteralString:
-        return self.load_sql_file(filename)
 
     def validate_schema(self):
         """
