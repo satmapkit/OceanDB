@@ -103,25 +103,6 @@ class OceanDBInit(BaseWriteQuery):
     def _along_track_partition_name(self, value: datetime) -> str:
         return f"along_track_{value.year}_{value.month:02d}"
 
-    def _parse_along_track_partition_name(self, partition_name: str) -> datetime:
-        match = re.fullmatch(r"along_track_(\d{4})_(\d{2})", partition_name)
-        if not match:
-            raise ValueError(f"Invalid along-track partition name '{partition_name}'")
-        year = int(match.group(1))
-        month = int(match.group(2))
-        return datetime(year, month, 1)
-
-    def _is_managed_index_name(self, index_name: str) -> bool:
-        managed_names = self.managed_index_names()
-        if index_name in managed_names:
-            return True
-
-        for managed_name in managed_names:
-            if index_name.startswith(f"{managed_name}_"):
-                return True
-
-        return False
-
     def table_exists(self, table: str) -> bool:
         with self.cursor() as cur:
             cur.execute(
@@ -210,29 +191,6 @@ class OceanDBInit(BaseWriteQuery):
     def create_eddy_indices(self):
         self._create_index_group(eddy_index_files)
 
-    def list_partitionable_along_track_indices(self) -> list[str]:
-        return [
-            index["logical_name"]
-            for index in self.partitionable_along_track_index_definitions()
-        ]
-
-    def list_along_track_partitions(self) -> list[str]:
-        engine = self.get_engine()
-
-        with engine.connect() as conn:
-            rows = conn.execute(text("""
-                    SELECT child.relname
-                    FROM pg_inherits
-                    JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
-                    JOIN pg_class child ON pg_inherits.inhrelid = child.oid
-                    JOIN pg_namespace ns ON child.relnamespace = ns.oid
-                    WHERE parent.relname = 'along_track'
-                      AND ns.nspname = 'public'
-                    ORDER BY child.relname
-                """)).fetchall()
-
-        return [row[0] for row in rows]
-
     def create_along_track_index_by_partition(
         self,
         logical_name: str,
@@ -294,129 +252,6 @@ class OceanDBInit(BaseWriteQuery):
         for index in drop_eddy_index_files:
             self._execute_raw_sql_file(index["filepath"])
             self.logger.info(f"Dropping {index['name']}")
-
-    def list_indices(
-        self, schema_name: str = "public", managed_only: bool = True
-    ) -> list[dict[str, str]]:
-        engine = self.get_engine()
-
-        with engine.connect() as conn:
-            rows = conn.execute(
-                text("""
-                    SELECT schemaname, tablename, indexname, indexdef
-                    FROM pg_indexes
-                    WHERE schemaname = :schema
-                    ORDER BY tablename, indexname
-                """),
-                {"schema": schema_name},
-            ).fetchall()
-
-        index_rows = [
-            {
-                "schema_name": row[0],
-                "table_name": row[1],
-                "index_name": row[2],
-                "index_definition": row[3],
-            }
-            for row in rows
-        ]
-
-        if not managed_only:
-            return index_rows
-
-        return [
-            row for row in index_rows if self._is_managed_index_name(row["index_name"])
-        ]
-
-    def show_index_definitions(
-        self, identifier: str | None = None
-    ) -> list[dict[str, str]]:
-        index_rows = self.managed_index_definitions()
-        if identifier is None:
-            return index_rows
-
-        matching_rows = [
-            row
-            for row in index_rows
-            if row["logical_name"] == identifier or row["index_name"] == identifier
-        ]
-        if not matching_rows:
-            raise ValueError(f"Unknown index '{identifier}'")
-        return matching_rows
-
-    def show_partitioned_index_ranges(
-        self, logical_name: str | None = None
-    ) -> list[dict[str, str | int | None]]:
-        logical_names = (
-            [logical_name]
-            if logical_name is not None
-            else self.list_partitionable_along_track_indices()
-        )
-
-        managed_rows = self.list_indices(managed_only=True)
-        rows_by_logical_name = []
-
-        for current_logical_name in logical_names:
-            index_info = self.partitionable_along_track_index_definition(
-                current_logical_name
-            )
-            base_index_name = index_info["base_index_name"]
-            matching_rows = [
-                row
-                for row in managed_rows
-                if row["table_name"].startswith("along_track_")
-                and row["index_name"].startswith(f"{base_index_name}_")
-            ]
-
-            partition_names = sorted(row["table_name"] for row in matching_rows)
-            if not partition_names:
-                rows_by_logical_name.append(
-                    {
-                        "logical_name": current_logical_name,
-                        "base_index_name": base_index_name,
-                        "range_number": 0,
-                        "partition_count": 0,
-                        "start_partition": None,
-                        "end_partition": None,
-                    }
-                )
-                continue
-
-            current_range = [partition_names[0]]
-            current_previous_date = self._parse_along_track_partition_name(
-                partition_names[0]
-            )
-
-            ranges = []
-            for partition_name in partition_names[1:]:
-                current_date = self._parse_along_track_partition_name(partition_name)
-                next_expected_date = (
-                    current_previous_date + relativedelta(months=1)
-                ).replace(day=1)
-
-                if current_date == next_expected_date:
-                    current_range.append(partition_name)
-                else:
-                    ranges.append(current_range)
-                    current_range = [partition_name]
-
-                current_previous_date = current_date
-
-            ranges.append(current_range)
-
-            for range_number, partition_range in enumerate(ranges, start=1):
-                rows_by_logical_name.append(
-                    {
-                        "logical_name": current_logical_name,
-                        "base_index_name": base_index_name,
-                        "range_number": range_number,
-                        "partition_count": len(partition_range),
-                        "start_partition": partition_range[0],
-                        "end_partition": partition_range[-1],
-                    }
-                )
-
-        return rows_by_logical_name
 
     def create_partitions(self, min_date, max_date):
         """
