@@ -39,7 +39,7 @@ class FailingAlongTrackETL:
 
 
 class FakeInitReturningIndices:
-    def list_defined_indices(self):
+    def managed_index_definitions(self):
         return [
             {
                 "logical_name": "along_track_index_time",
@@ -66,7 +66,7 @@ class FakeInitReturningIndices:
 
 
 class FakeInitReturningNoIndices:
-    def list_defined_indices(self):
+    def managed_index_definitions(self):
         return []
 
     def list_indices(self, managed_only=True):
@@ -75,7 +75,7 @@ class FakeInitReturningNoIndices:
 
 
 class FailingInit:
-    def list_defined_indices(self):
+    def managed_index_definitions(self):
         return []
 
     def list_indices(self, managed_only=True):
@@ -83,7 +83,7 @@ class FailingInit:
 
 
 class FakeInitReturningAllIndices:
-    def list_defined_indices(self):
+    def managed_index_definitions(self):
         return [
             {
                 "logical_name": "along_track_index_time",
@@ -126,7 +126,7 @@ class FakeInitReturningAllIndices:
 
 
 class FakeInitReturningDefinedButNoBuiltIndices:
-    def list_defined_indices(self):
+    def managed_index_definitions(self):
         return [
             {
                 "logical_name": "along_track_index_time",

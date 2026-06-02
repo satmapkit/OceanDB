@@ -383,13 +383,10 @@ class OceanDBInit(BaseWriteQuery):
             row for row in index_rows if self._is_managed_index_name(row["index_name"])
         ]
 
-    def list_defined_indices(self) -> list[dict[str, str]]:
-        return self.managed_index_definitions()
-
     def show_index_definitions(
         self, identifier: str | None = None
     ) -> list[dict[str, str]]:
-        index_rows = self.list_defined_indices()
+        index_rows = self.managed_index_definitions()
         if identifier is None:
             return index_rows
 

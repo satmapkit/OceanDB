@@ -47,7 +47,7 @@ def _drop_all_indices() -> None:
 def _render_index_list() -> None:
     ocean_db_init = OceanDBInit()
     try:
-        defined_index_rows = ocean_db_init.list_defined_indices()
+        defined_index_rows = ocean_db_init.managed_index_definitions()
         built_index_rows = ocean_db_init.list_indices(managed_only=True)
     except pg.OperationalError as e:
         raise click.ClickException(f"Unable to access database: {e}") from e
