@@ -79,6 +79,62 @@ eddy_index_files = [
     },
 ]
 
+drop_index_files = [
+    {
+        "name": "along_track_index_basin",
+        "filepath": "drop/drop_along_track_index_basin.sql",
+    },
+    {
+        "name": "along_track_index_date",
+        "filepath": "drop/drop_along_track_index_date.sql",
+    },
+    {
+        "name": "along_track_index_filename",
+        "filepath": "drop/drop_along_track_index_filename.sql",
+    },
+    {
+        "name": "along_track_index_mission",
+        "filepath": "drop/drop_along_track_index_mission.sql",
+    },
+    {
+        "name": "along_track_index_point",
+        "filepath": "drop/drop_along_track_index_point.sql",
+    },
+    {
+        "name": "along_track_index_point_date",
+        "filepath": "drop/drop_along_track_index_point_date.sql",
+    },
+    {
+        "name": "along_track_index_point_date_mission",
+        "filepath": "drop/drop_along_track_index_point_date_mission.sql",
+    },
+    {
+        "name": "along_track_index_point_date_mission_basin",
+        "filepath": "drop/drop_along_track_index_point_date_mission_basin.sql",
+    },
+    {
+        "name": "along_track_index_point_geom",
+        "filepath": "drop/drop_along_track_index_point_geom.sql",
+    },
+    {
+        "name": "along_track_index_time",
+        "filepath": "drop/drop_along_track_index_time.sql",
+    },
+    {
+        "name": "basin_connection_index_basin_id",
+        "filepath": "drop/drop_basin_connection_index_basin_id.sql",
+    },
+    {"name": "basin_index_geom", "filepath": "drop/drop_basin_index_geom.sql"},
+]
+
+drop_eddy_index_files = [
+    {"name": "eddy_index_point", "filepath": "drop/drop_eddy_index_point.sql"},
+    {
+        "name": "eddy_index_track_cyclonic_type",
+        "filepath": "drop/drop_eddy_index_track_cyclonic_type.sql",
+    },
+]
+
 DEFAULT_INDEX_LOGICAL_NAMES = {
     "eddy_index_track_cyclonic_type",
     "along_track_index_point_date",
