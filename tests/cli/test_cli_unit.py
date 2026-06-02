@@ -41,17 +41,19 @@ class FailingAlongTrackETL:
 
 class FakeInitReturningIndices:
     @cached_property
-    def managed_index_definitions(self):
-        return [
-            {
-                "logical_name": "along_track_index_time",
-                "table_name": "along_track",
-                "index_name": "along_track_time_idx",
-                "index_definition": (
-                    "CREATE INDEX along_track_time_idx ON public.along_track USING btree (date_time)"
-                ),
-            }
-        ]
+    def managed_indices(self):
+        return SimpleNamespace(
+            definitions=[
+                {
+                    "logical_name": "along_track_index_time",
+                    "table_name": "along_track",
+                    "index_name": "along_track_time_idx",
+                    "index_definition": (
+                        "CREATE INDEX along_track_time_idx ON public.along_track USING btree (date_time)"
+                    ),
+                }
+            ]
+        )
 
     def list_indices(self, managed_only=True):
         assert managed_only is True
@@ -69,8 +71,8 @@ class FakeInitReturningIndices:
 
 class FakeInitReturningNoIndices:
     @cached_property
-    def managed_index_definitions(self):
-        return []
+    def managed_indices(self):
+        return SimpleNamespace(definitions=[])
 
     def list_indices(self, managed_only=True):
         assert managed_only is True
@@ -79,8 +81,8 @@ class FakeInitReturningNoIndices:
 
 class FailingInit:
     @cached_property
-    def managed_index_definitions(self):
-        return []
+    def managed_indices(self):
+        return SimpleNamespace(definitions=[])
 
     def list_indices(self, managed_only=True):
         raise pg.OperationalError("connection refused")
@@ -88,25 +90,27 @@ class FailingInit:
 
 class FakeInitReturningAllIndices:
     @cached_property
-    def managed_index_definitions(self):
-        return [
-            {
-                "logical_name": "along_track_index_time",
-                "table_name": "along_track",
-                "index_name": "along_track_time_idx",
-                "index_definition": (
-                    "CREATE INDEX along_track_time_idx ON public.along_track USING btree (date_time)"
-                ),
-            },
-            {
-                "logical_name": "eddy_index_point",
-                "table_name": "eddy",
-                "index_name": "eddy_point_idx",
-                "index_definition": (
-                    "CREATE INDEX eddy_point_idx ON public.eddy USING gist (point)"
-                ),
-            },
-        ]
+    def managed_indices(self):
+        return SimpleNamespace(
+            definitions=[
+                {
+                    "logical_name": "along_track_index_time",
+                    "table_name": "along_track",
+                    "index_name": "along_track_time_idx",
+                    "index_definition": (
+                        "CREATE INDEX along_track_time_idx ON public.along_track USING btree (date_time)"
+                    ),
+                },
+                {
+                    "logical_name": "eddy_index_point",
+                    "table_name": "eddy",
+                    "index_name": "eddy_point_idx",
+                    "index_definition": (
+                        "CREATE INDEX eddy_point_idx ON public.eddy USING gist (point)"
+                    ),
+                },
+            ]
+        )
 
     def list_indices(self, managed_only=True):
         assert managed_only is True
@@ -132,17 +136,19 @@ class FakeInitReturningAllIndices:
 
 class FakeInitReturningDefinedButNoBuiltIndices:
     @cached_property
-    def managed_index_definitions(self):
-        return [
-            {
-                "logical_name": "along_track_index_time",
-                "table_name": "along_track",
-                "index_name": "along_track_time_idx",
-                "index_definition": (
-                    "CREATE INDEX along_track_time_idx ON public.along_track USING btree (date_time)"
-                ),
-            }
-        ]
+    def managed_indices(self):
+        return SimpleNamespace(
+            definitions=[
+                {
+                    "logical_name": "along_track_index_time",
+                    "table_name": "along_track",
+                    "index_name": "along_track_time_idx",
+                    "index_definition": (
+                        "CREATE INDEX along_track_time_idx ON public.along_track USING btree (date_time)"
+                    ),
+                }
+            ]
+        )
 
     def list_indices(self, managed_only=True):
         assert managed_only is True

@@ -6,6 +6,7 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy import text
 
 from OceanDB.OceanDB import OceanDB
+from OceanDB.resource_loader import ResourceLoader
 
 along_track_index_files = [
     {
@@ -169,39 +170,69 @@ def normalize_sql(sql_statement: str) -> str:
     return " ".join(sql_statement.split())
 
 
-def load_index_metadata(oceandb: OceanDB, index: dict[str, str]) -> dict[str, str]:
-    sql_statement = oceandb.load_sql_file(index["filepath"])
-    match = INDEX_SQL_PATTERN.search(sql_statement)
-    if not match:
-        raise ValueError(f"Unable to parse index SQL for '{index['name']}'")
+class ManagedIndices(ResourceLoader):
+    """
+    Helper for loading and describing OceanDB-managed index definitions.
+    """
 
-    return {
-        **index,
-        "index_name": match.group("index_name").replace("public.", ""),
-        "table_name": match.group("table_name").replace("public.", ""),
-    }
+    @property
+    def along_track_index_files(self) -> list[dict[str, str | dict[str, str]]]:
+        return along_track_index_files
 
+    @property
+    def basin_index_files(self) -> list[dict[str, str | dict[str, str]]]:
+        return basin_index_files
 
-class ManagedIndexOceanDB(OceanDB):
+    @property
+    def eddy_index_files(self) -> list[dict[str, str | dict[str, str]]]:
+        return eddy_index_files
+
+    @property
+    def sql_index_files(self) -> list[dict[str, str | dict[str, str]]]:
+        return sql_index_files
+
+    @property
+    def drop_index_files(self) -> list[dict[str, str]]:
+        return drop_index_files
+
+    @property
+    def drop_eddy_index_files(self) -> list[dict[str, str]]:
+        return drop_eddy_index_files
+
+    def all_index_files(self) -> list[dict[str, str | dict[str, str]]]:
+        return self.sql_index_files + self.eddy_index_files
+
     def default_index_files(self) -> list[dict[str, str | dict[str, str]]]:
         return [
             index
-            for index in sql_index_files + eddy_index_files
+            for index in self.all_index_files()
             if index["name"] in DEFAULT_INDEX_LOGICAL_NAMES
         ]
 
     def default_index_definitions(self) -> list[dict[str, str]]:
         return [
             index
-            for index in self.managed_index_definitions
+            for index in self.definitions
             if index["logical_name"] in DEFAULT_INDEX_LOGICAL_NAMES
         ]
 
+    def load_index_metadata(self, index: dict[str, str]) -> dict[str, str]:
+        sql_statement = self.load_sql_file(index["filepath"])
+        match = INDEX_SQL_PATTERN.search(sql_statement)
+        if not match:
+            raise ValueError(f"Unable to parse index SQL for '{index['name']}'")
+
+        return {
+            **index,
+            "index_name": match.group("index_name").replace("public.", ""),
+            "table_name": match.group("table_name").replace("public.", ""),
+        }
+
     @cached_property
-    def managed_index_definitions(self) -> list[dict[str, str]]:
+    def definitions(self) -> list[dict[str, str]]:
         defined_rows = []
-        for index in sql_index_files + eddy_index_files:
-            metadata = load_index_metadata(self, index)
+        for index in self.all_index_files():
+            metadata = self.load_index_metadata(index)
             raw_sql = self.load_sql_file(index["filepath"]).strip()
             defined_rows.append(
                 {
@@ -222,7 +253,7 @@ class ManagedIndexOceanDB(OceanDB):
     def partitionable_along_track_index_definitions(self) -> list[dict[str, str]]:
         partitionable_indices = []
 
-        for index in self.managed_index_definitions:
+        for index in self.definitions:
             if not index["filepath"].startswith("indices/along_track/"):
                 continue
 
@@ -251,7 +282,7 @@ class ManagedIndexOceanDB(OceanDB):
             if index["logical_name"] == logical_name:
                 return index
 
-        if any(index["name"] == logical_name for index in sql_index_files):
+        if any(index["name"] == logical_name for index in self.sql_index_files):
             raise ValueError(
                 f"Index '{logical_name}' is not available for partitioned creation"
             )
@@ -260,7 +291,19 @@ class ManagedIndexOceanDB(OceanDB):
 
     @cached_property
     def managed_index_names(self) -> set[str]:
-        return {index["index_name"] for index in self.managed_index_definitions}
+        return {index["index_name"] for index in self.definitions}
+
+    def list_partitionable_along_track_indices(self) -> list[str]:
+        return [
+            index["logical_name"]
+            for index in self.partitionable_along_track_index_definitions()
+        ]
+
+
+class ManagedIndexOceanDB(OceanDB):
+    def __init__(self, config=None, managed_indices: ManagedIndices | None = None):
+        super().__init__(config=config)
+        self.managed_indices = managed_indices or ManagedIndices()
 
     @cached_property
     def partition_index_name_map(self) -> dict[str, str]:
@@ -283,14 +326,8 @@ class ManagedIndexOceanDB(OceanDB):
         return {
             child_index_name: parent_index_name
             for child_index_name, parent_index_name in rows
-            if parent_index_name in self.managed_index_names
+            if parent_index_name in self.managed_indices.managed_index_names
         }
-
-    def list_partitionable_along_track_indices(self) -> list[str]:
-        return [
-            index["logical_name"]
-            for index in self.partitionable_along_track_index_definitions()
-        ]
 
     def list_along_track_partitions(self) -> list[str]:
         engine = self.get_engine()
@@ -310,7 +347,7 @@ class ManagedIndexOceanDB(OceanDB):
         return [row[0] for row in rows]
 
     def _is_managed_index_name(self, index_name: str) -> bool:
-        managed_names = self.managed_index_names
+        managed_names = self.managed_indices.managed_index_names
         if index_name in managed_names:
             return True
 
@@ -356,7 +393,7 @@ class ManagedIndexOceanDB(OceanDB):
     def show_index_definitions(
         self, identifier: str | None = None
     ) -> list[dict[str, str]]:
-        index_rows = self.managed_index_definitions
+        index_rows = self.managed_indices.definitions
         if identifier is None:
             return index_rows
 
@@ -383,15 +420,17 @@ class ManagedIndexOceanDB(OceanDB):
         logical_names = (
             [logical_name]
             if logical_name is not None
-            else self.list_partitionable_along_track_indices()
+            else self.managed_indices.list_partitionable_along_track_indices()
         )
 
         managed_rows = self.list_indices(managed_only=True)
         rows_by_logical_name = []
 
         for current_logical_name in logical_names:
-            index_info = self.partitionable_along_track_index_definition(
-                current_logical_name
+            index_info = (
+                self.managed_indices.partitionable_along_track_index_definition(
+                    current_logical_name
+                )
             )
             base_index_name = index_info["base_index_name"]
             matching_rows = [

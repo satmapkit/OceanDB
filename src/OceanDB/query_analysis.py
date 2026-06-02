@@ -124,7 +124,7 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
         ]
 
     def default_indices(self):
-        return tuple(self.managed_index_definitions)
+        return tuple(self.managed_indices.definitions)
 
     def analyze_queries(self) -> list[QueryAnalysisRow]:
         return [self.analyze_statement(scenario) for scenario in self.scenarios]

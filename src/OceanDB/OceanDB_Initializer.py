@@ -1,4 +1,3 @@
-import re
 from datetime import datetime
 from typing import LiteralString, Mapping, Sequence, cast
 
@@ -7,10 +6,7 @@ from psycopg import sql
 from sqlalchemy import text
 
 from OceanDB.base_write_query import BaseWriteQuery
-from OceanDB.managed_index_oceandb import (
-    PARTITIONED_ALONG_TRACK_INDEX_PATTERN, along_track_index_files,
-    basin_index_files, drop_eddy_index_files, drop_index_files,
-    eddy_index_files)
+from OceanDB.managed_index_oceandb import PARTITIONED_ALONG_TRACK_INDEX_PATTERN
 from OceanDB.query_spec import RawSpec
 
 table_definitions = [
@@ -182,14 +178,14 @@ class OceanDBInit(BaseWriteQuery):
             self.logger.info(f"Executing {table_name}")
 
     def create_indices(self):
-        self._create_index_group(along_track_index_files)
-        self._create_index_group(basin_index_files)
+        self._create_index_group(self.managed_indices.along_track_index_files)
+        self._create_index_group(self.managed_indices.basin_index_files)
 
     def create_default_indices(self):
-        self._create_index_group(self.default_index_files())
+        self._create_index_group(self.managed_indices.default_index_files())
 
     def create_eddy_indices(self):
-        self._create_index_group(eddy_index_files)
+        self._create_index_group(self.managed_indices.eddy_index_files)
 
     def create_along_track_index_by_partition(
         self,
@@ -197,7 +193,9 @@ class OceanDBInit(BaseWriteQuery):
         start_date: datetime,
         end_date: datetime,
     ) -> dict[str, list[str] | str]:
-        index_info = self.partitionable_along_track_index_definition(logical_name)
+        index_info = self.managed_indices.partitionable_along_track_index_definition(
+            logical_name
+        )
         sql_statement = self.load_sql_file(index_info["filepath"])
         existing_partitions = set(self.list_along_track_partitions())
 
@@ -244,12 +242,12 @@ class OceanDBInit(BaseWriteQuery):
         self.execute_write_query(query)
 
     def drop_indices(self):
-        for index in drop_index_files:
+        for index in self.managed_indices.drop_index_files:
             self._execute_raw_sql_file(index["filepath"])
             self.logger.info(f"Dropping {index['name']}")
 
     def drop_eddy_indices(self):
-        for index in drop_eddy_index_files:
+        for index in self.managed_indices.drop_eddy_index_files:
             self._execute_raw_sql_file(index["filepath"])
             self.logger.info(f"Dropping {index['name']}")
 

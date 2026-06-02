@@ -1,7 +1,5 @@
 import time
 from contextlib import contextmanager
-from importlib import resources
-from typing import IO, Literal, LiteralString
 
 import psycopg as pg
 from psycopg import sql
@@ -11,10 +9,11 @@ from psycopg.types.shapely import register_shapely
 from sqlalchemy import create_engine
 
 from OceanDB.config import Config
+from OceanDB.resource_loader import ResourceLoader
 from OceanDB.utils.logging import get_logger
 
 
-class OceanDB:
+class OceanDB(ResourceLoader):
     """
     Base class for all classes that interface with the Postgres database
 
@@ -79,36 +78,6 @@ class OceanDB:
             else:
                 if commit:
                     conn.commit()
-
-    def load_module_file(
-        self,
-        module: str,
-        filename: str,
-        encoding="utf-8",
-        mode: Literal["r", "rb"] = "rb",
-    ) -> IO:
-        """
-        Open a resource file bundled within a Python package.
-
-        Handles both text ('r') and binary ('rb') modes safely.
-        Automatically omits encoding when opening in binary mode.
-        """
-        file_path = resources.files(module).joinpath(filename)
-
-        # encoding is only valid for text mode
-        if mode == "rb":
-            return file_path.open(mode)
-        return file_path.open(mode, encoding=encoding)
-
-    def load_sql_file(self, filename: str) -> LiteralString:
-        """
-        Load the contents of a SQL file
-        """
-        with self.load_module_file(
-            module="OceanDB.sql", filename=filename, mode="r", encoding="utf-8"
-        ) as f:
-            query = f.read()
-            return query
 
     def get_engine(self, echo: bool = False):
         """Return a SQLAlchemy engine connected to the OceanDB Postgres database."""

@@ -6,7 +6,7 @@ from pathlib import Path
 import click
 
 from OceanDB.cli_utils import format_key_value, format_status_line
-from OceanDB.managed_index_oceandb import ManagedIndexOceanDB
+from OceanDB.managed_index_oceandb import ManagedIndexOceanDB, ManagedIndices
 from OceanDB.utils.logging import get_logger
 
 logger = get_logger()
@@ -51,6 +51,10 @@ def create_managed_index_oceandb():
     return ManagedIndexOceanDB()
 
 
+def create_managed_indices():
+    return ManagedIndices()
+
+
 def render_ingest_mode(mode: str) -> str:
     return format_status_line(
         "MODE",
@@ -62,15 +66,12 @@ def render_ingest_mode(mode: str) -> str:
 def partitioned_index_choices() -> list[str]:
     return [
         index["logical_name"]
-        for index in create_managed_index_oceandb().partitionable_along_track_index_definitions()
+        for index in create_managed_indices().partitionable_along_track_index_definitions()
     ]
 
 
 def defined_index_choices() -> list[str]:
-    return [
-        index["logical_name"]
-        for index in create_managed_index_oceandb().managed_index_definitions()
-    ]
+    return [index["logical_name"] for index in create_managed_indices().definitions]
 
 
 def to_naive(dt: datetime | None) -> datetime | None:
