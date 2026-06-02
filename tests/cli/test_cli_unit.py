@@ -659,7 +659,10 @@ def test_index_list_command_with_no_indices(monkeypatch):
     result = runner.invoke(cli_module.cli, ["index", "list"])
 
     assert result.exit_code == 0
-    assert "No managed index definitions or built managed indexes are currently available" in result.output
+    assert (
+        "No managed index definitions or built managed indexes are currently available"
+        in result.output
+    )
 
 
 def test_index_list_command_with_database_error(monkeypatch):

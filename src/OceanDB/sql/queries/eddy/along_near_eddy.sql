@@ -7,6 +7,6 @@ INNER JOIN along_track atk
         eddy.eddy_point,
         (CAST(eddy.speed_radius AS double precision) * %(speed_radius_scale_factor)s * 2.0)
    )
-WHERE eddy.track * eddy.cyclonic_type = %(track_id)s
+WHERE eddy.track = %(track)s AND eddy.cyclonic_type = %(cyclonic_type)s
   AND atk.date_time BETWEEN %(min_date)s AND %(max_date)s
   AND atk.basin_id = ANY(%(basin_ids)s::int[]);

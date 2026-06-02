@@ -8,15 +8,10 @@ from typing import Literal
 import click
 
 from OceanDB.cli_utils import format_status_line
-from OceanDB.commands.shared import (
-    AVISO_EDDY_FILENAMES,
-    create_along_track_etl,
-    create_eddy_etl,
-    format_duration,
-    get_netcdf4_files,
-    render_ingest_mode,
-    timestamp_now,
-)
+from OceanDB.commands.shared import (AVISO_EDDY_FILENAMES,
+                                     create_along_track_etl, create_eddy_etl,
+                                     format_duration, get_netcdf4_files,
+                                     render_ingest_mode, timestamp_now)
 
 
 @click.command("ingest-eddy")
@@ -154,7 +149,9 @@ def ingest_along_track(missions, start_date, end_date, workers, debug):
     metadata_filenames = oceandb_etl.query_metadata()
 
     start_ingest_time = time.perf_counter()
-    along_track_files = [file for file in nc_files if file.name not in metadata_filenames]
+    along_track_files = [
+        file for file in nc_files if file.name not in metadata_filenames
+    ]
 
     if not along_track_files:
         click.echo(
@@ -221,7 +218,9 @@ def ingest_along_track(missions, start_date, end_date, workers, debug):
                 try:
                     result = results.next(timeout=heartbeat_seconds)
                 except TimeoutError:
-                    active_workers = min(process_count, total_new_files - completed_new_files)
+                    active_workers = min(
+                        process_count, total_new_files - completed_new_files
+                    )
                     click.echo(
                         format_status_line(
                             "WAIT",

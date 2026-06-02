@@ -40,7 +40,7 @@ def analyze_queries():
     summary_headers = [
         ("Query", "scenario_name"),
         ("Total Cost", "total_cost"),
-        ("Total Time (s)", "total_time"),
+        ("Total Time (ms)", "total_time"),
     ]
     summary_rows = [
         {
@@ -82,7 +82,9 @@ def analyze_queries():
             return style_value(value, fg="green", bold=True)
         return style_value(value, fg="white")
 
-    for line in render_table(headers, formatted_rows, cell_styler=_analysis_cell_styler):
+    for line in render_table(
+        headers, formatted_rows, cell_styler=_analysis_cell_styler
+    ):
         click.echo(line)
 
     click.echo(

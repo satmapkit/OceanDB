@@ -5,8 +5,8 @@ from pathlib import Path
 
 import click
 
-from OceanDB.OceanDB_Initializer import eddy_index_files, sql_index_files
 from OceanDB.cli_utils import format_key_value, format_status_line
+from OceanDB.OceanDB_Initializer import eddy_index_files, sql_index_files
 from OceanDB.utils.logging import get_logger
 
 logger = get_logger()
@@ -147,9 +147,7 @@ def get_netcdf4_files(
 
         for structure in [file_structure, second_file_structure]:
             ingest_directory = (
-                Path(oceandb_etl.config.along_track_data_directory)
-                / prefix
-                / structure
+                Path(oceandb_etl.config.along_track_data_directory) / prefix / structure
             )
 
             if not ingest_directory.exists():
