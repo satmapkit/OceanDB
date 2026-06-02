@@ -8,8 +8,9 @@ from sqlalchemy import text
 
 from OceanDB.base_write_query import BaseWriteQuery
 from OceanDB.managed_index_oceandb import (
-    PARTITIONED_ALONG_TRACK_INDEX_PATTERN, drop_eddy_index_files,
-    drop_index_files, eddy_index_files, sql_index_files)
+    PARTITIONED_ALONG_TRACK_INDEX_PATTERN, along_track_index_files,
+    basin_index_files, drop_eddy_index_files, drop_index_files,
+    eddy_index_files)
 from OceanDB.query_spec import RawSpec
 
 table_definitions = [
@@ -200,7 +201,8 @@ class OceanDBInit(BaseWriteQuery):
             self.logger.info(f"Executing {table_name}")
 
     def create_indices(self):
-        self._create_index_group(sql_index_files)
+        self._create_index_group(along_track_index_files)
+        self._create_index_group(basin_index_files)
 
     def create_default_indices(self):
         self._create_index_group(self.default_index_files())

@@ -3,7 +3,7 @@ from functools import cached_property
 
 from OceanDB.OceanDB import OceanDB
 
-sql_index_files = [
+along_track_index_files = [
     {
         "name": "along_track_index_basin",
         "filepath": "indices/along_track/create_along_track_index_basin.sql",
@@ -54,6 +54,9 @@ sql_index_files = [
         "filepath": "indices/along_track/create_along_track_index_time.sql",
         "params": {"index_name": "along_track_index_time"},
     },
+]
+
+basin_index_files = [
     {
         "name": "basin_connection_index_basin_id",
         "filepath": "indices/basin/create_basin_connection_index_basin_id.sql",
@@ -65,6 +68,8 @@ sql_index_files = [
         "params": {"index_name": "basin_index_geom"},
     },
 ]
+
+sql_index_files = along_track_index_files + basin_index_files
 
 eddy_index_files = [
     {
