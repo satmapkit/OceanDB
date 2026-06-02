@@ -1,8 +1,9 @@
 import re
-from functools import cached_property
-from sqlalchemy import text
 from datetime import datetime
+from functools import cached_property
+
 from dateutil.relativedelta import relativedelta
+from sqlalchemy import text
 
 from OceanDB.OceanDB import OceanDB
 
@@ -192,10 +193,11 @@ class ManagedIndexOceanDB(OceanDB):
     def default_index_definitions(self) -> list[dict[str, str]]:
         return [
             index
-            for index in self.managed_index_definitions()
+            for index in self.managed_index_definitions
             if index["logical_name"] in DEFAULT_INDEX_LOGICAL_NAMES
         ]
 
+    @cached_property
     def managed_index_definitions(self) -> list[dict[str, str]]:
         defined_rows = []
         for index in sql_index_files + eddy_index_files:
@@ -220,7 +222,7 @@ class ManagedIndexOceanDB(OceanDB):
     def partitionable_along_track_index_definitions(self) -> list[dict[str, str]]:
         partitionable_indices = []
 
-        for index in self.managed_index_definitions():
+        for index in self.managed_index_definitions:
             if not index["filepath"].startswith("indices/along_track/"):
                 continue
 
@@ -256,8 +258,9 @@ class ManagedIndexOceanDB(OceanDB):
 
         raise ValueError(f"Unknown index '{logical_name}'")
 
+    @cached_property
     def managed_index_names(self) -> set[str]:
-        return {index["index_name"] for index in self.managed_index_definitions()}
+        return {index["index_name"] for index in self.managed_index_definitions}
 
     @cached_property
     def partition_index_name_map(self) -> dict[str, str]:
@@ -280,7 +283,7 @@ class ManagedIndexOceanDB(OceanDB):
         return {
             child_index_name: parent_index_name
             for child_index_name, parent_index_name in rows
-            if parent_index_name in self.managed_index_names()
+            if parent_index_name in self.managed_index_names
         }
 
     def list_partitionable_along_track_indices(self) -> list[str]:
@@ -307,7 +310,7 @@ class ManagedIndexOceanDB(OceanDB):
         return [row[0] for row in rows]
 
     def _is_managed_index_name(self, index_name: str) -> bool:
-        managed_names = self.managed_index_names()
+        managed_names = self.managed_index_names
         if index_name in managed_names:
             return True
 
@@ -316,7 +319,6 @@ class ManagedIndexOceanDB(OceanDB):
                 return True
 
         return False
-
 
     def list_indices(
         self, schema_name: str = "public", managed_only: bool = True
@@ -354,7 +356,7 @@ class ManagedIndexOceanDB(OceanDB):
     def show_index_definitions(
         self, identifier: str | None = None
     ) -> list[dict[str, str]]:
-        index_rows = self.managed_index_definitions()
+        index_rows = self.managed_index_definitions
         if identifier is None:
             return index_rows
 
@@ -374,7 +376,6 @@ class ManagedIndexOceanDB(OceanDB):
         year = int(match.group(1))
         month = int(match.group(2))
         return datetime(year, month, 1)
-
 
     def show_partitioned_index_ranges(
         self, logical_name: str | None = None

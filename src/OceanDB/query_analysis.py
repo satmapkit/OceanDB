@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from functools import cached_property
 from typing import Any, Iterable, Iterator, Mapping
 
 import yaml
@@ -125,7 +124,7 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
         ]
 
     def default_indices(self):
-        return tuple(self.managed_index_definitions())
+        return tuple(self.managed_index_definitions)
 
     def analyze_queries(self) -> list[QueryAnalysisRow]:
         return [self.analyze_statement(scenario) for scenario in self.scenarios]

@@ -1,4 +1,5 @@
 from datetime import datetime
+from functools import cached_property
 from types import SimpleNamespace
 
 import psycopg as pg
@@ -39,6 +40,7 @@ class FailingAlongTrackETL:
 
 
 class FakeInitReturningIndices:
+    @cached_property
     def managed_index_definitions(self):
         return [
             {
@@ -66,6 +68,7 @@ class FakeInitReturningIndices:
 
 
 class FakeInitReturningNoIndices:
+    @cached_property
     def managed_index_definitions(self):
         return []
 
@@ -75,6 +78,7 @@ class FakeInitReturningNoIndices:
 
 
 class FailingInit:
+    @cached_property
     def managed_index_definitions(self):
         return []
 
@@ -83,6 +87,7 @@ class FailingInit:
 
 
 class FakeInitReturningAllIndices:
+    @cached_property
     def managed_index_definitions(self):
         return [
             {
@@ -126,6 +131,7 @@ class FakeInitReturningAllIndices:
 
 
 class FakeInitReturningDefinedButNoBuiltIndices:
+    @cached_property
     def managed_index_definitions(self):
         return [
             {
