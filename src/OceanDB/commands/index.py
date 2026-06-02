@@ -149,65 +149,6 @@ def _render_index_list() -> None:
         )
 
 
-def _render_partitioned_index_ranges(index_name: str | None = None) -> None:
-    try:
-        ocean_db_init = OceanDBInit()
-        range_rows = ocean_db_init.show_partitioned_index_ranges(
-            logical_name=index_name
-        )
-    except pg.OperationalError as e:
-        raise click.ClickException(f"Unable to access database: {e}") from e
-    except ValueError as e:
-        raise click.UsageError(str(e)) from e
-
-    if not range_rows:
-        click.echo(
-            format_status_line(
-                "EMPTY",
-                "No partitioned managed indices are currently present.",
-                label_color="yellow",
-            )
-        )
-        return
-
-    formatted_rows = [
-        {
-            "logical_name": str(row["logical_name"]),
-            "range_number": str(row["range_number"]),
-            "partition_count": str(row["partition_count"]),
-            "start_partition": str(row["start_partition"] or "-"),
-            "end_partition": str(row["end_partition"] or "-"),
-        }
-        for row in range_rows
-    ]
-
-    click.echo(
-        format_status_line(
-            "RANGES",
-            f"{len(formatted_rows)} partitioned index range(s) found.",
-            label_color="magenta",
-        )
-    )
-    for line in render_table(
-        [
-            ("Index", "logical_name"),
-            ("Range", "range_number"),
-            ("Partitions", "partition_count"),
-            ("Start", "start_partition"),
-            ("End", "end_partition"),
-        ],
-        formatted_rows,
-        cell_styler=lambda column, value: (
-            style_value(value, fg="cyan", bold=True)
-            if column == "logical_name"
-            else style_value(
-                value, fg="green" if column == "partition_count" else "white"
-            )
-        ),
-    ):
-        click.echo(line)
-
-
 def _render_index_summary(index_name: str | None = None) -> None:
     try:
         ocean_db_init = OceanDBInit()
