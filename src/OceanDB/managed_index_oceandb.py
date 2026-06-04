@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from functools import cached_property
+from functools import cache, cached_property
 
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import text
@@ -23,7 +23,7 @@ class DropIndexFile:
     filepath: str
 
 
-along_track_index_files: list[IndexFile] = [
+ALONG_TRACK_INDEX_FILES: list[IndexFile] = [
     IndexFile(
         name="along_track_index_basin",
         filepath="indices/along_track/create_along_track_index_basin.sql",
@@ -76,7 +76,7 @@ along_track_index_files: list[IndexFile] = [
     ),
 ]
 
-basin_index_files: list[IndexFile] = [
+BASIN_INDEX_FILES: list[IndexFile] = [
     IndexFile(
         name="basin_connection_index_basin_id",
         filepath="indices/basin/create_basin_connection_index_basin_id.sql",
@@ -89,9 +89,9 @@ basin_index_files: list[IndexFile] = [
     ),
 ]
 
-sql_index_files: list[IndexFile] = along_track_index_files + basin_index_files
+SQL_INDEX_FILES: list[IndexFile] = ALONG_TRACK_INDEX_FILES + BASIN_INDEX_FILES
 
-eddy_index_files: list[IndexFile] = [
+EDDY_INDEX_FILES: list[IndexFile] = [
     IndexFile(
         name="eddy_index_point",
         filepath="indices/eddy/create_eddy_index_point.sql",
@@ -104,7 +104,7 @@ eddy_index_files: list[IndexFile] = [
     ),
 ]
 
-drop_index_files: list[DropIndexFile] = [
+DROP_INDEX_FILES: list[DropIndexFile] = [
     DropIndexFile(
         name="along_track_index_basin",
         filepath="drop/drop_along_track_index_basin.sql",
@@ -155,7 +155,7 @@ drop_index_files: list[DropIndexFile] = [
     ),
 ]
 
-drop_eddy_index_files: list[DropIndexFile] = [
+DROP_EDDY_INDEX_FILES: list[DropIndexFile] = [
     DropIndexFile(
         name="eddy_index_point",
         filepath="drop/drop_eddy_index_point.sql",
@@ -196,45 +196,43 @@ class ManagedIndices(ResourceLoader):
     Helper for loading and describing OceanDB-managed index definitions.
     """
 
-    @property
-    def along_track_index_files(self) -> list[IndexFile]:
-        return along_track_index_files
-
-    @property
-    def basin_index_files(self) -> list[IndexFile]:
-        return basin_index_files
-
-    @property
-    def eddy_index_files(self) -> list[IndexFile]:
-        return eddy_index_files
-
-    @property
-    def sql_index_files(self) -> list[IndexFile]:
-        return sql_index_files
-
-    @property
-    def drop_index_files(self) -> list[DropIndexFile]:
-        return drop_index_files
-
-    @property
-    def drop_eddy_index_files(self) -> list[DropIndexFile]:
-        return drop_eddy_index_files
+    def __init__(
+        self,
+        along_track_index_files: list[IndexFile] | None = None,
+        basin_index_files: list[IndexFile] | None = None,
+        eddy_index_files: list[IndexFile] | None = None,
+        sql_index_files: list[IndexFile] | None = None,
+        drop_index_files: list[IndexFile] | None = None,
+        drop_eddy_index_files: list[IndexFile] | None = None,
+        default_indices: list[str] | None = None,
+    ):
+        self.along_track_index_files = (
+            along_track_index_files or ALONG_TRACK_INDEX_FILES
+        )
+        self.basin_index_files = basin_index_files or BASIN_INDEX_FILES
+        self.eddy_index_files = eddy_index_files or EDDY_INDEX_FILES
+        self.sql_index_files = sql_index_files or SQL_INDEX_FILES
+        self.drop_index_files = drop_index_files or DROP_INDEX_FILES
+        self.drop_eddy_index_files = drop_eddy_index_files or DROP_EDDY_INDEX_FILES
+        self.default_indices = default_indices or DEFAULT_INDEX_LOGICAL_NAMES
 
     def all_index_files(self) -> list[IndexFile]:
         return self.sql_index_files + self.eddy_index_files
 
+    @cache
     def default_index_files(self) -> list[IndexFile]:
         return [
             index
             for index in self.all_index_files()
-            if index.name in DEFAULT_INDEX_LOGICAL_NAMES
+            if index.name in self.default_indices
         ]
 
+    @cache
     def default_index_definitions(self) -> list[dict[str, str]]:
         return [
             index
             for index in self.definitions
-            if index["logical_name"] in DEFAULT_INDEX_LOGICAL_NAMES
+            if index["logical_name"] in self.default_indices
         ]
 
     def load_index_metadata(self, index: IndexFile) -> dict[str, str]:
