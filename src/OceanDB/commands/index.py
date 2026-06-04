@@ -62,91 +62,46 @@ def _render_index_list() -> None:
         )
         return
 
-    def _built_index_cell_styler(column: str, value: str) -> str:
-        if column == "table_name":
-            return style_value(value, fg="cyan", bold=True)
-        if column == "index_name":
-            return style_value(value, fg="green")
-        return style_value(value, fg="white")
+    built_index_names = {str(row["index_name"]) for row in built_index_rows}
 
-    if built_index_rows:
-        click.echo(
-            format_status_line(
-                "BUILT",
-                f"{len(built_index_rows)} managed index(es) currently present in Postgres.",
-                label_color="blue",
-            )
-        )
-        built_formatted_rows = [
-            {
-                "table_name": str(row["table_name"]),
-                "index_name": str(row["index_name"]),
-            }
-            for row in built_index_rows
-        ]
-        for line in render_table(
-            [
-                ("Table", "table_name"),
-                ("Index", "index_name"),
-            ],
-            built_formatted_rows,
-            cell_styler=_built_index_cell_styler,
-        ):
-            click.echo(line)
-    else:
-        click.echo(
-            format_status_line(
-                "BUILT",
-                "No managed indexes are currently built in Postgres.",
-                label_color="yellow",
-            )
-        )
-
-    click.echo()
-
-    def _defined_index_cell_styler(column: str, value: str) -> str:
+    def _index_list_cell_styler(column: str, value: str) -> str:
         if column == "logical_name":
             return style_value(value, fg="magenta", bold=True)
         if column == "table_name":
             return style_value(value, fg="cyan", bold=True)
         if column == "index_name":
             return style_value(value, fg="green")
+        if column == "built":
+            return style_value(value, fg="green" if value == "YES" else "yellow")
         return style_value(value, fg="white")
 
-    if defined_index_rows:
-        click.echo(
-            format_status_line(
-                "DEFINED",
-                f"{len(defined_index_rows)} managed index definition(s).",
-                label_color="magenta",
-            )
+    click.echo(
+        format_status_line(
+            "INDEXES",
+            f"{len(defined_index_rows)} managed index definition(s).",
+            label_color="magenta",
         )
-        defined_formatted_rows = [
-            {
-                "logical_name": str(row["logical_name"]),
-                "table_name": str(row["table_name"]),
-                "index_name": str(row["index_name"]),
-            }
-            for row in defined_index_rows
-        ]
-        for line in render_table(
-            [
-                ("Logical Name", "logical_name"),
-                ("Table", "table_name"),
-                ("Index", "index_name"),
-            ],
-            defined_formatted_rows,
-            cell_styler=_defined_index_cell_styler,
-        ):
-            click.echo(line)
-    else:
-        click.echo(
-            format_status_line(
-                "DEFINED",
-                "No managed index definitions are currently available.",
-                label_color="yellow",
-            )
-        )
+    )
+    formatted_rows = [
+        {
+            "logical_name": str(row["logical_name"]),
+            "table_name": str(row["table_name"]),
+            "index_name": str(row["index_name"]),
+            "built": "YES" if str(row["index_name"]) in built_index_names else "NO",
+        }
+        for row in defined_index_rows
+    ]
+    for line in render_table(
+        [
+            ("Logical Name", "logical_name"),
+            ("Table", "table_name"),
+            ("Name in SQL", "index_name"),
+            ("Built", "built"),
+        ],
+        formatted_rows,
+        cell_styler=_index_list_cell_styler,
+    ):
+        click.echo(line)
 
 
 def _render_index_summary(index_name: str | None = None) -> None:

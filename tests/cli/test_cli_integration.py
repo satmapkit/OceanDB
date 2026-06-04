@@ -69,7 +69,12 @@ def test_index_list_command(db_with_indices):
         index_commands.OceanDBInit = original_init
 
     assert result.exit_code == 0
-    assert "BUILT" in result.output
-    assert "DEFINED" in result.output
-    assert "along_track" in result.output
+    assert "INDEXES" in result.output
+    assert "Logical Name" in result.output
+    assert "Table" in result.output
+    assert "Name in SQL" in result.output
+    assert "Built" in result.output
     assert "along_track_time_idx" in result.output
+    assert "along_track" in result.output
+    assert "YES" in result.output
+    assert "CREATE INDEX" not in result.output

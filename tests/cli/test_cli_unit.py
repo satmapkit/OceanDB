@@ -566,14 +566,14 @@ def test_index_list_command_formats_rows(monkeypatch):
     result = runner.invoke(cli_module.cli, ["index", "list"])
 
     assert result.exit_code == 0
-    assert "DEFINED" in result.output
-    assert "BUILT" in result.output
+    assert "INDEXES" in result.output
     assert "Logical Name" in result.output
     assert "Table" in result.output
-    assert "Index" in result.output
+    assert "Name in SQL" in result.output
+    assert "Built" in result.output
     assert "along_track_time_idx" in result.output
     assert "along_track" in result.output
-    assert "along_track_time_idx" in result.output
+    assert "YES" in result.output
     assert "CREATE INDEX" not in result.output
 
 
@@ -587,6 +587,7 @@ def test_index_list_command_shows_all_defined_indices(monkeypatch):
     assert result.exit_code == 0
     assert "along_track_time_idx" in result.output
     assert "eddy_point_idx" in result.output
+    assert "YES" in result.output
 
 
 def test_index_list_command_reports_when_no_built_indices_exist(monkeypatch):
@@ -601,7 +602,9 @@ def test_index_list_command_reports_when_no_built_indices_exist(monkeypatch):
     result = runner.invoke(cli_module.cli, ["index", "list"])
 
     assert result.exit_code == 0
-    assert "No managed indexes are currently built in Postgres" in result.output
+    assert "Built" in result.output
+    assert "along_track_time_idx" in result.output
+    assert "NO" in result.output
 
 
 def test_index_show_command_formats_definitions(monkeypatch):
