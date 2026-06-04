@@ -23,8 +23,7 @@ oceandb ingest-eddy
 ```
 5. Create indices so queries perform reliably.
 ```sh
-oceandb index create \
-  --index-name along_track_index_point
+oceandb index create --default
 ```
 
 See the detailed instructions linked below for the full setup and workflow.

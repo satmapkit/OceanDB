@@ -21,6 +21,11 @@ def _create_all_indices() -> None:
     ocean_db_init.create_eddy_indices()
 
 
+def _create_default_indices() -> None:
+    ocean_db_init = OceanDBInit()
+    ocean_db_init.create_default_indices()
+
+
 def _render_partitioned_index_choices() -> None:
     click.echo(
         format_status_line(
@@ -42,7 +47,7 @@ def _drop_all_indices() -> None:
 def _render_index_list() -> None:
     ocean_db_init = OceanDBInit()
     try:
-        defined_index_rows = ocean_db_init.list_defined_indices()
+        defined_index_rows = ocean_db_init.managed_indices.definitions
         built_index_rows = ocean_db_init.list_indices(managed_only=True)
     except pg.OperationalError as e:
         raise click.ClickException(f"Unable to access database: {e}") from e
@@ -57,148 +62,44 @@ def _render_index_list() -> None:
         )
         return
 
-    def _built_index_cell_styler(column: str, value: str) -> str:
-        if column == "table_name":
-            return style_value(value, fg="cyan", bold=True)
-        if column == "index_name":
-            return style_value(value, fg="green")
-        return style_value(value, fg="white")
+    built_index_names = {str(row["index_name"]) for row in built_index_rows}
 
-    if built_index_rows:
-        click.echo(
-            format_status_line(
-                "BUILT",
-                f"{len(built_index_rows)} managed index(es) currently present in Postgres.",
-                label_color="blue",
-            )
-        )
-        built_formatted_rows = [
-            {
-                "table_name": str(row["table_name"]),
-                "index_name": str(row["index_name"]),
-            }
-            for row in built_index_rows
-        ]
-        for line in render_table(
-            [
-                ("Table", "table_name"),
-                ("Index", "index_name"),
-            ],
-            built_formatted_rows,
-            cell_styler=_built_index_cell_styler,
-        ):
-            click.echo(line)
-    else:
-        click.echo(
-            format_status_line(
-                "BUILT",
-                "No managed indexes are currently built in Postgres.",
-                label_color="yellow",
-            )
-        )
-
-    click.echo()
-
-    def _defined_index_cell_styler(column: str, value: str) -> str:
+    def _index_list_cell_styler(column: str, value: str) -> str:
         if column == "logical_name":
             return style_value(value, fg="magenta", bold=True)
         if column == "table_name":
             return style_value(value, fg="cyan", bold=True)
         if column == "index_name":
             return style_value(value, fg="green")
+        if column == "built":
+            return style_value(value, fg="green" if value == "YES" else "yellow")
         return style_value(value, fg="white")
-
-    if defined_index_rows:
-        click.echo(
-            format_status_line(
-                "DEFINED",
-                f"{len(defined_index_rows)} managed index definition(s).",
-                label_color="magenta",
-            )
-        )
-        defined_formatted_rows = [
-            {
-                "logical_name": str(row["logical_name"]),
-                "table_name": str(row["table_name"]),
-                "index_name": str(row["index_name"]),
-            }
-            for row in defined_index_rows
-        ]
-        for line in render_table(
-            [
-                ("Logical Name", "logical_name"),
-                ("Table", "table_name"),
-                ("Index", "index_name"),
-            ],
-            defined_formatted_rows,
-            cell_styler=_defined_index_cell_styler,
-        ):
-            click.echo(line)
-    else:
-        click.echo(
-            format_status_line(
-                "DEFINED",
-                "No managed index definitions are currently available.",
-                label_color="yellow",
-            )
-        )
-
-
-def _render_partitioned_index_ranges(index_name: str | None = None) -> None:
-    try:
-        ocean_db_init = OceanDBInit()
-        range_rows = ocean_db_init.show_partitioned_index_ranges(
-            logical_name=index_name
-        )
-    except pg.OperationalError as e:
-        raise click.ClickException(f"Unable to access database: {e}") from e
-    except ValueError as e:
-        raise click.UsageError(str(e)) from e
-
-    if not range_rows:
-        click.echo(
-            format_status_line(
-                "EMPTY",
-                "No partitioned managed indices are currently present.",
-                label_color="yellow",
-            )
-        )
-        return
-
-    formatted_rows = [
-        {
-            "logical_name": str(row["logical_name"]),
-            "range_number": str(row["range_number"]),
-            "partition_count": str(row["partition_count"]),
-            "start_partition": str(row["start_partition"] or "-"),
-            "end_partition": str(row["end_partition"] or "-"),
-        }
-        for row in range_rows
-    ]
 
     click.echo(
         format_status_line(
-            "RANGES",
-            f"{len(formatted_rows)} partitioned index range(s) found.",
+            "INDEXES",
+            f"{len(defined_index_rows)} managed index definition(s).",
             label_color="magenta",
         )
     )
+    formatted_rows = [
+        {
+            "logical_name": str(row["logical_name"]),
+            "table_name": str(row["table_name"]),
+            "index_name": str(row["index_name"]),
+            "built": "YES" if str(row["index_name"]) in built_index_names else "NO",
+        }
+        for row in defined_index_rows
+    ]
     for line in render_table(
         [
-            ("Index", "logical_name"),
-            ("Range", "range_number"),
-            ("Partitions", "partition_count"),
-            ("Start", "start_partition"),
-            ("End", "end_partition"),
+            ("Logical Name", "logical_name"),
+            ("Table", "table_name"),
+            ("Name in SQL", "index_name"),
+            ("Built", "built"),
         ],
         formatted_rows,
-        cell_styler=lambda column, value: (
-            style_value(value, fg="cyan", bold=True)
-            if column == "logical_name"
-            else style_value(
-                value, fg="green" if column == "partition_count" else "white"
-            )
-        ),
+        cell_styler=_index_list_cell_styler,
     ):
         click.echo(line)
 
@@ -309,6 +210,12 @@ def _render_index_summary(index_name: str | None = None) -> None:
 
 @index_group.command("create")
 @click.option(
+    "--default",
+    "create_default",
+    is_flag=True,
+    help="Create the default curated set of OceanDB-managed indices.",
+)
+@click.option(
     "--all",
     "create_all",
     is_flag=True,
@@ -330,12 +237,31 @@ def _render_index_summary(index_name: str | None = None) -> None:
     help="End date used to select monthly along-track partitions.",
 )
 def create_index_command(
+    create_default: bool,
     create_all: bool,
     index_name: str | None,
     start_date: datetime | None,
     end_date: datetime | None,
 ):
     """Create OceanDB indices."""
+    if create_default and create_all:
+        raise click.UsageError("Do not combine --default with --all.")
+
+    if create_default:
+        if index_name or start_date or end_date:
+            raise click.UsageError(
+                "Do not combine --default with --index-name, --start-date, or --end-date."
+            )
+        _create_default_indices()
+        click.echo(
+            format_status_line(
+                "CREATED",
+                "Default OceanDB-managed indices were created.",
+                label_color="green",
+            )
+        )
+        return
+
     if create_all:
         if index_name or start_date or end_date:
             raise click.UsageError(

@@ -28,6 +28,5 @@ For a minimal local setup:
 
    .. code-block:: sh
 
-      oceandb index create \
-        --index-name along_track_index_point
+      oceandb index create --default
 

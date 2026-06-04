@@ -1,4 +1,5 @@
 from datetime import datetime
+from functools import cached_property
 from types import SimpleNamespace
 
 import psycopg as pg
@@ -39,17 +40,20 @@ class FailingAlongTrackETL:
 
 
 class FakeInitReturningIndices:
-    def list_defined_indices(self):
-        return [
-            {
-                "logical_name": "along_track_index_time",
-                "table_name": "along_track",
-                "index_name": "along_track_time_idx",
-                "index_definition": (
-                    "CREATE INDEX along_track_time_idx ON public.along_track USING btree (date_time)"
-                ),
-            }
-        ]
+    @cached_property
+    def managed_indices(self):
+        return SimpleNamespace(
+            definitions=[
+                {
+                    "logical_name": "along_track_time_idx",
+                    "table_name": "along_track",
+                    "index_name": "along_track_time_idx",
+                    "index_definition": (
+                        "CREATE INDEX along_track_time_idx ON public.along_track USING btree (date_time)"
+                    ),
+                }
+            ]
+        )
 
     def list_indices(self, managed_only=True):
         assert managed_only is True
@@ -66,8 +70,9 @@ class FakeInitReturningIndices:
 
 
 class FakeInitReturningNoIndices:
-    def list_defined_indices(self):
-        return []
+    @cached_property
+    def managed_indices(self):
+        return SimpleNamespace(definitions=[])
 
     def list_indices(self, managed_only=True):
         assert managed_only is True
@@ -75,33 +80,37 @@ class FakeInitReturningNoIndices:
 
 
 class FailingInit:
-    def list_defined_indices(self):
-        return []
+    @cached_property
+    def managed_indices(self):
+        return SimpleNamespace(definitions=[])
 
     def list_indices(self, managed_only=True):
         raise pg.OperationalError("connection refused")
 
 
 class FakeInitReturningAllIndices:
-    def list_defined_indices(self):
-        return [
-            {
-                "logical_name": "along_track_index_time",
-                "table_name": "along_track",
-                "index_name": "along_track_time_idx",
-                "index_definition": (
-                    "CREATE INDEX along_track_time_idx ON public.along_track USING btree (date_time)"
-                ),
-            },
-            {
-                "logical_name": "eddy_index_point",
-                "table_name": "eddy",
-                "index_name": "eddy_point_idx",
-                "index_definition": (
-                    "CREATE INDEX eddy_point_idx ON public.eddy USING gist (point)"
-                ),
-            },
-        ]
+    @cached_property
+    def managed_indices(self):
+        return SimpleNamespace(
+            definitions=[
+                {
+                    "logical_name": "along_track_time_idx",
+                    "table_name": "along_track",
+                    "index_name": "along_track_time_idx",
+                    "index_definition": (
+                        "CREATE INDEX along_track_time_idx ON public.along_track USING btree (date_time)"
+                    ),
+                },
+                {
+                    "logical_name": "eddy_point_idx",
+                    "table_name": "eddy",
+                    "index_name": "eddy_point_idx",
+                    "index_definition": (
+                        "CREATE INDEX eddy_point_idx ON public.eddy USING gist (point)"
+                    ),
+                },
+            ]
+        )
 
     def list_indices(self, managed_only=True):
         assert managed_only is True
@@ -126,17 +135,20 @@ class FakeInitReturningAllIndices:
 
 
 class FakeInitReturningDefinedButNoBuiltIndices:
-    def list_defined_indices(self):
-        return [
-            {
-                "logical_name": "along_track_index_time",
-                "table_name": "along_track",
-                "index_name": "along_track_time_idx",
-                "index_definition": (
-                    "CREATE INDEX along_track_time_idx ON public.along_track USING btree (date_time)"
-                ),
-            }
-        ]
+    @cached_property
+    def managed_indices(self):
+        return SimpleNamespace(
+            definitions=[
+                {
+                    "logical_name": "along_track_time_idx",
+                    "table_name": "along_track",
+                    "index_name": "along_track_time_idx",
+                    "index_definition": (
+                        "CREATE INDEX along_track_time_idx ON public.along_track USING btree (date_time)"
+                    ),
+                }
+            ]
+        )
 
     def list_indices(self, managed_only=True):
         assert managed_only is True
@@ -160,7 +172,7 @@ class FakeInitReturningDefinitions:
     def show_index_definitions(self, identifier=None):
         rows = [
             {
-                "logical_name": "along_track_index_point",
+                "logical_name": "along_track_point_idx",
                 "table_name": "along_track",
                 "index_name": "along_track_point_idx",
                 "index_definition": (
@@ -172,7 +184,7 @@ class FakeInitReturningDefinitions:
                 ),
             },
             {
-                "logical_name": "along_track_index_time",
+                "logical_name": "along_track_time_idx",
                 "table_name": "along_track",
                 "index_name": "along_track_time_idx",
                 "index_definition": (
@@ -219,7 +231,7 @@ class FakeInitReturningIndexSummary:
     def show_partitioned_index_ranges(self, logical_name=None):
         rows = [
             {
-                "logical_name": "along_track_index_time",
+                "logical_name": "along_track_time_idx",
                 "base_index_name": "along_track_time_idx",
                 "partition_count": 2,
                 "start_partition": "along_track_2024_01",
@@ -358,6 +370,23 @@ def test_index_create_all_command_creates_all_indices(monkeypatch):
     assert "All OceanDB-managed indices were created." in result.output
 
 
+def test_index_create_default_command_creates_default_indices(monkeypatch):
+    runner = CliRunner()
+    calls = []
+
+    class FakeInit:
+        def create_default_indices(self):
+            calls.append("create_default_indices")
+
+    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
+
+    result = runner.invoke(cli_module.cli, ["index", "create", "--default"])
+
+    assert result.exit_code == 0
+    assert calls == ["create_default_indices"]
+    assert "Default OceanDB-managed indices were created." in result.output
+
+
 def test_index_create_command_prompts_for_partitioned_creation(monkeypatch):
     runner = CliRunner()
     calls = []
@@ -379,14 +408,14 @@ def test_index_create_command_prompts_for_partitioned_creation(monkeypatch):
     result = runner.invoke(
         cli_module.cli,
         ["index", "create"],
-        input="along_track_index_time\n2024-01-01\n2024-03-01\n",
+        input="along_track_time_idx\n2024-01-01\n2024-03-01\n",
     )
 
     assert result.exit_code == 0
-    assert calls[0][0] == "along_track_index_time"
+    assert calls[0][0] == "along_track_time_idx"
     assert calls[0][1].strftime("%Y-%m-%d") == "2024-01-01"
     assert calls[0][2].strftime("%Y-%m-%d") == "2024-03-01"
-    assert "along_track_index_time on 2 partition(s)." in result.output
+    assert "along_track_time_idx on 2 partition(s)." in result.output
     assert "Starting index creation" not in result.output
     assert "along_track_2024_01" in result.output
     assert "along_track_2024_02" in result.output
@@ -417,7 +446,7 @@ def test_index_create_command_accepts_explicit_partition_range(monkeypatch):
             "index",
             "create",
             "--index-name",
-            "along_track_index_point",
+            "along_track_point_idx",
             "--start-date",
             "2024-04-01",
             "--end-date",
@@ -426,7 +455,7 @@ def test_index_create_command_accepts_explicit_partition_range(monkeypatch):
     )
 
     assert result.exit_code == 0
-    assert calls[0][0] == "along_track_index_point"
+    assert calls[0][0] == "along_track_point_idx"
     assert calls[0][1].strftime("%Y-%m-%d") == "2024-04-01"
     assert calls[0][2].strftime("%Y-%m-%d") == "2024-04-30"
     assert "along_track_2024_04" in result.output
@@ -442,12 +471,47 @@ def test_index_create_command_rejects_mixed_all_and_partition_flags():
             "create",
             "--all",
             "--index-name",
-            "along_track_index_time",
+            "along_track_time_idx",
         ],
     )
 
     assert result.exit_code != 0
     assert "Do not combine --all" in result.output
+
+
+def test_index_create_command_rejects_mixed_default_and_all_flags():
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "index",
+            "create",
+            "--default",
+            "--all",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Do not combine --default with --all." in result.output
+
+
+def test_index_create_command_rejects_mixed_default_and_partition_flags():
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "index",
+            "create",
+            "--default",
+            "--index-name",
+            "along_track_time_idx",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Do not combine --default" in result.output
 
 
 def test_index_create_command_rejects_reversed_dates():
@@ -459,7 +523,7 @@ def test_index_create_command_rejects_reversed_dates():
             "index",
             "create",
             "--index-name",
-            "along_track_index_time",
+            "along_track_time_idx",
             "--start-date",
             "2024-05-01",
             "--end-date",
@@ -482,7 +546,7 @@ def test_index_create_command_with_database_error(monkeypatch):
             "index",
             "create",
             "--index-name",
-            "along_track_index_time",
+            "along_track_time_idx",
             "--start-date",
             "2024-01-01",
             "--end-date",
@@ -502,14 +566,14 @@ def test_index_list_command_formats_rows(monkeypatch):
     result = runner.invoke(cli_module.cli, ["index", "list"])
 
     assert result.exit_code == 0
-    assert "DEFINED" in result.output
-    assert "BUILT" in result.output
+    assert "INDEXES" in result.output
     assert "Logical Name" in result.output
     assert "Table" in result.output
-    assert "Index" in result.output
-    assert "along_track_index_time" in result.output
-    assert "along_track" in result.output
+    assert "Name in SQL" in result.output
+    assert "Built" in result.output
     assert "along_track_time_idx" in result.output
+    assert "along_track" in result.output
+    assert "YES" in result.output
     assert "CREATE INDEX" not in result.output
 
 
@@ -523,6 +587,7 @@ def test_index_list_command_shows_all_defined_indices(monkeypatch):
     assert result.exit_code == 0
     assert "along_track_time_idx" in result.output
     assert "eddy_point_idx" in result.output
+    assert "YES" in result.output
 
 
 def test_index_list_command_reports_when_no_built_indices_exist(monkeypatch):
@@ -537,7 +602,9 @@ def test_index_list_command_reports_when_no_built_indices_exist(monkeypatch):
     result = runner.invoke(cli_module.cli, ["index", "list"])
 
     assert result.exit_code == 0
-    assert "No managed indexes are currently built in Postgres" in result.output
+    assert "Built" in result.output
+    assert "along_track_time_idx" in result.output
+    assert "NO" in result.output
 
 
 def test_index_show_command_formats_definitions(monkeypatch):
@@ -549,7 +616,7 @@ def test_index_show_command_formats_definitions(monkeypatch):
 
     assert result.exit_code == 0
     assert "DEFINITIONS" in result.output
-    assert "along_track_index_point" in result.output
+    assert "along_track_point_idx" in result.output
     assert "CREATE INDEX IF NOT EXISTS along_track_point_idx" in result.output
     assert "\n      ON public.along_track USING gist (point)" in result.output
 
@@ -561,12 +628,12 @@ def test_index_show_command_can_filter_by_index_name(monkeypatch):
 
     result = runner.invoke(
         cli_module.cli,
-        ["index", "show", "--index-name", "along_track_index_time"],
+        ["index", "show", "--index-name", "along_track_time_idx"],
     )
 
     assert result.exit_code == 0
-    assert "along_track_index_time" in result.output
-    assert "along_track_index_point" not in result.output
+    assert "along_track_time_idx" in result.output
+    assert "along_track_point_idx" not in result.output
     assert "CREATE INDEX IF NOT EXISTS along_track_time_idx" in result.output
     assert "\n      ON public.along_track USING btree (date_time)" in result.output
 
@@ -582,7 +649,7 @@ def test_index_show_command_accepts_positional_actual_index_name(monkeypatch):
     )
 
     assert result.exit_code == 0
-    assert "along_track_index_time" in result.output
+    assert "along_track_time_idx" in result.output
     assert "CREATE INDEX IF NOT EXISTS along_track_time_idx" in result.output
 
 
@@ -598,7 +665,7 @@ def test_index_show_command_rejects_both_positional_and_option(monkeypatch):
             "show",
             "along_track_time_idx",
             "--index-name",
-            "along_track_index_time",
+            "along_track_time_idx",
         ],
     )
 
@@ -613,7 +680,7 @@ def test_index_show_command_with_unknown_index_error(monkeypatch):
 
     result = runner.invoke(
         cli_module.cli,
-        ["index", "show", "--index-name", "along_track_index_time"],
+        ["index", "show", "--index-name", "along_track_time_idx"],
     )
 
     assert result.exit_code != 0
@@ -631,7 +698,7 @@ def test_index_summary_command_shows_built_indices_and_partition_ranges(monkeypa
     assert "BUILT" in result.output
     assert "PARTITIONS" in result.output
     assert "track_times_cyclonic_type_idx" in result.output
-    assert "along_track_index_time" in result.output
+    assert "along_track_time_idx" in result.output
     assert "along_track_2024_01" in result.output
     assert "along_track_2024_02" in result.output
 
@@ -643,11 +710,11 @@ def test_index_summary_command_can_filter_partition_ranges(monkeypatch):
 
     result = runner.invoke(
         cli_module.cli,
-        ["index", "summary", "--index-name", "along_track_index_time"],
+        ["index", "summary", "--index-name", "along_track_time_idx"],
     )
 
     assert result.exit_code == 0
-    assert "along_track_index_time" in result.output
+    assert "along_track_time_idx" in result.output
     assert "along_track_2024_01" in result.output
 
 

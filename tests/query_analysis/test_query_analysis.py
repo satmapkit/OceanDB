@@ -124,7 +124,7 @@ def test_extract_used_indices_matches_known_index_names_from_plan():
 
 def test_extract_used_indices_normalizes_partition_child_index_names():
     runner = QueryAnalysisRunner()
-    runner._partition_index_name_map = {
+    runner._load_partition_index_name_map = lambda: {
         "along_track_2013_01_along_track_point_date_time_basin_id_sp_idx": (
             "along_track_point_date_mission_basin_idx"
         )

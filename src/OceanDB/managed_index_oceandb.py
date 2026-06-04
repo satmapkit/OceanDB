@@ -1,0 +1,511 @@
+import re
+from dataclasses import dataclass
+from datetime import datetime
+from functools import cache, cached_property
+
+from dateutil.relativedelta import relativedelta
+from sqlalchemy import text
+
+from OceanDB.OceanDB import OceanDB
+from OceanDB.resource_loader import ResourceLoader
+
+
+@dataclass(frozen=True)
+class IndexFile:
+    name: str
+    filepath: str
+    index_name: str | None = None
+
+
+@dataclass(frozen=True)
+class DropIndexFile:
+    name: str
+    filepath: str
+
+
+ALONG_TRACK_INDEX_FILES: list[IndexFile] = [
+    IndexFile(
+        name="along_track_basin_idx",
+        filepath="indices/along_track/create_along_track_index_basin.sql",
+        index_name="along_track_basin_idx",
+    ),
+    IndexFile(
+        name="along_track_date_idx",
+        filepath="indices/along_track/create_along_track_index_date.sql",
+        index_name="along_track_date_idx",
+    ),
+    IndexFile(
+        name="along_track_file_name_idx",
+        filepath="indices/along_track/create_along_track_index_filename.sql",
+        index_name="along_track_file_name_idx",
+    ),
+    IndexFile(
+        name="along_track_mission_idx",
+        filepath="indices/along_track/create_along_track_index_mission.sql",
+        index_name="along_track_mission_idx",
+    ),
+    IndexFile(
+        name="along_track_point_idx",
+        filepath="indices/along_track/create_along_track_index_point.sql",
+        index_name="along_track_point_idx",
+    ),
+    IndexFile(
+        name="along_track_point_date_idx",
+        filepath="indices/along_track/create_along_track_index_point_date.sql",
+        index_name="along_track_point_date_idx",
+    ),
+    IndexFile(
+        name="along_track_point_date_mission_idx",
+        filepath="indices/along_track/create_along_track_index_point_date_mission.sql",
+        index_name="along_track_point_date_mission_idx",
+    ),
+    IndexFile(
+        name="along_track_point_date_mission_basin_idx",
+        filepath="indices/along_track/create_along_track_index_point_date_mission_basin.sql",
+        index_name="along_track_point_date_mission_basin_idx",
+    ),
+    IndexFile(
+        name="along_track_point_geom_idx",
+        filepath="indices/along_track/create_along_track_index_point_geom.sql",
+        index_name="along_track_point_geom_idx",
+    ),
+    IndexFile(
+        name="along_track_time_idx",
+        filepath="indices/along_track/create_along_track_index_time.sql",
+        index_name="along_track_time_idx",
+    ),
+]
+
+BASIN_INDEX_FILES: list[IndexFile] = [
+    IndexFile(
+        name="basin_id_idx",
+        filepath="indices/basin/create_basin_connection_index_basin_id.sql",
+        index_name="basin_id_idx",
+    ),
+    IndexFile(
+        name="basin_geog_idx",
+        filepath="indices/basin/create_basin_index_geom.sql",
+        index_name="basin_geog_idx",
+    ),
+]
+
+SQL_INDEX_FILES: list[IndexFile] = ALONG_TRACK_INDEX_FILES + BASIN_INDEX_FILES
+
+EDDY_INDEX_FILES: list[IndexFile] = [
+    IndexFile(
+        name="eddy_point_idx",
+        filepath="indices/eddy/create_eddy_index_point.sql",
+        index_name="eddy_point_idx",
+    ),
+    IndexFile(
+        name="track_times_cyclonic_type_idx",
+        filepath="indices/eddy/create_eddy_index_track_cyclonic_type.sql",
+        index_name="track_times_cyclonic_type_idx",
+    ),
+]
+
+DROP_INDEX_FILES: list[DropIndexFile] = [
+    DropIndexFile(
+        name="along_track_basin_idx",
+        filepath="drop/drop_along_track_index_basin.sql",
+    ),
+    DropIndexFile(
+        name="along_track_date_idx",
+        filepath="drop/drop_along_track_index_date.sql",
+    ),
+    DropIndexFile(
+        name="along_track_file_name_idx",
+        filepath="drop/drop_along_track_index_filename.sql",
+    ),
+    DropIndexFile(
+        name="along_track_mission_idx",
+        filepath="drop/drop_along_track_index_mission.sql",
+    ),
+    DropIndexFile(
+        name="along_track_point_idx",
+        filepath="drop/drop_along_track_index_point.sql",
+    ),
+    DropIndexFile(
+        name="along_track_point_date_idx",
+        filepath="drop/drop_along_track_index_point_date.sql",
+    ),
+    DropIndexFile(
+        name="along_track_point_date_mission_idx",
+        filepath="drop/drop_along_track_index_point_date_mission.sql",
+    ),
+    DropIndexFile(
+        name="along_track_point_date_mission_basin_idx",
+        filepath="drop/drop_along_track_index_point_date_mission_basin.sql",
+    ),
+    DropIndexFile(
+        name="along_track_point_geom_idx",
+        filepath="drop/drop_along_track_index_point_geom.sql",
+    ),
+    DropIndexFile(
+        name="along_track_time_idx",
+        filepath="drop/drop_along_track_index_time.sql",
+    ),
+    DropIndexFile(
+        name="basin_id_idx",
+        filepath="drop/drop_basin_connection_index_basin_id.sql",
+    ),
+    DropIndexFile(
+        name="basin_geog_idx",
+        filepath="drop/drop_basin_index_geom.sql",
+    ),
+]
+
+DROP_EDDY_INDEX_FILES: list[DropIndexFile] = [
+    DropIndexFile(
+        name="eddy_point_idx",
+        filepath="drop/drop_eddy_index_point.sql",
+    ),
+    DropIndexFile(
+        name="track_times_cyclonic_type_idx",
+        filepath="drop/drop_eddy_index_track_cyclonic_type.sql",
+    ),
+]
+
+DEFAULT_INDEX_LOGICAL_NAMES = {
+    "track_times_cyclonic_type_idx",
+    "along_track_point_date_idx",
+    "along_track_point_date_mission_basin_idx",
+    "basin_geog_idx",
+    "basin_id_idx",
+}
+
+PARTITIONED_ALONG_TRACK_INDEX_PATTERN = re.compile(
+    r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+(?P<index_name>\S+)\s+ON\s+"
+    r"(?P<table_name>(?:public\.)?along_track)",
+    flags=re.IGNORECASE,
+)
+
+INDEX_SQL_PATTERN = re.compile(
+    r"CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+(?P<index_name>\S+)\s+ON\s+"
+    r"(?P<table_name>(?:public\.)?[A-Za-z_][A-Za-z0-9_]*)",
+    flags=re.IGNORECASE,
+)
+
+
+def normalize_sql(sql_statement: str) -> str:
+    return " ".join(sql_statement.split())
+
+
+class ManagedIndices(ResourceLoader):
+    """
+    Helper for loading and describing OceanDB-managed index definitions.
+    """
+
+    def __init__(
+        self,
+        along_track_index_files: list[IndexFile] | None = None,
+        basin_index_files: list[IndexFile] | None = None,
+        eddy_index_files: list[IndexFile] | None = None,
+        sql_index_files: list[IndexFile] | None = None,
+        drop_index_files: list[IndexFile] | None = None,
+        drop_eddy_index_files: list[IndexFile] | None = None,
+        default_indices: list[str] | None = None,
+    ):
+        self.along_track_index_files = (
+            along_track_index_files or ALONG_TRACK_INDEX_FILES
+        )
+        self.basin_index_files = basin_index_files or BASIN_INDEX_FILES
+        self.eddy_index_files = eddy_index_files or EDDY_INDEX_FILES
+        self.sql_index_files = sql_index_files or SQL_INDEX_FILES
+        self.drop_index_files = drop_index_files or DROP_INDEX_FILES
+        self.drop_eddy_index_files = drop_eddy_index_files or DROP_EDDY_INDEX_FILES
+        self.default_indices = default_indices or DEFAULT_INDEX_LOGICAL_NAMES
+
+    def all_index_files(self) -> list[IndexFile]:
+        return self.sql_index_files + self.eddy_index_files
+
+    @cache
+    def default_index_files(self) -> list[IndexFile]:
+        return [
+            index
+            for index in self.all_index_files()
+            if index.name in self.default_indices
+        ]
+
+    @cache
+    def default_index_definitions(self) -> list[dict[str, str]]:
+        return [
+            index
+            for index in self.definitions
+            if index["logical_name"] in self.default_indices
+        ]
+
+    def load_index_metadata(self, index: IndexFile) -> dict[str, str]:
+        sql_statement = self.load_sql_file(index.filepath)
+        match = INDEX_SQL_PATTERN.search(sql_statement)
+        if not match:
+            raise ValueError(f"Unable to parse index SQL for '{index.name}'")
+
+        return {
+            "logical_name": index.name,
+            "filepath": index.filepath,
+            "index_name": match.group("index_name").replace("public.", ""),
+            "table_name": match.group("table_name").replace("public.", ""),
+        }
+
+    @cached_property
+    def definitions(self) -> list[dict[str, str]]:
+        defined_rows = []
+        for index in self.all_index_files():
+            metadata = self.load_index_metadata(index)
+            raw_sql = self.load_sql_file(index.filepath).strip()
+            defined_rows.append(
+                {
+                    "logical_name": index.name,
+                    "table_name": metadata["table_name"],
+                    "index_name": metadata["index_name"],
+                    "index_definition": normalize_sql(raw_sql),
+                    "index_definition_multiline": raw_sql,
+                    "filepath": index.filepath,
+                }
+            )
+
+        return sorted(
+            defined_rows,
+            key=lambda row: (row["table_name"], row["index_name"]),
+        )
+
+    def partitionable_along_track_index_definitions(self) -> list[dict[str, str]]:
+        partitionable_indices = []
+
+        for index in self.definitions:
+            if not index["filepath"].startswith("indices/along_track/"):
+                continue
+
+            match = PARTITIONED_ALONG_TRACK_INDEX_PATTERN.search(
+                index["index_definition_multiline"]
+            )
+            if not match:
+                raise ValueError(
+                    f"Unable to parse partitioned index SQL for '{index['logical_name']}'"
+                )
+
+            partitionable_indices.append(
+                {
+                    "logical_name": index["logical_name"],
+                    "filepath": index["filepath"],
+                    "base_index_name": match.group("index_name"),
+                }
+            )
+
+        return partitionable_indices
+
+    def partitionable_along_track_index_definition(
+        self, logical_name: str
+    ) -> dict[str, str]:
+        for index in self.partitionable_along_track_index_definitions():
+            if index["logical_name"] == logical_name:
+                return index
+
+        if any(index.name == logical_name for index in self.sql_index_files):
+            raise ValueError(
+                f"Index '{logical_name}' is not available for partitioned creation"
+            )
+
+        raise ValueError(f"Unknown index '{logical_name}'")
+
+    @cached_property
+    def managed_index_names(self) -> set[str]:
+        return {index["index_name"] for index in self.definitions}
+
+    def list_partitionable_along_track_indices(self) -> list[str]:
+        return [
+            index["logical_name"]
+            for index in self.partitionable_along_track_index_definitions()
+        ]
+
+
+class ManagedIndexOceanDB(OceanDB):
+    def __init__(self, config=None, managed_indices: ManagedIndices | None = None):
+        super().__init__(config=config)
+        self.managed_indices = managed_indices or ManagedIndices()
+
+    @cached_property
+    def partition_index_name_map(self) -> dict[str, str]:
+        return self._load_partition_index_name_map()
+
+    def _load_partition_index_name_map(self) -> dict[str, str]:
+        with self.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    child_idx.relname AS child_index_name,
+                    parent_idx.relname AS parent_index_name
+                FROM pg_inherits inh
+                JOIN pg_class child_idx
+                    ON child_idx.oid = inh.inhrelid
+                JOIN pg_class parent_idx
+                    ON parent_idx.oid = inh.inhparent
+                """)
+            rows = cur.fetchall()
+
+        return {
+            child_index_name: parent_index_name
+            for child_index_name, parent_index_name in rows
+            if parent_index_name in self.managed_indices.managed_index_names
+        }
+
+    def list_along_track_partitions(self) -> list[str]:
+        engine = self.get_engine()
+
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                    SELECT child.relname
+                    FROM pg_inherits
+                    JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+                    JOIN pg_class child ON pg_inherits.inhrelid = child.oid
+                    JOIN pg_namespace ns ON child.relnamespace = ns.oid
+                    WHERE parent.relname = 'along_track'
+                      AND ns.nspname = 'public'
+                    ORDER BY child.relname
+                """)).fetchall()
+
+        return [row[0] for row in rows]
+
+    def _is_managed_index_name(self, index_name: str) -> bool:
+        managed_names = self.managed_indices.managed_index_names
+        if index_name in managed_names:
+            return True
+
+        for managed_name in managed_names:
+            if index_name.startswith(f"{managed_name}_"):
+                return True
+
+        return False
+
+    def list_indices(
+        self, schema_name: str = "public", managed_only: bool = True
+    ) -> list[dict[str, str]]:
+        engine = self.get_engine()
+
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text("""
+                    SELECT schemaname, tablename, indexname, indexdef
+                    FROM pg_indexes
+                    WHERE schemaname = :schema
+                    ORDER BY tablename, indexname
+                """),
+                {"schema": schema_name},
+            ).fetchall()
+
+        index_rows = [
+            {
+                "schema_name": row[0],
+                "table_name": row[1],
+                "index_name": row[2],
+                "index_definition": row[3],
+            }
+            for row in rows
+        ]
+
+        if not managed_only:
+            return index_rows
+
+        return [
+            row for row in index_rows if self._is_managed_index_name(row["index_name"])
+        ]
+
+    def show_index_definitions(
+        self, identifier: str | None = None
+    ) -> list[dict[str, str]]:
+        index_rows = self.managed_indices.definitions
+        if identifier is None:
+            return index_rows
+
+        matching_rows = [
+            row
+            for row in index_rows
+            if row["logical_name"] == identifier or row["index_name"] == identifier
+        ]
+        if not matching_rows:
+            raise ValueError(f"Unknown index '{identifier}'")
+        return matching_rows
+
+    def _parse_along_track_partition_name(self, partition_name: str) -> datetime:
+        match = re.fullmatch(r"along_track_(\d{4})_(\d{2})", partition_name)
+        if not match:
+            raise ValueError(f"Invalid along-track partition name '{partition_name}'")
+        year = int(match.group(1))
+        month = int(match.group(2))
+        return datetime(year, month, 1)
+
+    def show_partitioned_index_ranges(
+        self, logical_name: str | None = None
+    ) -> list[dict[str, str | int | None]]:
+        logical_names = (
+            [logical_name]
+            if logical_name is not None
+            else self.managed_indices.list_partitionable_along_track_indices()
+        )
+
+        managed_rows = self.list_indices(managed_only=True)
+        rows_by_logical_name = []
+
+        for current_logical_name in logical_names:
+            index_info = (
+                self.managed_indices.partitionable_along_track_index_definition(
+                    current_logical_name
+                )
+            )
+            base_index_name = index_info["base_index_name"]
+            matching_rows = [
+                row
+                for row in managed_rows
+                if row["table_name"].startswith("along_track_")
+                and row["index_name"].startswith(f"{base_index_name}_")
+            ]
+
+            partition_names = sorted(row["table_name"] for row in matching_rows)
+            if not partition_names:
+                rows_by_logical_name.append(
+                    {
+                        "logical_name": current_logical_name,
+                        "base_index_name": base_index_name,
+                        "range_number": 0,
+                        "partition_count": 0,
+                        "start_partition": None,
+                        "end_partition": None,
+                    }
+                )
+                continue
+
+            current_range = [partition_names[0]]
+            current_previous_date = self._parse_along_track_partition_name(
+                partition_names[0]
+            )
+
+            ranges = []
+            for partition_name in partition_names[1:]:
+                current_date = self._parse_along_track_partition_name(partition_name)
+                next_expected_date = (
+                    current_previous_date + relativedelta(months=1)
+                ).replace(day=1)
+
+                if current_date == next_expected_date:
+                    current_range.append(partition_name)
+                else:
+                    ranges.append(current_range)
+                    current_range = [partition_name]
+
+                current_previous_date = current_date
+
+            ranges.append(current_range)
+
+            for range_number, partition_range in enumerate(ranges, start=1):
+                rows_by_logical_name.append(
+                    {
+                        "logical_name": current_logical_name,
+                        "base_index_name": base_index_name,
+                        "range_number": range_number,
+                        "partition_count": len(partition_range),
+                        "start_partition": partition_range[0],
+                        "end_partition": partition_range[-1],
+                    }
+                )
+
+        return rows_by_logical_name

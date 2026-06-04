@@ -12,9 +12,7 @@ from OceanDB.config import Config
 from OceanDB.data_access.along_track import AlongTrack
 from OceanDB.data_access.base_query import BaseReadQuery, QueryObserver
 from OceanDB.data_access.eddy import Eddy
-from OceanDB.OceanDB import OceanDB
-from OceanDB.OceanDB_Initializer import (eddy_index_files, load_index_metadata,
-                                         sql_index_files)
+from OceanDB.managed_index_oceandb import ManagedIndexOceanDB
 from OceanDB.schemas.along_track_schema import along_track_schema
 from OceanDB.schemas.eddy_schema import eddy_columns_schema
 
@@ -69,7 +67,7 @@ class QueryAnalysisRow:
     total_time: float | None
 
 
-class QueryAnalysisRunner(OceanDB):
+class QueryAnalysisRunner(ManagedIndexOceanDB):
     def __init__(
         self,
         config: Config | None = None,
@@ -80,7 +78,6 @@ class QueryAnalysisRunner(OceanDB):
         self.scenarios = scenarios or self.default_scenarios()
         self.indices = tuple(indices or self.default_indices())
         self.index_names: set[str] = {index["index_name"] for index in self.indices}
-        self._partition_index_name_map: dict[str, str] | None = None
 
     def default_scenarios(self) -> list[QueryScenario]:
         all_along_track_fields = list(along_track_schema.keys())
@@ -127,10 +124,7 @@ class QueryAnalysisRunner(OceanDB):
         ]
 
     def default_indices(self):
-        return tuple(
-            load_index_metadata(self, index)
-            for index in (sql_index_files + eddy_index_files)
-        )
+        return tuple(self.managed_indices.definitions)
 
     def analyze_queries(self) -> list[QueryAnalysisRow]:
         return [self.analyze_statement(scenario) for scenario in self.scenarios]
@@ -181,32 +175,6 @@ class QueryAnalysisRunner(OceanDB):
             for index in self.indices
             if index["table_name"] in tables
         )
-
-    @property
-    def partition_index_name_map(self) -> dict[str, str]:
-        if self._partition_index_name_map is None:
-            self._partition_index_name_map = self._load_partition_index_name_map()
-        return self._partition_index_name_map
-
-    def _load_partition_index_name_map(self) -> dict[str, str]:
-        with self.cursor() as cur:
-            cur.execute("""
-                SELECT
-                    child_idx.relname AS child_index_name,
-                    parent_idx.relname AS parent_index_name
-                FROM pg_inherits inh
-                JOIN pg_class child_idx
-                    ON child_idx.oid = inh.inhrelid
-                JOIN pg_class parent_idx
-                    ON parent_idx.oid = inh.inhparent
-                """)
-            rows = cur.fetchall()
-
-        return {
-            child_index_name: parent_index_name
-            for child_index_name, parent_index_name in rows
-            if parent_index_name in self.index_names
-        }
 
     def extract_tables(self, query: str) -> set[str]:
         # TODO: figure out a better way to do this other than
