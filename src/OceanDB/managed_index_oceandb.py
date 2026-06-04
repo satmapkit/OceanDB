@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from functools import cached_property
 
@@ -8,141 +9,161 @@ from sqlalchemy import text
 from OceanDB.OceanDB import OceanDB
 from OceanDB.resource_loader import ResourceLoader
 
-along_track_index_files = [
-    {
-        "name": "along_track_index_basin",
-        "filepath": "indices/along_track/create_along_track_index_basin.sql",
-        "params": {"index_name": "along_track_index_basin"},
-    },
-    {
-        "name": "along_track_index_date",
-        "filepath": "indices/along_track/create_along_track_index_date.sql",
-        "params": {"index_name": "along_track_index_date"},
-    },
-    {
-        "name": "along_track_index_filename",
-        "filepath": "indices/along_track/create_along_track_index_filename.sql",
-        "params": {"index_name": "along_track_index_filename"},
-    },
-    {
-        "name": "along_track_index_mission",
-        "filepath": "indices/along_track/create_along_track_index_mission.sql",
-        "params": {"index_name": "along_track_index_mission"},
-    },
-    {
-        "name": "along_track_index_point",
-        "filepath": "indices/along_track/create_along_track_index_point.sql",
-        "params": {"index_name": "along_track_index_point"},
-    },
-    {
-        "name": "along_track_index_point_date",
-        "filepath": "indices/along_track/create_along_track_index_point_date.sql",
-        "params": {"index_name": "along_track_index_point_date"},
-    },
-    {
-        "name": "along_track_index_point_date_mission",
-        "filepath": "indices/along_track/create_along_track_index_point_date_mission.sql",
-        "params": {"index_name": "along_track_index_point_date_mission"},
-    },
-    {
-        "name": "along_track_index_point_date_mission_basin",
-        "filepath": "indices/along_track/create_along_track_index_point_date_mission_basin.sql",
-        "params": {"index_name": "along_track_index_point_date_mission_basin"},
-    },
-    {
-        "name": "along_track_index_point_geom",
-        "filepath": "indices/along_track/create_along_track_index_point_geom.sql",
-        "params": {"index_name": "along_track_index_point_geom"},
-    },
-    {
-        "name": "along_track_index_time",
-        "filepath": "indices/along_track/create_along_track_index_time.sql",
-        "params": {"index_name": "along_track_index_time"},
-    },
+
+@dataclass(frozen=True)
+class IndexFile:
+    name: str
+    filepath: str
+    index_name: str | None = None
+
+
+@dataclass(frozen=True)
+class DropIndexFile:
+    name: str
+    filepath: str
+
+
+along_track_index_files: list[IndexFile] = [
+    IndexFile(
+        name="along_track_index_basin",
+        filepath="indices/along_track/create_along_track_index_basin.sql",
+        index_name="along_track_index_basin",
+    ),
+    IndexFile(
+        name="along_track_index_date",
+        filepath="indices/along_track/create_along_track_index_date.sql",
+        index_name="along_track_index_date",
+    ),
+    IndexFile(
+        name="along_track_index_filename",
+        filepath="indices/along_track/create_along_track_index_filename.sql",
+        index_name="along_track_index_filename",
+    ),
+    IndexFile(
+        name="along_track_index_mission",
+        filepath="indices/along_track/create_along_track_index_mission.sql",
+        index_name="along_track_index_mission",
+    ),
+    IndexFile(
+        name="along_track_index_point",
+        filepath="indices/along_track/create_along_track_index_point.sql",
+        index_name="along_track_index_point",
+    ),
+    IndexFile(
+        name="along_track_index_point_date",
+        filepath="indices/along_track/create_along_track_index_point_date.sql",
+        index_name="along_track_index_point_date",
+    ),
+    IndexFile(
+        name="along_track_index_point_date_mission",
+        filepath="indices/along_track/create_along_track_index_point_date_mission.sql",
+        index_name="along_track_index_point_date_mission",
+    ),
+    IndexFile(
+        name="along_track_index_point_date_mission_basin",
+        filepath="indices/along_track/create_along_track_index_point_date_mission_basin.sql",
+        index_name="along_track_index_point_date_mission_basin",
+    ),
+    IndexFile(
+        name="along_track_index_point_geom",
+        filepath="indices/along_track/create_along_track_index_point_geom.sql",
+        index_name="along_track_index_point_geom",
+    ),
+    IndexFile(
+        name="along_track_index_time",
+        filepath="indices/along_track/create_along_track_index_time.sql",
+        index_name="along_track_index_time",
+    ),
 ]
 
-basin_index_files = [
-    {
-        "name": "basin_connection_index_basin_id",
-        "filepath": "indices/basin/create_basin_connection_index_basin_id.sql",
-        "params": {"index_name": "basin_connection_index_basin_id"},
-    },
-    {
-        "name": "basin_index_geom",
-        "filepath": "indices/basin/create_basin_index_geom.sql",
-        "params": {"index_name": "basin_index_geom"},
-    },
+basin_index_files: list[IndexFile] = [
+    IndexFile(
+        name="basin_connection_index_basin_id",
+        filepath="indices/basin/create_basin_connection_index_basin_id.sql",
+        index_name="basin_connection_index_basin_id",
+    ),
+    IndexFile(
+        name="basin_index_geom",
+        filepath="indices/basin/create_basin_index_geom.sql",
+        index_name="basin_index_geom",
+    ),
 ]
 
-sql_index_files = along_track_index_files + basin_index_files
+sql_index_files: list[IndexFile] = along_track_index_files + basin_index_files
 
-eddy_index_files = [
-    {
-        "name": "eddy_index_point",
-        "filepath": "indices/eddy/create_eddy_index_point.sql",
-        "params": {"index_name": "eddy_index_point"},
-    },
-    {
-        "name": "eddy_index_track_cyclonic_type",
-        "filepath": "indices/eddy/create_eddy_index_track_cyclonic_type.sql",
-        "params": {"index_name": "eddy_index_track_cyclonic_type"},
-    },
+eddy_index_files: list[IndexFile] = [
+    IndexFile(
+        name="eddy_index_point",
+        filepath="indices/eddy/create_eddy_index_point.sql",
+        index_name="eddy_index_point",
+    ),
+    IndexFile(
+        name="eddy_index_track_cyclonic_type",
+        filepath="indices/eddy/create_eddy_index_track_cyclonic_type.sql",
+        index_name="eddy_index_track_cyclonic_type",
+    ),
 ]
 
-drop_index_files = [
-    {
-        "name": "along_track_index_basin",
-        "filepath": "drop/drop_along_track_index_basin.sql",
-    },
-    {
-        "name": "along_track_index_date",
-        "filepath": "drop/drop_along_track_index_date.sql",
-    },
-    {
-        "name": "along_track_index_filename",
-        "filepath": "drop/drop_along_track_index_filename.sql",
-    },
-    {
-        "name": "along_track_index_mission",
-        "filepath": "drop/drop_along_track_index_mission.sql",
-    },
-    {
-        "name": "along_track_index_point",
-        "filepath": "drop/drop_along_track_index_point.sql",
-    },
-    {
-        "name": "along_track_index_point_date",
-        "filepath": "drop/drop_along_track_index_point_date.sql",
-    },
-    {
-        "name": "along_track_index_point_date_mission",
-        "filepath": "drop/drop_along_track_index_point_date_mission.sql",
-    },
-    {
-        "name": "along_track_index_point_date_mission_basin",
-        "filepath": "drop/drop_along_track_index_point_date_mission_basin.sql",
-    },
-    {
-        "name": "along_track_index_point_geom",
-        "filepath": "drop/drop_along_track_index_point_geom.sql",
-    },
-    {
-        "name": "along_track_index_time",
-        "filepath": "drop/drop_along_track_index_time.sql",
-    },
-    {
-        "name": "basin_connection_index_basin_id",
-        "filepath": "drop/drop_basin_connection_index_basin_id.sql",
-    },
-    {"name": "basin_index_geom", "filepath": "drop/drop_basin_index_geom.sql"},
+drop_index_files: list[DropIndexFile] = [
+    DropIndexFile(
+        name="along_track_index_basin",
+        filepath="drop/drop_along_track_index_basin.sql",
+    ),
+    DropIndexFile(
+        name="along_track_index_date",
+        filepath="drop/drop_along_track_index_date.sql",
+    ),
+    DropIndexFile(
+        name="along_track_index_filename",
+        filepath="drop/drop_along_track_index_filename.sql",
+    ),
+    DropIndexFile(
+        name="along_track_index_mission",
+        filepath="drop/drop_along_track_index_mission.sql",
+    ),
+    DropIndexFile(
+        name="along_track_index_point",
+        filepath="drop/drop_along_track_index_point.sql",
+    ),
+    DropIndexFile(
+        name="along_track_index_point_date",
+        filepath="drop/drop_along_track_index_point_date.sql",
+    ),
+    DropIndexFile(
+        name="along_track_index_point_date_mission",
+        filepath="drop/drop_along_track_index_point_date_mission.sql",
+    ),
+    DropIndexFile(
+        name="along_track_index_point_date_mission_basin",
+        filepath="drop/drop_along_track_index_point_date_mission_basin.sql",
+    ),
+    DropIndexFile(
+        name="along_track_index_point_geom",
+        filepath="drop/drop_along_track_index_point_geom.sql",
+    ),
+    DropIndexFile(
+        name="along_track_index_time",
+        filepath="drop/drop_along_track_index_time.sql",
+    ),
+    DropIndexFile(
+        name="basin_connection_index_basin_id",
+        filepath="drop/drop_basin_connection_index_basin_id.sql",
+    ),
+    DropIndexFile(
+        name="basin_index_geom",
+        filepath="drop/drop_basin_index_geom.sql",
+    ),
 ]
 
-drop_eddy_index_files = [
-    {"name": "eddy_index_point", "filepath": "drop/drop_eddy_index_point.sql"},
-    {
-        "name": "eddy_index_track_cyclonic_type",
-        "filepath": "drop/drop_eddy_index_track_cyclonic_type.sql",
-    },
+drop_eddy_index_files: list[DropIndexFile] = [
+    DropIndexFile(
+        name="eddy_index_point",
+        filepath="drop/drop_eddy_index_point.sql",
+    ),
+    DropIndexFile(
+        name="eddy_index_track_cyclonic_type",
+        filepath="drop/drop_eddy_index_track_cyclonic_type.sql",
+    ),
 ]
 
 DEFAULT_INDEX_LOGICAL_NAMES = {
@@ -176,37 +197,37 @@ class ManagedIndices(ResourceLoader):
     """
 
     @property
-    def along_track_index_files(self) -> list[dict[str, str | dict[str, str]]]:
+    def along_track_index_files(self) -> list[IndexFile]:
         return along_track_index_files
 
     @property
-    def basin_index_files(self) -> list[dict[str, str | dict[str, str]]]:
+    def basin_index_files(self) -> list[IndexFile]:
         return basin_index_files
 
     @property
-    def eddy_index_files(self) -> list[dict[str, str | dict[str, str]]]:
+    def eddy_index_files(self) -> list[IndexFile]:
         return eddy_index_files
 
     @property
-    def sql_index_files(self) -> list[dict[str, str | dict[str, str]]]:
+    def sql_index_files(self) -> list[IndexFile]:
         return sql_index_files
 
     @property
-    def drop_index_files(self) -> list[dict[str, str]]:
+    def drop_index_files(self) -> list[DropIndexFile]:
         return drop_index_files
 
     @property
-    def drop_eddy_index_files(self) -> list[dict[str, str]]:
+    def drop_eddy_index_files(self) -> list[DropIndexFile]:
         return drop_eddy_index_files
 
-    def all_index_files(self) -> list[dict[str, str | dict[str, str]]]:
+    def all_index_files(self) -> list[IndexFile]:
         return self.sql_index_files + self.eddy_index_files
 
-    def default_index_files(self) -> list[dict[str, str | dict[str, str]]]:
+    def default_index_files(self) -> list[IndexFile]:
         return [
             index
             for index in self.all_index_files()
-            if index["name"] in DEFAULT_INDEX_LOGICAL_NAMES
+            if index.name in DEFAULT_INDEX_LOGICAL_NAMES
         ]
 
     def default_index_definitions(self) -> list[dict[str, str]]:
@@ -216,14 +237,15 @@ class ManagedIndices(ResourceLoader):
             if index["logical_name"] in DEFAULT_INDEX_LOGICAL_NAMES
         ]
 
-    def load_index_metadata(self, index: dict[str, str]) -> dict[str, str]:
-        sql_statement = self.load_sql_file(index["filepath"])
+    def load_index_metadata(self, index: IndexFile) -> dict[str, str]:
+        sql_statement = self.load_sql_file(index.filepath)
         match = INDEX_SQL_PATTERN.search(sql_statement)
         if not match:
-            raise ValueError(f"Unable to parse index SQL for '{index['name']}'")
+            raise ValueError(f"Unable to parse index SQL for '{index.name}'")
 
         return {
-            **index,
+            "logical_name": index.name,
+            "filepath": index.filepath,
             "index_name": match.group("index_name").replace("public.", ""),
             "table_name": match.group("table_name").replace("public.", ""),
         }
@@ -233,15 +255,15 @@ class ManagedIndices(ResourceLoader):
         defined_rows = []
         for index in self.all_index_files():
             metadata = self.load_index_metadata(index)
-            raw_sql = self.load_sql_file(index["filepath"]).strip()
+            raw_sql = self.load_sql_file(index.filepath).strip()
             defined_rows.append(
                 {
-                    "logical_name": index["name"],
+                    "logical_name": index.name,
                     "table_name": metadata["table_name"],
                     "index_name": metadata["index_name"],
                     "index_definition": normalize_sql(raw_sql),
                     "index_definition_multiline": raw_sql,
-                    "filepath": index["filepath"],
+                    "filepath": index.filepath,
                 }
             )
 
@@ -282,7 +304,7 @@ class ManagedIndices(ResourceLoader):
             if index["logical_name"] == logical_name:
                 return index
 
-        if any(index["name"] == logical_name for index in self.sql_index_files):
+        if any(index.name == logical_name for index in self.sql_index_files):
             raise ValueError(
                 f"Index '{logical_name}' is not available for partitioned creation"
             )

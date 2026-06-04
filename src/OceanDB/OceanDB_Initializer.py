@@ -6,7 +6,8 @@ from psycopg import sql
 from sqlalchemy import text
 
 from OceanDB.base_write_query import BaseWriteQuery
-from OceanDB.managed_index_oceandb import PARTITIONED_ALONG_TRACK_INDEX_PATTERN
+from OceanDB.managed_index_oceandb import (
+    PARTITIONED_ALONG_TRACK_INDEX_PATTERN, IndexFile)
 from OceanDB.query_spec import RawSpec
 
 table_definitions = [
@@ -167,11 +168,9 @@ class OceanDBInit(BaseWriteQuery):
                 self.logger.info(f"{table}")
                 self.logger.info(ex)
 
-    def _create_index_group(
-        self, indices: Sequence[Mapping[str, str | dict[str, str]]]
-    ) -> None:
+    def _create_index_group(self, indices: Sequence[IndexFile]) -> None:
         for index in indices:
-            table_name = index["name"]
+            table_name = index.name
             self.logger.info(f"Starting index creation for {table_name}")
             query = self.parametrize_sql_statements(index)
             self.execute_write_query(query)
@@ -243,13 +242,13 @@ class OceanDBInit(BaseWriteQuery):
 
     def drop_indices(self):
         for index in self.managed_indices.drop_index_files:
-            self._execute_raw_sql_file(index["filepath"])
-            self.logger.info(f"Dropping {index['name']}")
+            self._execute_raw_sql_file(index.filepath)
+            self.logger.info(f"Dropping {index.name}")
 
     def drop_eddy_indices(self):
         for index in self.managed_indices.drop_eddy_index_files:
-            self._execute_raw_sql_file(index["filepath"])
-            self.logger.info(f"Dropping {index['name']}")
+            self._execute_raw_sql_file(index.filepath)
+            self.logger.info(f"Dropping {index.name}")
 
     def create_partitions(self, min_date, max_date):
         """
@@ -287,7 +286,7 @@ class OceanDBInit(BaseWriteQuery):
             print(f"Created partition {partition_name}")
             current = next_month
 
-    def parametrize_sql_statements(self, table):
+    def parametrize_sql_statements(self, table: Mapping[str, object] | IndexFile):
         """
         Some of the SQL statements are parameterized
         Substitute parameters
@@ -302,15 +301,23 @@ class OceanDBInit(BaseWriteQuery):
             },
         }
         """
-        query_filepath = table["filepath"]
-        query_params = table["params"]
+        if isinstance(table, IndexFile):
+            query_filepath = table.filepath
+            query_params = (
+                {"index_name": table.index_name} if table.index_name is not None else {}
+            )
+        else:
+            query_filepath = cast(str, table["filepath"])
+            query_params = cast(dict[str, str], table["params"])
         sql_statement = self.load_sql_file(query_filepath)
         safe_params = {}
         for key, value in query_params.items():
             if "name" in key:
                 safe_params[key] = sql.Identifier(value)
             elif "date" in key:
-                safe_params[key] = sql.SQL(value)  # not sql.Literal
+                safe_params[key] = sql.SQL(
+                    cast(LiteralString, value)
+                )  # not sql.Literal
             else:
                 safe_params[key] = sql.Literal(value)
         # Render query safely
