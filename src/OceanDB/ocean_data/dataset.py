@@ -1,12 +1,11 @@
-from typing import Generic, Mapping, TypeVar
+from typing import Any, Mapping, TypeVar
 
 from ..ocean_data.ocean_data import OceanDataField
 
 K = TypeVar("K", bound=str)
-T = TypeVar("T")
 
 
-class Dataset(Mapping[K, T], Generic[K, T]):
+class Dataset(Mapping[K, Any]):
     """
     Immutable, column-oriented dataset.
 
@@ -24,7 +23,7 @@ class Dataset(Mapping[K, T], Generic[K, T]):
         self,
         *,
         name: str,
-        data: Mapping[K, T],
+        data: Mapping[K, Any],
         dtypes: Mapping[K, type],
         schema: Mapping[K, OceanDataField],
     ):
@@ -32,13 +31,23 @@ class Dataset(Mapping[K, T], Generic[K, T]):
         self._data = dict(data)
         self._dtypes = dict(dtypes)
         self.schema = schema
+        self._scaled_data: dict[K, Any] = {}
 
     def __repr__(self) -> str:
         cols = ", ".join(self._data.keys())
         return f"Dataset(name='{self.name}', columns=[{cols}])"
 
-    def __getitem__(self, key: K) -> T:
-        return self._data[key]
+    def __getitem__(self, key: K) -> Any:
+        # fetch from cached data if possible
+        if key in self._scaled_data:
+            return self._scaled_data[key]
+
+        values = self._data[key]
+        field = self.schema[key]
+        scaled_values = field.apply_scaling(values)
+        # cache scaled data
+        self._scaled_data[key] = scaled_values
+        return scaled_values
 
     def __contains__(self, key) -> bool:
         return key in self._data

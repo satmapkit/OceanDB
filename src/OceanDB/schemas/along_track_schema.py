@@ -91,6 +91,7 @@ sla_unfiltered = ColumnField(
     python_type=np.float64,
     postgres_type="smallint",
     netcdf_unique_name="sla_unfiltered",
+    scaling=0.001,
 )
 
 sla_filtered = ColumnField(
@@ -100,6 +101,7 @@ sla_filtered = ColumnField(
     python_type=np.float64,
     postgres_type="smallint",
     netcdf_unique_name="sla_filtered",
+    scaling=0.001,
 )
 
 dac = ColumnField(
@@ -109,6 +111,7 @@ dac = ColumnField(
     python_type=np.float64,
     postgres_type="smallint",
     netcdf_unique_name="dac",
+    scaling=0.001,
 )
 
 ocean_tide = ColumnField(
@@ -118,6 +121,7 @@ ocean_tide = ColumnField(
     python_type=np.float64,
     postgres_type="smallint",
     netcdf_unique_name="ocean_tide",
+    scaling=0.001,
 )
 
 internal_tide = ColumnField(
@@ -127,6 +131,7 @@ internal_tide = ColumnField(
     python_type=np.float64,
     postgres_type="smallint",
     netcdf_unique_name="internal_tide",
+    scaling=0.001,
 )
 
 lwe = ColumnField(
@@ -136,6 +141,7 @@ lwe = ColumnField(
     python_type=np.float64,
     postgres_type="smallint",
     netcdf_unique_name="lwe",
+    scaling=0.001,
 )
 
 mdt = ColumnField(
@@ -145,6 +151,7 @@ mdt = ColumnField(
     python_type=np.float64,
     postgres_type="smallint",
     netcdf_unique_name="mdt",
+    scaling=0.001,
 )
 
 
@@ -176,6 +183,7 @@ tpa_correction = ColumnField(
     postgres_type="smallint",
     netcdf_unique_name="tpa_correction",
     process_from_netcdf=_expand_if_low_dim,
+    scaling=0.001,
 )
 
 # Derived / query-only fields
