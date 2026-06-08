@@ -2,8 +2,10 @@ from datetime import datetime
 from typing import Literal
 
 import numpy as np
+from shapely import Polygon
 
 from OceanDB.ocean_data.ocean_data import (ColumnField, DerivedField,
+                                           GeographyColumnField,
                                            OceanDataField)
 from OceanDB.schemas.along_track_schema import (along_track_fields,
                                                 along_track_schema)
@@ -122,23 +124,14 @@ effective_contour_height = ColumnField(
     postgres_type="float4",
 )
 
-effective_contour_latitude = ColumnField(
-    export_name="effective_contour_latitude",
+effective_contour_shape = GeographyColumnField(
+    export_name="effective_contour_shape",
     postgres_table_name="eddy",
-    postgres_column_name="effective_contour_latitude",
-    python_type=np.int32,
-    postgres_type="int2",
-    scaling=0.01,
-)
-
-effective_contour_longitude = ColumnField(
-    export_name="effective_contour_longitude",
-    postgres_table_name="eddy",
-    postgres_column_name="effective_contour_longitude",
-    python_type=np.int32,
-    postgres_type="int2",
-    scaling=0.01,
-    offset=180.0,
+    postgres_column_name="effective_contour_shape",
+    python_type=Polygon,
+    postgres_type="real",
+    netcdf_lat_name="effective_contour_latitude",
+    netcdf_lon_name="effective_contour_longitude",
 )
 
 effective_contour_shape_error = ColumnField(
@@ -241,12 +234,14 @@ speed_contour_height = ColumnField(
     postgres_type="real",
 )
 
-speed_contour_shape = ColumnField(
+speed_contour_shape = GeographyColumnField(
     export_name="speed_contour_shape",
     postgres_table_name="eddy",
     postgres_column_name="speed_contour_shape",
-    python_type=np.float64,
+    python_type=Polygon,
     postgres_type="real",
+    netcdf_lat_name="speed_contour_latitude",
+    netcdf_lon_name="speed_contour_longitude",
 )
 
 speed_contour_shape_error = ColumnField(
@@ -314,8 +309,7 @@ eddy_columns = Literal[
     "cost_association",
     "effective_area",
     "effective_contour_height",
-    "effective_contour_latitude",
-    "effective_contour_longitude",
+    "effective_contour_shape",
     "effective_contour_shape_error",
     "effective_radius",
     "inner_contour_height",
@@ -344,9 +338,7 @@ eddy_columns_schema: dict[eddy_columns, ColumnField] = {
     "cost_association": cost_association,
     "effective_area": effective_area,
     "effective_contour_height": effective_contour_height,
-    # commented out since these use geometry
-    # "effective_contour_latitude": edy_fields.effective_contour_latitude,
-    # "effective_contour_longitude": edy_fields.effective_contour_longitude,
+    "effective_contour_shape": effective_contour_shape,
     "effective_contour_shape_error": effective_contour_shape_error,
     "effective_radius": effective_radius,
     "inner_contour_height": inner_contour_height,
@@ -362,8 +354,7 @@ eddy_columns_schema: dict[eddy_columns, ColumnField] = {
     "speed_area": speed_area,
     "speed_average": speed_average,
     "speed_contour_height": speed_contour_height,
-    # commented out since these use geometry
-    # "speed_contour_shape": edy_fields.speed_contour_shape,
+    "speed_contour_shape": speed_contour_shape,
     "speed_contour_shape_error": speed_contour_shape_error,
     "speed_radius": speed_radius,
     "date_time": date_time,

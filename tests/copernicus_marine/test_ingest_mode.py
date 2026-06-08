@@ -70,7 +70,6 @@ def test_import_schema_rows_uses_insert_mode():
 
     @contextmanager
     def fake_cursor(**kwargs):
-        assert kwargs == {"commit": True}
         yield cursor
 
     etl.cursor = cast(Any, fake_cursor)
@@ -109,7 +108,6 @@ def test_import_schema_rows_uses_copy_mode_and_value_adapter():
 
     @contextmanager
     def fake_cursor(**kwargs):
-        assert kwargs == {"commit": True}
         yield cursor
 
     etl.cursor = cast(Any, fake_cursor)

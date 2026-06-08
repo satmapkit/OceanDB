@@ -90,7 +90,9 @@ class BaseReadQuery(OceanDB):
         sql_query = query_spec.sql_projection_compiler(fields)
         should_render_query = self.query_observer is not None
 
-        with self.cursor(row_factory=dict_row, debug=should_render_query) as cur:
+        with self.cursor(
+            row_factory=dict_row, debug=should_render_query, use_geometry=True
+        ) as cur:
             if self.query_observer is not None:
                 rendered_query = render_query(
                     conn=cur.connection,
@@ -149,7 +151,9 @@ class BaseReadQuery(OceanDB):
             return
 
         with self.cursor(
-            row_factory=dict_row, debug=self.query_observer is not None
+            row_factory=dict_row,
+            debug=self.query_observer is not None,
+            use_geometry=True,
         ) as cur:
             if self.query_observer is not None:
                 rendered_query = render_query(

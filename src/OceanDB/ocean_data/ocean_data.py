@@ -7,6 +7,8 @@ import numpy as np
 import numpy.typing as npt
 from psycopg import sql
 
+from OceanDB.utils.contour_conversion import to_polygon
+
 
 class OceanDataField(ABC):
     """
@@ -149,6 +151,9 @@ class ColumnField(OceanDataField):
             self.postgres_column_name,
         )
 
+    def in_netcdf(self, ds: nc.Dataset) -> bool:
+        return self.netcdf_name in ds.variables
+
     def from_netcdf(self, ds: nc.Dataset, rows: slice) -> npt.NDArray[Any]:
         """
         Read the value of this field from NetCDF
@@ -210,3 +215,26 @@ class DerivedField(OceanDataField):
 
     def sql_expression(self) -> sql.Composable:
         return sql.SQL(self.expression)
+
+
+@dataclass(frozen=True)
+class GeographyColumnField(ColumnField):
+    netcdf_lat_name: str = "NA"
+    netcdf_lon_name: str = "NA"
+
+    def sql_expression(self) -> sql.Composable:
+        return sql.Identifier(
+            self.postgres_table_name,
+            self.postgres_column_name,
+        ) + sql.SQL("::Geometry")
+
+    def in_netcdf(self, ds: nc.Dataset) -> bool:
+        return (
+            self.netcdf_lat_name in ds.variables
+            and self.netcdf_lon_name in ds.variables
+        )
+
+    def from_netcdf(self, ds, rows):
+        return to_polygon(
+            ds.variables[self.netcdf_lon_name], ds.variables[self.netcdf_lat_name], rows
+        )
