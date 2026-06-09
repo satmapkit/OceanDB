@@ -1,5 +1,7 @@
 import datetime
 
+import netCDF4 as nc
+import numpy as np
 import pytest
 
 from OceanDB.data_access.eddy import Eddy
@@ -48,3 +50,39 @@ def test_get_eddy_tracks_from_times_batch_matches_single_queries(
     assert result == expected
     assert tuple(sorted(result[0])) == (-2, -1, 0)
     assert result[1] == []
+
+
+def test_eddy_scaling_matches_netcdf(db_with_cyclonic_eddy_data):
+    cyclonic_filepath = Path(
+        f"{db_with_cyclonic_eddy_data.config.eddy_data_directory}/cyclonic.nc"
+    )
+    file = nc.Dataset(cyclonic_filepath)
+    file.set_auto_scale(False)
+    file.set_auto_mask(True)
+    netcdf_mask = np.array(file.variables["track"]) == 1
+    print(netcdf_mask)
+
+    eddy = Eddy(db_with_cyclonic_eddy_data.config)
+    data_from_db = eddy.eddy_with_track_id(list(eddy_columns_schema.keys()), -1)
+    assert data_from_db is not None
+
+    exceptions = (
+        "date_time",
+        "cost_association",
+        "cyclonic_type",
+    )
+
+    for variable, schema in eddy_columns_schema.items():
+        if variable in exceptions:
+            continue
+        var_from_netcdf = file.variables[schema.netcdf_name][netcdf_mask]
+        var_from_db = data_from_db.get_unscaled(variable)
+        assert len(var_from_netcdf) == len(var_from_db)
+        assert np.all(np.isclose(np.sort(var_from_netcdf), np.sort(var_from_db)))
+
+    assert np.all(
+        np.isclose(
+            np.sort(file.variables["cost_association"][netcdf_mask]),
+            np.sort(data_from_db.get_unscaled("cost_association")),
+        )
+    )

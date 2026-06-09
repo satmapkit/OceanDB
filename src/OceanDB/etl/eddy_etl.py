@@ -49,6 +49,12 @@ class EddyETL(OceanDBETL):
         obs_var = ds.variables["observation_number"]
         n_total = obs_var.shape[0]
 
+        self.verify_netcdf_schema_scaling(
+            ds=ds,
+            schema=eddy_columns_schema,
+            context="[EDDY]",
+        )
+
         fields_in_ds: list[tuple[eddy_columns, ColumnField]] = [
             (name, field)
             for name, field in eddy_columns_schema.items()

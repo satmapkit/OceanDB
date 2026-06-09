@@ -233,6 +233,12 @@ class AlongTrackETL(OceanDBETL):
             if name not in derived_fields
         ]
 
+        self.verify_netcdf_schema_scaling(
+            ds=ds,
+            schema={name: field for name, field in required_fields},
+            context=f"[ALONG-TRACK] file={file.name}",
+        )
+
         missing_variables = [
             field.netcdf_name
             for _, field in required_fields

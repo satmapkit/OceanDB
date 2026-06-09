@@ -85,6 +85,7 @@ amplitude = ColumnField(
     postgres_column_name="amplitude",
     python_type=np.float64,
     postgres_type="smallint",
+    scaling=0.0001,
 )
 
 effective_radius = ColumnField(
@@ -93,6 +94,7 @@ effective_radius = ColumnField(
     postgres_column_name="effective_radius",
     python_type=np.float64,
     postgres_type="smallint",
+    scaling=50.0,
 )
 
 inner_contour_height = ColumnField(
@@ -126,6 +128,7 @@ effective_contour_latitude = ColumnField(
     postgres_column_name="effective_contour_latitude",
     python_type=np.int32,
     postgres_type="int2",
+    scaling=0.01,
 )
 
 effective_contour_longitude = ColumnField(
@@ -134,6 +137,8 @@ effective_contour_longitude = ColumnField(
     postgres_column_name="effective_contour_longitude",
     python_type=np.int32,
     postgres_type="int2",
+    scaling=0.01,
+    offset=180.0,
 )
 
 effective_contour_shape_error = ColumnField(
@@ -142,6 +147,7 @@ effective_contour_shape_error = ColumnField(
     postgres_column_name="effective_contour_shape_error",
     python_type=np.int32,
     postgres_type="int2",
+    scaling=0.5,
 )
 
 cost_association = ColumnField(
@@ -207,6 +213,7 @@ speed_average = ColumnField(
     postgres_column_name="speed_average",
     python_type=int,
     postgres_type="integer",
+    scaling=0.0001,
 )
 
 speed_radius = ColumnField(
@@ -215,6 +222,7 @@ speed_radius = ColumnField(
     postgres_column_name="speed_radius",
     python_type=int,
     postgres_type="smallint",
+    scaling=50.0,
 )
 
 speed_area = ColumnField(
@@ -247,6 +255,7 @@ speed_contour_shape_error = ColumnField(
     postgres_column_name="speed_contour_shape_error",
     python_type=np.float64,
     postgres_type="int2",
+    scaling=0.5,
 )
 
 # -----------------

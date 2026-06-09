@@ -60,6 +60,50 @@ class OceanDBETL(OceanDB):
         ds = nc.Dataset(file, "r")
         return ds
 
+    @staticmethod
+    def _netcdf_scale_value(var: nc.Variable, attr_name: str, default: float) -> float:
+        value = getattr(var, attr_name, default)
+        if isinstance(value, np.generic):
+            value = value.item()
+        return float(value)
+
+    def verify_netcdf_variable_scaling(
+        self,
+        *,
+        ds: nc.Dataset,
+        field: ColumnField,
+        context: str,
+    ) -> None:
+        if field.netcdf_name not in ds.variables:
+            return
+
+        var = ds.variables[field.netcdf_name]
+        actual_scaling = self._netcdf_scale_value(var, "scale_factor", 1)
+        actual_offset = self._netcdf_scale_value(var, "add_offset", 0)
+
+        scaling_matches = np.isclose(actual_scaling, field.scaling)
+        offset_matches = np.isclose(actual_offset, field.offset)
+        if scaling_matches and offset_matches:
+            return
+
+        self.debug_log(
+            (
+                f"[WARN] {context} variable={field.netcdf_name} "
+                f"schema_scaling={field.scaling} dataset_scaling={actual_scaling} "
+                f"schema_offset={field.offset} dataset_offset={actual_offset}"
+            )
+        )
+
+    def verify_netcdf_schema_scaling(
+        self,
+        *,
+        ds: nc.Dataset,
+        schema: Mapping[K, ColumnField],
+        context: str,
+    ) -> None:
+        for field in schema.values():
+            self.verify_netcdf_variable_scaling(ds=ds, field=field, context=context)
+
     def import_schema_rows_to_postgresql(
         self,
         *,

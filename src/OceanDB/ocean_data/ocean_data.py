@@ -8,7 +8,6 @@ import numpy.typing as npt
 from psycopg import sql
 
 
-@dataclass(frozen=True)
 class OceanDataField(ABC):
     """
     The base dataclass for all ocean fields supported by this library.
@@ -30,6 +29,16 @@ class OceanDataField(ABC):
     Numpy dtype to use when casting this field to a numpy array
     """
 
+    scaling: float
+    """
+    Multiplicative factor to apply when exposing stored values
+    """
+
+    offset: float
+    """
+    Additive offset to apply when exposing stored values
+    """
+
     @abstractmethod
     def sql_expression(self) -> sql.Composable:
         """
@@ -45,6 +54,18 @@ class OceanDataField(ABC):
             expr=self.sql_expression(),
             alias=sql.Identifier(self.export_name),
         )
+
+    def apply_scaling(self, values: npt.NDArray[Any]) -> npt.NDArray[Any]:
+        """
+        Apply this field's scale and offset to an array of values.
+        """
+        if self.scaling == 1 and self.offset == 0:
+            return values
+
+        if not np.issubdtype(values.dtype, np.number):
+            return values
+
+        return values * self.scaling + self.offset
 
     def from_sql_query(self, values: list[Any]) -> Any:
         """
@@ -81,6 +102,8 @@ class ColumnField(OceanDataField):
         See :attr:`postgres_type`
     """
 
+    export_name: str
+    python_type: Optional[type]
     postgres_table_name: str
     """
     Name (or alias) of the source table for this column
@@ -110,6 +133,9 @@ class ColumnField(OceanDataField):
     """
     When loading from netcdf, additional post-processing to perform
     """
+
+    scaling: float = 1
+    offset: float = 0
 
     @property
     def netcdf_name(self) -> str:
@@ -165,6 +191,8 @@ class DerivedField(OceanDataField):
         See :attr:`postgres_type`
     """
 
+    export_name: str
+    python_type: Optional[type]
     expression: str
     """
     Expression string for computing this field in postgres, e.g.::
@@ -176,6 +204,9 @@ class DerivedField(OceanDataField):
     """
     Postgres type of this column (UNUSED)
     """
+
+    scaling: float = 1
+    offset: float = 0
 
     def sql_expression(self) -> sql.Composable:
         return sql.SQL(self.expression)
