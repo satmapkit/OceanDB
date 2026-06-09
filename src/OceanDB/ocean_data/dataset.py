@@ -37,6 +37,9 @@ class Dataset(Mapping[K, Any]):
         cols = ", ".join(self._data.keys())
         return f"Dataset(name='{self.name}', columns=[{cols}])"
 
+    def get_unscaled(self, key: K) -> Any:
+        return self._data[key]
+
     def __getitem__(self, key: K) -> Any:
         # fetch from cached data if possible
         if key in self._scaled_data:
