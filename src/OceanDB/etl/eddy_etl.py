@@ -58,7 +58,7 @@ class EddyETL(OceanDBETL):
         fields_in_ds: list[tuple[eddy_columns, ColumnField]] = [
             (name, field)
             for name, field in eddy_columns_schema.items()
-            if field.netcdf_name in ds.variables
+            if field.in_netcdf(ds)
         ]
 
         for start in range(offset, n_total, batch_size):

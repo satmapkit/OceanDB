@@ -191,7 +191,7 @@ class OceanDBETL(OceanDB):
         if ignore_conflicts:
             insert_query += sql.SQL(" ON CONFLICT DO NOTHING")
 
-        with self.cursor(commit=True) as cur:
+        with self.cursor(commit=True, use_geometry=True) as cur:
             cur.executemany(insert_query, rows)
 
     def _copy_schema_rows_to_postgresql(
@@ -237,7 +237,7 @@ class OceanDBETL(OceanDB):
         if ignore_conflicts:
             merge_query += sql.SQL(" ON CONFLICT DO NOTHING")
 
-        with self.cursor(commit=True) as cur:
+        with self.cursor(commit=True, use_geometry=True) as cur:
             cur.execute(create_temp_query)
             with cur.copy(copy_query) as copy:
                 for row in rows:

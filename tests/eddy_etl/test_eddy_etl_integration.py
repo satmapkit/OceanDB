@@ -3,9 +3,10 @@ import datetime
 import netCDF4 as nc
 import numpy as np
 import pytest
+from shapely import Polygon
 
 from OceanDB.data_access.eddy import Eddy
-from OceanDB.schemas.eddy_schema import eddy_columns_schema
+from OceanDB.schemas.eddy_schema import eddy_columns, eddy_columns_schema
 from tests.database.fixtures import *
 
 pytestmark = pytest.mark.uses_database
@@ -70,6 +71,8 @@ def test_eddy_scaling_matches_netcdf(db_with_cyclonic_eddy_data):
         "date_time",
         "cost_association",
         "cyclonic_type",
+        "effective_contour_shape",
+        "speed_contour_shape",
     )
 
     for variable, schema in eddy_columns_schema.items():
@@ -86,3 +89,27 @@ def test_eddy_scaling_matches_netcdf(db_with_cyclonic_eddy_data):
             np.sort(data_from_db.get_unscaled("cost_association")),
         )
     )
+
+def test_ingest_cyclonic_eddy_exposes_contour_polygons(db_with_cyclonic_eddy_data):
+    eddy = Eddy(db_with_cyclonic_eddy_data.config)
+    contour_fields: list[eddy_columns] = [
+        "effective_contour_shape",
+        "speed_contour_shape",
+    ]
+
+    result = eddy.eddy_with_track_id(
+        fields=contour_fields,
+        track_id=-1,
+    )
+
+    assert result is not None
+
+    for field_name in contour_fields:
+        assert field_name in result
+
+        polygons = result[field_name]
+
+        assert len(polygons) > 0
+        assert all(isinstance(polygon, Polygon) for polygon in polygons)
+        assert all(not polygon.is_empty for polygon in polygons)
+
