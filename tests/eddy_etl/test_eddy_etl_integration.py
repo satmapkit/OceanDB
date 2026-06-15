@@ -90,6 +90,7 @@ def test_eddy_scaling_matches_netcdf(db_with_cyclonic_eddy_data):
         )
     )
 
+
 def test_ingest_cyclonic_eddy_exposes_contour_polygons(db_with_cyclonic_eddy_data):
     eddy = Eddy(db_with_cyclonic_eddy_data.config)
     contour_fields: list[eddy_columns] = [
@@ -112,4 +113,3 @@ def test_ingest_cyclonic_eddy_exposes_contour_polygons(db_with_cyclonic_eddy_dat
         assert len(polygons) > 0
         assert all(isinstance(polygon, Polygon) for polygon in polygons)
         assert all(not polygon.is_empty for polygon in polygons)
-
