@@ -61,6 +61,14 @@ class EddyETL(OceanDBETL):
             if field.in_netcdf(ds)
         ]
 
+        # certain fields have to be scaled
+        ds["latitude"].set_auto_scale(True)
+        ds["longitude"].set_auto_scale(True)
+        ds["effective_contour_latitude"].set_auto_scale(True)
+        ds["effective_contour_longitude"].set_auto_scale(True)
+        ds["speed_contour_latitude"].set_auto_scale(True)
+        ds["speed_contour_longitude"].set_auto_scale(True)
+
         for start in range(offset, n_total, batch_size):
             stop = min(start + batch_size, n_total)
 
