@@ -89,7 +89,7 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
                 kwargs={
                     "fields": all_along_track_fields,
                     "latitude": -39.1,
-                    "longitude": 54.7,
+                    "longitude": 24.7,
                     "date": datetime(2013, 1, 4, 23),
                     "radius": 500_000,
                     "time_window": timedelta(days=10),
@@ -100,8 +100,8 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
                 method_name="geographic_nearest_neighbors",
                 kwargs={
                     "fields": all_along_track_fields,
-                    "latitude": -69,
-                    "longitude": 28.1,
+                    "latitude": -39.1,
+                    "longitude": 24.7,
                     "date": datetime(2013, 1, 4, 23),
                     "time_window": timedelta(days=10),
                 },
@@ -109,17 +109,17 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
             QueryScenario(
                 query_class=Eddy,
                 method_name="eddy_with_track_id",
-                kwargs={"fields": all_eddy_fields, "track_id": -1},
+                kwargs={"fields": all_eddy_fields, "track_id": 527413},
             ),
             QueryScenario(
                 query_class=Eddy,
                 method_name="eddy_envelope_query",
-                kwargs={"track_id": -1},
+                kwargs={"track_id": 527413},
             ),
             QueryScenario(
                 query_class=Eddy,
                 method_name="along_track_points_near_eddy",
-                kwargs={"track_id": -1},
+                kwargs={"track_id": 527413},
             ),
         ]
 

@@ -8,13 +8,9 @@ from OceanDB.data_access.along_track import BaseReadQuery
 from OceanDB.data_access.base_query import QuerySpec
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas.along_track_schema import along_track_fields
-from OceanDB.schemas.eddy_schema import (
-    along_track_eddy_schema,
-    eddy_columns,
-    eddy_columns_schema,
-    eddy_fields,
-    eddy_schema,
-)
+from OceanDB.schemas.eddy_schema import (along_track_eddy_schema, eddy_columns,
+                                         eddy_columns_schema, eddy_fields,
+                                         eddy_schema)
 
 envelope_fields = Literal["max_date", "min_date", "basin_ids"]
 
@@ -159,7 +155,9 @@ class Eddy(BaseReadQuery):
             schema=eddy_columns_schema,
         )
 
-        params_batch = [self._track_id_to_track_cyclonic_type(track_id) for track_id in track_ids]
+        params_batch = [
+            self._track_id_to_track_cyclonic_type(track_id) for track_id in track_ids
+        ]
 
         return self.execute_batch_read_query(
             query_spec=query_spec,
@@ -217,7 +215,9 @@ class Eddy(BaseReadQuery):
             schema=eddy_schema,
         )
         fields: list[envelope_fields] = ["max_date", "min_date", "basin_ids"]
-        params_batch = [self._track_id_to_track_cyclonic_type(track_id) for track_id in track_ids]
+        params_batch = [
+            self._track_id_to_track_cyclonic_type(track_id) for track_id in track_ids
+        ]
 
         return self.execute_batch_read_query(
             query_spec=query_spec,

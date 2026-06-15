@@ -40,6 +40,8 @@ dev = [
     "pytest",
     "matplotlib",
     "tcl",
+    "black",
+    "isort",
 ]
 
 [tool.setuptools.packages.find]
