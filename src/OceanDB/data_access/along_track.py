@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from functools import cached_property
-from typing import Any, Generator, Literal, get_args
+from typing import Any, Generator, Literal, get_args, Iterable
 
 from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
 from OceanDB.ocean_data.basins import BasinConnections, BasinMask
@@ -136,9 +136,9 @@ class AlongTrack(BaseReadQuery):
     def geographic_point_in_r_dt_batch(
         self,
         fields: list[along_track_fields],
-        latitudes: list[float],
-        longitudes: list[float],
-        dates: list[datetime],
+        latitudes: Iterable[float],
+        longitudes: Iterable[float],
+        dates: Iterable[datetime],
         radius: float = 500_000.0,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] = all_missions,
@@ -221,9 +221,9 @@ class AlongTrack(BaseReadQuery):
     def geographic_nearest_neighbors_batch(
         self,
         fields: list[along_track_fields],
-        latitudes: list[float],
-        longitudes: list[float],
-        dates: list[datetime],
+        latitudes: Iterable[float],
+        longitudes: Iterable[float],
+        dates: Iterable[datetime],
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] = all_missions,
     ) -> Generator[Dataset[along_track_fields, Any] | None, None, None]:
