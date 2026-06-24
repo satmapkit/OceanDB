@@ -59,6 +59,16 @@ class QueryScenario(BaseQueryScenario):
         return f"{self.query_class.__name__}.{self.method_name}"
 
 
+class BatchQueryScenario(QueryScenario):
+    def run(self, *, config: Config, observer: QueryObserver) -> None:
+        query = self.query_class(config=config)
+        query.start_debug(observer)
+        try:
+            list(getattr(query, self.method_name)(**self.kwargs))
+        finally:
+            query.stop_debug()
+
+
 @dataclass(frozen=True)
 class QueryAnalysisRow:
     scenario_name: str
