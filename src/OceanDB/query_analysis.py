@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Iterable, Iterator, Mapping
@@ -90,10 +91,15 @@ class QueryAnalysisRow:
     Total cost of the first query in the scenario, as listed by explain/analyze
     """
 
-    total_time: float | None
+    single_query_sql_time: float | None
     """
     Time for the SQL to run of the first query in the scenario, as listed by explain/analyze.
     If the scenario is a batch scenario, will only compute this value for the first item in the batch
+    """
+
+    total_time: float | None
+    """
+    Total time for the query to run, including both SQL and python.
     """
 
 
@@ -164,7 +170,7 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
         scenario: QueryScenario,
     ) -> QueryAnalysisRow:
 
-        captured_all = self._capture_statement_sql(scenario)
+        captured_all, total_time = self._capture_statement_sql(scenario)
 
         tables = set()
         explain_output: list[dict[str, Any]] = []
@@ -182,7 +188,8 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
             explain_result_dict=explain_output,
             explain_result_str=yaml.safe_dump(explain_output),
             total_cost=self.extract_total_cost(explain_output),
-            total_time=self.extract_total_time(explain_output),
+            single_query_sql_time=self.extract_total_time(explain_output),
+            total_time=total_time,
         )
 
     def explain_analyze_sql(self, capture: QueryCapture) -> list[dict[str, Any]]:
@@ -265,7 +272,9 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
             if isinstance(child, dict):
                 yield from self._iter_plan_nodes(child)
 
-    def _capture_statement_sql(self, scenario: QueryScenario) -> list[QueryCapture]:
+    def _capture_statement_sql(
+        self, scenario: QueryScenario
+    ) -> tuple[list[QueryCapture], float]:
 
         outputs: list[QueryCapture] = []
 
@@ -274,6 +283,8 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
         ) -> None:
             outputs.append(QueryCapture(query, params, rendered))
 
+        start_time = time.time()
         scenario.run(config=self.config, observer=observer)
+        end_time = time.time()
 
-        return outputs
+        return outputs, end_time - start_time
