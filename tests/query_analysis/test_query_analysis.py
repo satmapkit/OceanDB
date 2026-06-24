@@ -1,4 +1,4 @@
-from typing import LiteralString, cast
+from typing import LiteralString
 
 import pytest
 from psycopg import sql
@@ -46,15 +46,11 @@ class FakeQuery(BaseReadQuery):
     def stop_debug(self):
         self.query_observer = None
 
-    def emit_two(self, sql_one: str, sql_two: str):
+    def emit_two(self, sql_one: LiteralString, sql_two: LiteralString):
         if self.query_observer is None:
             raise AssertionError("observer was not configured")
-        self.query_observer(
-            cast(sql.Composed, sql.SQL(cast(LiteralString, sql_one))), {}, sql_one
-        )
-        self.query_observer(
-            cast(sql.Composed, sql.SQL(cast(LiteralString, sql_two))), {}, sql_two
-        )
+        self.query_observer(sql.Composed(sql_one), {}, sql_one)
+        self.query_observer(sql.Composed(sql_two), {}, sql_two)
 
 
 def test_runner_can_take_injected_scenarios():
