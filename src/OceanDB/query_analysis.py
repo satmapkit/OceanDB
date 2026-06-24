@@ -51,14 +51,50 @@ class QueryScenario:
 @dataclass(frozen=True)
 class QueryAnalysisRow:
     scenario_name: str
+    """
+    Name of the scenario. Usually the name of method being called
+    """
+
     tables: set[str]
+    """
+    Set of tables referenced in the query
+    """
+
     candidate_indices: set[str]
+    """
+    Set of indices on the used tables
+    """
+
     used_indices: set[str]
+    """
+    Set of indices used by the queries in the scenario
+    """
+
     sql: str
+    """
+    Raw SQL of the queries in the scenario
+    """
+
     explain_result_dict: list[Any]
+    """
+    List of SQL explain/analyze results for each query in the scenario
+    """
+
     explain_result_str: str
+    """
+    SQL explain/analyze results for each query in the scenario, formatted as yaml
+    """
+
     total_cost: float | None
+    """
+    Total cost of the first query in the scenario, as listed by explain/analyze
+    """
+
     total_time: float | None
+    """
+    Time for the SQL to run of the first query in the scenario, as listed by explain/analyze.
+    If the scenario is a batch scenario, will only compute this value for the first item in the batch
+    """
 
 
 class QueryAnalysisRunner(ManagedIndexOceanDB):
