@@ -29,12 +29,6 @@ class QueryCapture:
     rendered: str
 
 
-class QueryCaptureInterrupt(RuntimeError):
-    def __init__(self, query: QueryCapture, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.query = query
-
-
 @dataclass(frozen=True)
 class QueryScenario:
     query_class: type[BaseReadQuery]
