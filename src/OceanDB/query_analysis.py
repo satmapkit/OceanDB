@@ -97,7 +97,7 @@ class QueryAnalysisRow:
     If the scenario is a batch scenario, will only compute this value for the first item in the batch
     """
 
-    total_time: float | None
+    total_time: float
     """
     Total time for the query to run, including both SQL and python.
     """
