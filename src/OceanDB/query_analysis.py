@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import time
+from abc import ABC
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Iterable, Iterator, Mapping
@@ -30,8 +31,17 @@ class QueryCapture:
     rendered: str
 
 
+class BaseQueryScenario(ABC):
+    def run(self, *, config: Config, observer: QueryObserver) -> None:
+        raise NotImplementedError()
+
+    @property
+    def name(self) -> str:
+        raise NotImplementedError()
+
+
 @dataclass(frozen=True)
-class QueryScenario:
+class QueryScenario(BaseQueryScenario):
     query_class: type[BaseReadQuery]
     method_name: str
     kwargs: dict[str, Any]
@@ -107,7 +117,7 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
     def __init__(
         self,
         config: Config | None = None,
-        scenarios: list[QueryScenario] | None = None,
+        scenarios: list[BaseQueryScenario] | None = None,
         managed_indices: ManagedIndices | None = None,
     ):
         super().__init__(config=config, managed_indices=managed_indices)
@@ -115,7 +125,7 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
             scenarios if scenarios is not None else self.default_scenarios()
         )
 
-    def default_scenarios(self) -> list[QueryScenario]:
+    def default_scenarios(self) -> list[BaseQueryScenario]:
         all_along_track_fields = list(along_track_schema.keys())
         all_eddy_fields = list(eddy_columns_schema.keys())
         return [
@@ -164,7 +174,7 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
 
     def analyze_statement(
         self,
-        scenario: QueryScenario,
+        scenario: BaseQueryScenario,
     ) -> QueryAnalysisRow:
 
         captured_all, total_time = self._capture_statement_sql(scenario)
@@ -264,7 +274,7 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
                 yield from self._iter_plan_nodes(child)
 
     def _capture_statement_sql(
-        self, scenario: QueryScenario
+        self, scenario: BaseQueryScenario
     ) -> tuple[list[QueryCapture], float]:
 
         outputs: list[QueryCapture] = []
