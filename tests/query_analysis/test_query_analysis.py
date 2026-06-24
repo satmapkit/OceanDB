@@ -7,7 +7,8 @@ from OceanDB.config import Config
 from OceanDB.data_access.along_track import AlongTrack
 from OceanDB.data_access.base_query import BaseReadQuery
 from OceanDB.data_access.eddy import Eddy
-from OceanDB.query_analysis import QueryAnalysisRunner, QueryScenario
+from OceanDB.query_analysis import (QueryAnalysisRunner, QueryCapture,
+                                    QueryScenario)
 
 pytestmark = pytest.mark.unit
 
@@ -213,38 +214,61 @@ def test_extract_total_cost_and_time_read_first_plan_node_match():
 
 
 def test_analyze_statement_includes_top_level_metrics(monkeypatch):
+
+    query1 = "SELECT * FROM table1"
+    query2 = "SELECT * FROM table2"
+
     scenario = QueryScenario(
         query_class=FakeQuery,
         method_name="emit_two",
-        kwargs={"sql_one": "SELECT * FROM eddy", "sql_two": "SELECT * FROM basin"},
+        kwargs={"sql_one": query1, "sql_two": query2},
     )
-    runner = QueryAnalysisRunner(scenarios=[scenario])
+    runner = QueryAnalysisRunner(
+        scenarios=[scenario],
+        indices=[
+            {
+                "logical_name": "logical_name",
+                "table_name": "table_name",
+                "index_name": "internal_index_name",
+                "index_definition": "<sql>",
+                "index_definition_multiline": "<sql>",
+                "filepath": "/path/to/index",
+            }
+        ],
+    )
 
-    captured_queries = [
-        type("Captured", (), {"rendered": "SELECT * FROM eddy"})(),
-        type("Captured", (), {"rendered": "SELECT * FROM basin"})(),
-    ]
-    explain_outputs = iter(
-        [
-            [
+    def explain_analyze_sql(capture: QueryCapture):
+        if capture.rendered == query1:
+            return [
                 {
                     "Execution Time": 2.5,
                     "Plan": {"Total Cost": 10.0, "Actual Total Time": 2.0},
                 }
-            ],
-            [{"Plan": {"Total Cost": 20.0, "Actual Total Time": 4.0}}],
-        ]
-    )
+            ]
+        if capture.rendered == query2:
+            return [{"Plan": {"Total Cost": 20.0, "Actual Total Time": 4.0}}]
 
-    monkeypatch.setattr(runner, "_capture_statement_sql", lambda _: captured_queries)
-    monkeypatch.setattr(runner, "explain_analyze_sql", lambda _: next(explain_outputs))
-    monkeypatch.setattr(runner, "candidate_indices_for_tables", lambda _: set())
-    monkeypatch.setattr(runner, "extract_used_indices", lambda _: set())
+    # monkeypatch.setattr(runner, "_capture_statement_sql", lambda _: (captured_queries, 2.0))
+    monkeypatch.setattr(runner, "explain_analyze_sql", explain_analyze_sql)
 
     row = runner.analyze_statement(scenario)
 
+    assert row.scenario_name == "FakeQuery.emit_two"
+    assert row.tables == {"table1", "table2"}
+    assert row.candidate_indices == set()
+    assert row.used_indices == set()
+    assert row.sql == "SELECT * FROM table1\nSELECT * FROM table2"
+    assert row.explain_result_dict == [
+        {"Execution Time": 2.5, "Plan": {"Total Cost": 10.0, "Actual Total Time": 2.0}},
+        {"Plan": {"Total Cost": 20.0, "Actual Total Time": 4.0}},
+    ]
+    assert (
+        row.explain_result_str
+        == "- Execution Time: 2.5\n  Plan:\n    Actual Total Time: 2.0\n    Total Cost: 10.0\n- Plan:\n    Actual Total Time: 4.0\n    Total Cost: 20.0\n"
+    )
     assert row.total_cost == 10.0
-    assert row.total_time == 2.0
+    assert row.single_query_sql_time == 2.0
+    assert row.total_time < 0.1
 
 
 def test_candidate_indices_for_tables_uses_initializer_metadata():
