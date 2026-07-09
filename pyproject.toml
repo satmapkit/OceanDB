@@ -42,6 +42,7 @@ dev = [
     "tcl",
     "black",
     "isort",
+    "optuna",
 ]
 
 [tool.setuptools.packages.find]
