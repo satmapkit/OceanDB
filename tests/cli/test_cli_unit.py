@@ -314,34 +314,16 @@ def test_init_exits_early_when_database_exists(monkeypatch):
     runner = CliRunner()
     calls = []
 
-    class FakeInit:
-        def create_database(self):
-            calls.append("create_database")
-            return False
+    def fake_initialize_database():
+        calls.append("initialize_database")
+        return {"created_database": False, "initialized": False}
 
-        def create_tables(self):
-            calls.append("create_tables")
-
-        def create_eddy_tables(self):
-            calls.append("create_eddy_tables")
-
-        def create_partitions(self, min_date, max_date):
-            calls.append(("create_partitions", min_date, max_date))
-
-    class FakeBasinsETL:
-        def insert_basins_data(self):
-            calls.append("insert_basins_data")
-
-        def insert_basin_connections_data(self):
-            calls.append("insert_basin_connections_data")
-
-    monkeypatch.setattr(core_commands, "OceanDBInit", FakeInit)
-    monkeypatch.setattr(core_commands, "create_basins_etl", lambda: FakeBasinsETL())
+    monkeypatch.setattr(core_commands, "initialize_database", fake_initialize_database)
 
     result = runner.invoke(cli_module.cli, ["init"])
 
     assert result.exit_code == 0
-    assert calls == ["create_database"]
+    assert calls == ["initialize_database"]
 
 
 def test_ingest_mode_status_line_formats():
@@ -354,19 +336,16 @@ def test_index_create_all_command_creates_all_indices(monkeypatch):
     runner = CliRunner()
     calls = []
 
-    class FakeInit:
-        def create_indices(self):
-            calls.append("create_indices")
-
-        def create_eddy_indices(self):
-            calls.append("create_eddy_indices")
-
-    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(
+        index_commands,
+        "create_all_indices",
+        lambda: calls.append("create_all_indices"),
+    )
 
     result = runner.invoke(cli_module.cli, ["index", "create", "--all"])
 
     assert result.exit_code == 0
-    assert calls == ["create_indices", "create_eddy_indices"]
+    assert calls == ["create_all_indices"]
     assert "All OceanDB-managed indices were created." in result.output
 
 
@@ -374,11 +353,11 @@ def test_index_create_default_command_creates_default_indices(monkeypatch):
     runner = CliRunner()
     calls = []
 
-    class FakeInit:
-        def create_default_indices(self):
-            calls.append("create_default_indices")
-
-    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(
+        index_commands,
+        "create_default_indices",
+        lambda: calls.append("create_default_indices"),
+    )
 
     result = runner.invoke(cli_module.cli, ["index", "create", "--default"])
 
@@ -391,19 +370,20 @@ def test_index_create_command_prompts_for_partitioned_creation(monkeypatch):
     runner = CliRunner()
     calls = []
 
-    class FakeInit:
-        def create_along_track_index_by_partition(
-            self, logical_name, start_date, end_date
-        ):
-            calls.append((logical_name, start_date, end_date))
-            return {
-                "logical_name": logical_name,
-                "base_index_name": "along_track_time_idx",
-                "created_partitions": ["along_track_2024_01", "along_track_2024_02"],
-                "missing_partitions": ["along_track_2024_03"],
-            }
+    def fake_create_partitioned_index(logical_name, start_date, end_date):
+        calls.append((logical_name, start_date, end_date))
+        return {
+            "logical_name": logical_name,
+            "base_index_name": "along_track_time_idx",
+            "created_partitions": ["along_track_2024_01", "along_track_2024_02"],
+            "missing_partitions": ["along_track_2024_03"],
+        }
 
-    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(
+        index_commands,
+        "create_partitioned_along_track_index",
+        fake_create_partitioned_index,
+    )
 
     result = runner.invoke(
         cli_module.cli,
@@ -426,19 +406,20 @@ def test_index_create_command_accepts_explicit_partition_range(monkeypatch):
     runner = CliRunner()
     calls = []
 
-    class FakeInit:
-        def create_along_track_index_by_partition(
-            self, logical_name, start_date, end_date
-        ):
-            calls.append((logical_name, start_date, end_date))
-            return {
-                "logical_name": logical_name,
-                "base_index_name": "along_track_point_idx",
-                "created_partitions": ["along_track_2024_04"],
-                "missing_partitions": [],
-            }
+    def fake_create_partitioned_index(logical_name, start_date, end_date):
+        calls.append((logical_name, start_date, end_date))
+        return {
+            "logical_name": logical_name,
+            "base_index_name": "along_track_point_idx",
+            "created_partitions": ["along_track_2024_04"],
+            "missing_partitions": [],
+        }
 
-    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(
+        index_commands,
+        "create_partitioned_along_track_index",
+        fake_create_partitioned_index,
+    )
 
     result = runner.invoke(
         cli_module.cli,
@@ -538,7 +519,14 @@ def test_index_create_command_rejects_reversed_dates():
 def test_index_create_command_with_database_error(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(index_commands, "OceanDBInit", FailingPartitionCreateInit)
+    def fake_create_partitioned_index(_logical_name, _start_date, _end_date):
+        raise pg.OperationalError("connection refused")
+
+    monkeypatch.setattr(
+        index_commands,
+        "create_partitioned_along_track_index",
+        fake_create_partitioned_index,
+    )
 
     result = runner.invoke(
         cli_module.cli,
@@ -747,19 +735,16 @@ def test_index_drop_all_command_drops_all_indices(monkeypatch):
     runner = CliRunner()
     calls = []
 
-    class FakeInit:
-        def drop_indices(self):
-            calls.append("drop_indices")
-
-        def drop_eddy_indices(self):
-            calls.append("drop_eddy_indices")
-
-    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(
+        index_commands,
+        "drop_all_indices",
+        lambda: calls.append("drop_all_indices"),
+    )
 
     result = runner.invoke(cli_module.cli, ["index", "drop", "--all", "--yes"])
 
     assert result.exit_code == 0
-    assert calls == ["drop_indices", "drop_eddy_indices"]
+    assert calls == ["drop_all_indices"]
     assert "All OceanDB-managed indices were dropped." in result.output
 
 
@@ -776,32 +761,26 @@ def test_index_drop_all_command_supports_confirmation(monkeypatch):
     runner = CliRunner()
     calls = []
 
-    class FakeInit:
-        def drop_indices(self):
-            calls.append("drop_indices")
-
-        def drop_eddy_indices(self):
-            calls.append("drop_eddy_indices")
-
-    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(
+        index_commands,
+        "drop_all_indices",
+        lambda: calls.append("drop_all_indices"),
+    )
 
     result = runner.invoke(cli_module.cli, ["index", "drop", "--all"], input="y\n")
 
     assert result.exit_code == 0
-    assert calls == ["drop_indices", "drop_eddy_indices"]
+    assert calls == ["drop_all_indices"]
 
 
 def test_index_drop_all_command_can_be_canceled(monkeypatch):
     runner = CliRunner()
 
-    class FakeInit:
-        def drop_indices(self):
-            raise AssertionError("should not be called")
-
-        def drop_eddy_indices(self):
-            raise AssertionError("should not be called")
-
-    monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
+    monkeypatch.setattr(
+        index_commands,
+        "drop_all_indices",
+        lambda: (_ for _ in ()).throw(AssertionError("should not be called")),
+    )
 
     result = runner.invoke(cli_module.cli, ["index", "drop", "--all"], input="n\n")
 
@@ -812,7 +791,10 @@ def test_index_drop_all_command_can_be_canceled(monkeypatch):
 def test_index_drop_all_command_with_database_error(monkeypatch):
     runner = CliRunner()
 
-    monkeypatch.setattr(index_commands, "OceanDBInit", FailingDropInit)
+    def fake_drop_all_indices():
+        raise pg.OperationalError("connection refused")
+
+    monkeypatch.setattr(index_commands, "drop_all_indices", fake_drop_all_indices)
 
     result = runner.invoke(cli_module.cli, ["index", "drop", "--all", "--yes"])
 

@@ -8,6 +8,9 @@ import psycopg as pg
 from OceanDB.cli_utils import format_status_line, render_table, style_value
 from OceanDB.commands.shared import partitioned_index_choices
 from OceanDB.OceanDB_Initializer import OceanDBInit
+from OceanDB.workflows import (create_all_indices, create_default_indices,
+                               create_partitioned_along_track_index,
+                               drop_all_indices)
 
 
 @click.group("index")
@@ -16,14 +19,11 @@ def index_group():
 
 
 def _create_all_indices() -> None:
-    ocean_db_init = OceanDBInit()
-    ocean_db_init.create_indices()
-    ocean_db_init.create_eddy_indices()
+    create_all_indices()
 
 
 def _create_default_indices() -> None:
-    ocean_db_init = OceanDBInit()
-    ocean_db_init.create_default_indices()
+    create_default_indices()
 
 
 def _render_partitioned_index_choices() -> None:
@@ -39,9 +39,7 @@ def _render_partitioned_index_choices() -> None:
 
 
 def _drop_all_indices() -> None:
-    ocean_db_init = OceanDBInit()
-    ocean_db_init.drop_indices()
-    ocean_db_init.drop_eddy_indices()
+    drop_all_indices()
 
 
 def _render_index_list() -> None:
@@ -298,8 +296,7 @@ def create_index_command(
         )
 
     try:
-        ocean_db_init = OceanDBInit()
-        result = ocean_db_init.create_along_track_index_by_partition(
+        result = create_partitioned_along_track_index(
             selected_index,
             selected_start_date,
             selected_end_date,
