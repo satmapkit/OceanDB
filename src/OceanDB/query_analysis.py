@@ -131,8 +131,8 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
         indices: Iterable[dict[str, Any]] | None = None,
     ):
         super().__init__(config=config)
-        self.scenarios = scenarios or self.default_scenarios()
-        self.indices = tuple(indices or self.default_indices())
+        self.scenarios = scenarios if scenarios is not None else self.default_scenarios()
+        self.indices = tuple(indices if indices is not None else self.default_indices())
         self.index_names: set[str] = {index["index_name"] for index in self.indices}
 
     def default_scenarios(self) -> list[BaseQueryScenario]:
