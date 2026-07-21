@@ -44,6 +44,9 @@ class AlongTrack(BaseReadQuery):
     _along_track_nearest_neighbor_query = (
         "queries/along_track/geographic_nearest_neighbor.sql"
     )
+    _along_track_nearest_neighbor_query_2 = (
+        "queries/along_track/geographic_nearest_neighbor2.sql"
+    )
     _along_track_spatiotemporal_query = (
         "queries/along_track/geographic_points_in_spatialtemporal_window.sql"
     )
