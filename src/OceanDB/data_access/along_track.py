@@ -46,6 +46,9 @@ class AlongTrack(BaseReadQuery):
     _along_track_nearest_neighbor_query = (
         "queries/along_track/geographic_nearest_neighbor.sql"
     )
+    _along_track_nearest_neighbor_query_2 = (
+        "queries/along_track/geographic_nearest_neighbor2.sql"
+    )
     _along_track_spatiotemporal_query = (
         "queries/along_track/geographic_points_in_spatialtemporal_window.sql"
     )
@@ -186,6 +189,7 @@ class AlongTrack(BaseReadQuery):
         date: datetime,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] = all_missions,
+        alternate_query: bool = False
     ) -> Dataset[along_track_fields, Any] | None:
         """
         Query along-track points within spatial + temporal windows.
@@ -193,8 +197,12 @@ class AlongTrack(BaseReadQuery):
         Yields one Dataset per query point, or None if empty.
         """
 
+        if alternate_query:
+            file = self._along_track_nearest_neighbor_query_2
+        else:
+            file = self._along_track_nearest_neighbor_query
         query_spec = QuerySpec(
-            sql_template=self.load_sql_file(self._along_track_nearest_neighbor_query),
+            sql_template=self.load_sql_file(file),
             schema=along_track_schema,
             mandatory_fields=["distance"],
         )
