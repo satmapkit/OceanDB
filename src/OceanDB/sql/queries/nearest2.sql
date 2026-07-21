@@ -1,7 +1,7 @@
-SELECT {fields} distance
+SELECT {fields}, distance
 FROM (
     SELECT q.*
-    FROM unnest(%(connected_basin_ids)s) AS basins(basin_id)
+    FROM (%(connected_basin_ids)s) AS basins(basin_id)
     CROSS JOIN LATERAL (
         SELECT
             latitude,
@@ -12,9 +12,9 @@ FROM (
                             AND %(central_date_time)s + %(time_delta)s::interval
           AND mission = ANY(%(missions)s)
           AND basin_id = basins.basin_id
-        ORDER BY along_track_point <-> ST_SetSRID(ST_MakePoint(%(longitude)s, %(latitude)s), 4326)
+        ORDER BY along_track_point <-> ST_SetSRID(ST_MakePoint(%(longitude)s, %(latitude)s), 4326) AS distance
         LIMIT 3
 
     ) AS q
-) AS atk
+) AS candidates
 ORDER BY distance LIMIT 3;

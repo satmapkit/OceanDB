@@ -44,14 +44,18 @@ class AlongTrack(BaseReadQuery):
     _along_track_nearest_neighbor_query = (
         "queries/along_track/geographic_nearest_neighbor.sql"
     )
-    _along_track_nearest_neighbor_query_2 = (
-        "queries/along_track/geographic_nearest_neighbor2.sql"
+    _along_track_nearest_neighbor_max_radius_query = (
+        "queries/along_track/geographic_nearest_neighbor_max_radius.sql"
     )
     _along_track_spatiotemporal_query = (
         "queries/along_track/geographic_points_in_spatialtemporal_window.sql"
     )
     _along_track_nearest_neighbor_without_mission_query = (
         "queries/along_track/geographic_nearest_neighbor_without_mission.sql"
+    )
+    _along_track_nearest_neighbor_without_mission_max_radius_query = (
+        "queries/along_track/"
+        "geographic_nearest_neighbor_without_mission_max_radius.sql"
     )
     _along_track_spatiotemporal_without_mission_query = (
         "queries/along_track/"
@@ -191,6 +195,7 @@ class AlongTrack(BaseReadQuery):
         date: datetime,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
+        max_radius: float | None = 500_000,
     ) -> Dataset[along_track_fields] | None:
         """
         Query along-track points within spatial + temporal windows.
@@ -206,6 +211,7 @@ class AlongTrack(BaseReadQuery):
                 dates=[date],
                 time_window=time_window,
                 missions=missions,
+                max_radius=max_radius,
             )
         )
 
@@ -217,6 +223,7 @@ class AlongTrack(BaseReadQuery):
         dates: list[datetime],
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
+        max_radius: float | None = 500_000,
     ) -> Generator[Dataset[along_track_fields] | None, None, None]:
         """
         Query nearest neighbors for multiple points using a prepared batch query.
@@ -224,10 +231,17 @@ class AlongTrack(BaseReadQuery):
         Yields one Dataset per query point, or None where no rows are returned.
         """
 
-        if missions is None:
-            sql_file = self._along_track_nearest_neighbor_without_mission_query
+        if max_radius is None:
+            if missions is None:
+                sql_file = self._along_track_nearest_neighbor_without_mission_query
+            else:
+                sql_file = self._along_track_nearest_neighbor_query
+        elif missions is None:
+            sql_file = (
+                self._along_track_nearest_neighbor_without_mission_max_radius_query
+            )
         else:
-            sql_file = self._along_track_nearest_neighbor_query
+            sql_file = self._along_track_nearest_neighbor_max_radius_query
 
         query_spec = QuerySpec(
             sql_template=self.load_sql_file(sql_file),
@@ -250,6 +264,7 @@ class AlongTrack(BaseReadQuery):
                 "time_delta": time_window,
                 "connected_basin_ids": ids,
                 **({"missions": missions} if missions is not None else {}),
+                **({"max_radius": max_radius} if max_radius is not None else {}),
             }
             for latitude, longitude, date, ids in zip(
                 latitudes, longitudes, dates, connected_basin_ids, strict=True
