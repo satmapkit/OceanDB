@@ -100,38 +100,35 @@ class OceanDBInit(BaseWriteQuery):
     def _along_track_partition_name(self, value: datetime) -> str:
         return f"along_track_{value.year}_{value.month:02d}"
 
+    def database_exists(self) -> bool:
+        with self.cursor(connection_string=self.config.postgres_dsn_admin) as cur:
+            cur.execute(
+                "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %s)",
+                (self.db_name,),
+            )
+            result = cur.fetchone()
+        return bool(result and result[0])
+
     def table_exists(self, table: str) -> bool:
         with self.cursor() as cur:
             cur.execute(
                 "SELECT EXISTS ( SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename  = %(tablename)s);",
                 {"tablename": table},
             )
-            res = cur.fetchone()
-            print("for", table, "result is", res)
-            if not res:
-                return False
-            exists = res[0]
-            if exists:
-                return True
-        return False
+            result = cur.fetchone()
+        return bool(result and result[0])
 
     def create_database(self):
         # Create the Database
         created_database = False
-        with self.cursor(
-            autocommit=True, connection_string=self.config.postgres_dsn_admin
-        ) as cur:
-            cur.execute(
-                "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %s)",
-                (self.db_name,),
-            )
-            out = cur.fetchone()
-            if out is None:
-                raise ValueError("Bad result from database when looking for database")
-            exists = out[0]
-            if exists:
-                print(f"Database '{self.db_name}' already exists.")
-            else:
+        exists = self.database_exists()
+        if exists:
+            print(f"Database '{self.db_name}' already exists.")
+        else:
+            with self.cursor(
+                autocommit=True,
+                connection_string=self.config.postgres_dsn_admin,
+            ) as cur:
                 cur.execute(
                     sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.db_name))
                 )

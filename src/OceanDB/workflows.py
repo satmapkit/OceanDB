@@ -43,8 +43,6 @@ def initialize_database(
 ) -> dict[str, bool]:
     ocean_db_init = OceanDBInit()
     created_database = ocean_db_init.create_database()
-    if not created_database:
-        return {"created_database": False, "initialized": False}
 
     ocean_db_init.create_tables()
     ocean_db_init.create_eddy_tables()
@@ -53,7 +51,7 @@ def initialize_database(
     basins_etl = _create_basins_etl()
     basins_etl.insert_basins_data()
     basins_etl.insert_basin_connections_data()
-    return {"created_database": True, "initialized": True}
+    return {"created_database": created_database, "initialized": True}
 
 
 def ingest_eddy(
@@ -61,7 +59,22 @@ def ingest_eddy(
     offset_cyclonic: int = 0,
     offset_anticyclonic: int = 0,
     on_progress: ProgressCallback | None = None,
+    init_database_if_not_exists: bool = False,
 ) -> dict[str, list[dict[str, Any]]]:
+    ocean_db_init = OceanDBInit()
+    database_initialized = (
+        ocean_db_init.database_exists() and ocean_db_init.table_exists("eddy")
+    )
+
+    if not database_initialized:
+        if not init_database_if_not_exists:
+            raise RuntimeError(
+                f"Database '{ocean_db_init.db_name}' is not initialized. "
+                "Run database initialization first or set "
+                "init_database_if_not_exists=True."
+            )
+        initialize_database()
+
     oceandb_etl = _create_eddy_etl()
     eddy_directory = Path(oceandb_etl.config.eddy_data_directory)
     processed_files: list[dict[str, Any]] = []
