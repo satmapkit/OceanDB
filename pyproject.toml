@@ -24,7 +24,8 @@ dependencies = [
     "pydantic-settings",
     "paramiko>=3.4.0",
     "PyYAML~=6.0",
-
+    "optuna>=4.9.0",
+    "matplotlib>=3.10.9",
 ]
 
 [project.scripts]
