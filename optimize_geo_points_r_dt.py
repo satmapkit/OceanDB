@@ -1,17 +1,18 @@
 from OceanDB.index_experiment import optuna_search, IndexSpec, IndexNode, Index
 from OceanDB.query_analysis import BaseQueryScenario
 from OceanDB.OceanDB_Initializer import OceanDBInit
-from OceanDB.etl.basins_etl import BasinsETL
-from OceanDB.commands.ingest import ingest_along_track
+from OceanDB.data_access.along_track import AlongTrack, Mission
+from OceanDB.query_analysis import BatchQueryScenario
+from OceanDB.schemas.along_track_schema import along_track_schema
 
 import pickle
 import random
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from OceanDB.data_access.along_track import AlongTrack
 from OceanDB.query_analysis import BatchQueryScenario
 from OceanDB.schemas.along_track_schema import along_track_schema
+import numpy as np
 
 
 def random_datetimes(
@@ -28,7 +29,7 @@ def random_points(rng: random.Random, count: int) -> tuple[list[float], list[flo
     longitudes = [rng.uniform(-180.0, 180.0) for _ in range(count)]
     return latitudes, longitudes
 
-def batch_scenario(
+def batch_scenario_random(
     seed: int,
     *,
     radius: float,
@@ -51,6 +52,41 @@ def batch_scenario(
             "radius": radius,
             "time_window": time_window,
         },
+    )
+
+def batch_scenario_grid(
+    *,
+    method_name: str,
+    radius: float,
+    time_window: timedelta,
+    central_date: datetime,
+    resolution: float = 1.0,
+    missions: list[Mission]|None = None,
+) -> BatchQueryScenario:
+
+    latitudes = np.arange(-60, 60, resolution)
+    longitudes = np.arange(-180, 180, resolution)
+
+    lons_grid,lats_grid = np.meshgrid(longitudes, latitudes)
+    lons = np.reshape(lons_grid, -1)
+    lats = np.reshape(lats_grid, -1)
+
+    kwargs = {
+            "fields": list(along_track_schema.keys()),
+            "latitudes": lats,
+            "longitudes": lons,
+            "dates": [central_date for _ in range(lons.size)],
+            "time_window": time_window,
+        }
+    if missions is not None:
+        kwargs["missions"] = missions
+    if method_name == "geographic_point_in_r_dt_batch":
+        kwargs["radius"] = radius
+
+    return BatchQueryScenario(
+        query_class=AlongTrack,
+        method_name=method_name,
+        kwargs=kwargs,
     )
 
 
@@ -92,21 +128,64 @@ if __name__ == "__main__":
     # =======================================
     # create scenarios
     # =======================================
+    # TODO: gridded locations vs random
+    # TODO: sorted random vs random
+    # TODO: nearest neighbor
+    # TODO: improve search to reduce duplicated queries
+    # TODO: put results in documentation
+    # TODO: add version which selects on mission
+    # TODO: nearest neighbor
+    # TODO: nearest neighbor with speed
+    # TODO: choose date after 2022 with s6a (sentinel 6a)
+    # TODO: filesize via something like SELECT schemaname, relname as table_name, indexrelname AS index_name, pg_size_pretty(pg_relation_size(indexrelid)) AS index_size FROM pg_stat_user_indexes ORDER BY pg_relation_size(indexrelid) DESC LIMIT 20;
     scenarios : list[BaseQueryScenario] = [
-        batch_scenario(
-            1,
+        batch_scenario_grid(
+            method_name="geographic_point_in_r_dt_batch",
             radius=50_000,
-            time_window=timedelta(days=1),
-            date_start=datetime(2000, 1, 28, 0, 0, 0),
-            date_end=datetime(2000, 1, 30, 23, 59, 59),
-            n_points=100
-        ),
+            time_window=timedelta(days=10),
+            central_date=datetime(2022, 10, 15),
+            resolution=2,
+            # all missions
+            ),
+        batch_scenario_grid(
+            method_name="geographic_nearest_neighbors_batch",
+            radius=50_000,
+            time_window=timedelta(days=10),
+            central_date=datetime(2022, 10, 15),
+            resolution=2,
+            # all missions
+            ),
+        batch_scenario_grid(
+            method_name="geographic_point_in_r_dt_batch",
+            radius=50_000,
+            time_window=timedelta(days=10),
+            central_date=datetime(2022, 10, 15),
+            resolution=2,
+            missions=["s6a", "j3n"]
+            ),
+        batch_scenario_grid(
+            method_name="geographic_nearest_neighbors_batch",
+            radius=50_000,
+            time_window=timedelta(days=10),
+            central_date=datetime(2022, 10, 15),
+            resolution=2,
+            missions=["s6a", "j3n"]
+            ),
+        # batch_scenario_random(
+        #     1,
+        #     radius=50_000,
+        #     time_window=timedelta(days=1),
+        #     date_start=datetime(2000, 1, 27, 8, 0, 0),
+        #     date_end=datetime(2000, 1, 27, 16, 0, 0),
+        #     n_points=10000,
+        # ),
         # batch_scenario(
         #     2,
         #     radius=1_000_000,
         #     time_window=timedelta(days=1),
         #     date_start=datetime(2000, 1, 28, 0, 0, 0),
         #     date_end=datetime(2000, 1, 30, 23, 59, 59),
+        #     n_points=5000,
         # ),
         # batch_scenario(
         #     3,
@@ -162,6 +241,16 @@ if __name__ == "__main__":
         return IndexNode(indexes=indexes)
 
 
+    # build basic indexes
+    print("building basic fields")
+    for fields in [["mission", "basin_id"], ["along_track_point"], ["date_time"]]:
+        Index(
+            name=f"along_track_index_static_{'_'.join(fields)}",
+            table="along_track",
+            fields=fields,
+            spec=index_spec,
+        ).build(ocean_db_init)
+    print("done")
 
     # =======================================
     # search
@@ -180,6 +269,8 @@ if __name__ == "__main__":
     # =======================================
     # save output
     # =======================================
+
+    print("saving")
     output = {
         "tried_nodes": tried_nodes,
         "best_value": study.best_value,
@@ -187,8 +278,8 @@ if __name__ == "__main__":
         "best_trial_number": study.best_trial.number,
         "trials_dataframe": study.trials_dataframe(),
     }
-    output_path = Path(pickle_output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("wb") as output_file:
+    print(pickle_output)
+    with open(pickle_output, "wb") as output_file:
+        print("pickle.dumping")
         pickle.dump(output, output_file)
 
