@@ -5,8 +5,7 @@ from typing import Generator, Literal, get_args
 from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
 from OceanDB.ocean_data.basins import BasinConnections, BasinMask
 from OceanDB.ocean_data.dataset import Dataset
-from OceanDB.schemas.along_track_schema import (along_track_fields,
-                                                along_track_schema)
+from OceanDB.schemas.along_track_schema import along_track_fields, along_track_schema
 
 Mission = Literal[
     "al",
@@ -108,30 +107,17 @@ class AlongTrack(BaseReadQuery):
             of requested fields is returned.
         """
 
-        query_spec = QuerySpec(
-            sql_template=self.load_sql_file(self._along_track_spatiotemporal_query),
-            schema=along_track_schema,
-        )
-
-        basin_ids = self.basin_mask_lookup.lookup(latitude, longitude)
-        connected_basin_ids = self.basin_connections.connection_map[basin_ids]
-
-        params = {
-            "longitude": longitude,
-            "latitude": latitude,
-            "distance": radius,
-            "central_date_time": date,
-            "time_delta": time_window,
-            "connected_basin_ids": connected_basin_ids,
-            "missions": missions,
-        }
-
-        return self.execute_read_query(
-            query_spec=query_spec,
-            fields=fields,
-            params=params,
-            dataset_name="along_track",
-        )
+        return next(
+                self.geographic_point_in_r_dt_batch(
+                    fields=fields,
+                    latitudes=[latitude],
+                    longitudes=[longitude],
+                    dates=[date],
+                    radius=radius,
+                    time_window=time_window,
+                    missions=missions
+                    )
+                )
 
     def geographic_point_in_r_dt_batch(
         self,
@@ -193,30 +179,17 @@ class AlongTrack(BaseReadQuery):
         Yields one Dataset per query point, or None if empty.
         """
 
-        query_spec = QuerySpec(
-            sql_template=self.load_sql_file(self._along_track_nearest_neighbor_query),
-            schema=along_track_schema,
-            mandatory_fields=["distance"],
-        )
+        return next(
+                self.geographic_nearest_neighbors_batch(
+                    fields=fields,
+                    latitudes=[latitude],
+                    longitudes=[longitude],
+                    dates=[date],
+                    time_window=time_window,
+                    missions=missions
+                    )
+                )
 
-        basin_ids = self.basin_mask_lookup.lookup(latitude, longitude)
-        connected_basin_ids = self.basin_connections.connection_map[basin_ids]
-
-        params = {
-            "longitude": longitude,
-            "latitude": latitude,
-            "central_date_time": date,
-            "time_delta": time_window,
-            "connected_basin_ids": connected_basin_ids,
-            "missions": missions,
-        }
-
-        return self.execute_read_query(
-            query_spec=query_spec,
-            fields=fields,
-            params=params,
-            dataset_name="along_track",
-        )
 
     def geographic_nearest_neighbors_batch(
         self,
