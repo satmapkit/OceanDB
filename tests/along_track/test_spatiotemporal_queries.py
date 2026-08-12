@@ -15,6 +15,7 @@ def test_geographic_point_in_r_dt_all_fields(db_with_alongtrack_data):
     TEST single point spatiotemporal query
     """
     along_track = AlongTrack(config=db_with_alongtrack_data.config)
+    along_track.start_debug(lambda x, y, z: print(z))
     latitude = -39.1
     longitude = 54.7
     date = datetime(year=2013, month=1, day=4, hour=23)
@@ -44,6 +45,7 @@ def test_geographic_point_in_r_dt_all_fields(db_with_alongtrack_data):
 
 def test_geographic_point_in_r_dt_weird_field(db_with_alongtrack_data):
     along_track = AlongTrack(config=db_with_alongtrack_data.config)
+    along_track.start_debug(lambda x, y, z: print(z))
     latitude = -39.1
     longitude = 54.7
     date = datetime(year=2013, month=1, day=4, hour=23)
@@ -78,6 +80,7 @@ def test_geographic_point_in_r_dt_batch_matches_single_queries(
     db_with_alongtrack_data,
 ):
     along_track = AlongTrack(config=db_with_alongtrack_data.config)
+    along_track.start_debug(lambda x, y, z: print(z))
     fields = list(along_track_schema.keys())
 
     latitudes = [-39.1, 58.9]
@@ -126,6 +129,7 @@ def test_geographic_point_in_r_dt_batch_rejects_mismatched_input_lengths(
     db_with_alongtrack_data,
 ):
     along_track = AlongTrack(config=db_with_alongtrack_data.config)
+    along_track.start_debug(lambda x, y, z: print(z))
 
     with pytest.raises(ValueError):
         list(
