@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from functools import cached_property
-from typing import Any, Generator, Literal, get_args
+from typing import Generator, Literal, get_args
 
 from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
 from OceanDB.ocean_data.basins import BasinConnections, BasinMask
@@ -72,7 +72,7 @@ class AlongTrack(BaseReadQuery):
         radius: float = 500_000.0,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] = all_missions,
-    ) -> Dataset[along_track_fields, Any] | None:
+    ) -> Dataset[along_track_fields] | None:
         """
         Query along-track points within spatial + temporal windows.
 
@@ -142,7 +142,7 @@ class AlongTrack(BaseReadQuery):
         radius: float = 500_000.0,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] = all_missions,
-    ) -> Generator[Dataset[along_track_fields, Any] | None, None, None]:
+    ) -> Generator[Dataset[along_track_fields] | None, None, None]:
         """
         Query along-track points for multiple spatial + temporal windows.
 
@@ -186,7 +186,7 @@ class AlongTrack(BaseReadQuery):
         date: datetime,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] = all_missions,
-    ) -> Dataset[along_track_fields, Any] | None:
+    ) -> Dataset[along_track_fields] | None:
         """
         Query along-track points within spatial + temporal windows.
 
@@ -226,7 +226,7 @@ class AlongTrack(BaseReadQuery):
         dates: list[datetime],
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] = all_missions,
-    ) -> Generator[Dataset[along_track_fields, Any] | None, None, None]:
+    ) -> Generator[Dataset[along_track_fields] | None, None, None]:
         """
         Query nearest neighbors for multiple points using a prepared batch query.
 
