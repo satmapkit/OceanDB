@@ -31,9 +31,13 @@ alongTrack = AlongTrack()
 alongTrack.start_debug(lambda x,y,z: print(z))
 
 
+# funcs = [
+#     (alongTrack.geographic_nearest_neighbors_batch, {}, "NN old"),
+#     (alongTrack.geographic_point_in_r_dt_batch, {}, "r dt"),
+#         ]
 funcs = [
-    (alongTrack.geographic_nearest_neighbors_batch, {}, "NN old"),
-    # (alongTrack.geographic_nearest_neighbors, {"alternate_query":True}, "NN new"),
+    (alongTrack.geographic_nearest_neighbors_batch, {}, "NN (max rad 500,000)"),
+    (alongTrack.geographic_nearest_neighbors_batch, {"max_radius":None}, "NN (no max rad)"),
     (alongTrack.geographic_point_in_r_dt_batch, {}, "r dt"),
         ]
 times_by_method = [np.zeros(lons_grid.shape) for _ in range(len(funcs))]
@@ -59,7 +63,7 @@ n_iterations = 1
 #             print("done. Took", t2)
 # times_by_method = [x / n_iterations for x in times_by_method]
 # with open(filename, "wb") as file:
-#     pickle.dump((times_by_method, funcs), file)
+#     pickle.dump((times_by_method, [(str(x),y,z) for x,y,z in funcs]), file)
 with open(filename, "rb") as file:
     times_by_method, funcs = pickle.load(file)
 
@@ -69,7 +73,7 @@ lats_grid = lats_grid.reshape(orig_shape)
 fig, axs = plt.subplots(len(times_by_method), 1, figsize=(10, 8))
 for ax,ts,label in zip(axs, times_by_method, funcs):
     ts = ts.reshape(orig_shape)
-    co = ax.pcolormesh(lons_grid, lats_grid, ts)
+    co = ax.pcolormesh(lons_grid, lats_grid, ts, vmin=0, vmax=1.26)
     fig.colorbar(co, ax=ax)
     ax.set_ylabel("Latitude")
     ax.set_title(f"{label[2]} (s)")
