@@ -1,9 +1,10 @@
 from functools import cached_property
 from importlib import resources
-from typing import Any
+from typing import Any, overload
 
 import netCDF4 as nc
 import numpy as np
+import numpy.typing as npt
 
 from OceanDB.OceanDB import OceanDB
 
@@ -32,6 +33,20 @@ class BasinMask:
 
     def basin_ids(self) -> np.ndarray:
         return np.unique(self.data)
+
+    @overload
+    def basin_is_ocean(
+        self, basin_mask: npt.NDArray[np.integer]
+    ) -> npt.NDArray[np.integer]: ...
+    @overload
+    def basin_is_ocean(self, basin_mask: int) -> int: ...
+    def basin_is_ocean(self, basin_mask):
+        return (basin_mask > 0) & (basin_mask < 1000)
+
+    def loc_is_ocean(
+        self, latitude: npt.NDArray[np.floating], longitude: npt.NDArray[np.floating]
+    ):
+        return self.basin_is_ocean(self.lookup(latitude, longitude))
 
 
 class BasinConnections(OceanDB):
