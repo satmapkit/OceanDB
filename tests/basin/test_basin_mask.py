@@ -8,12 +8,15 @@ pytestmark = pytest.mark.uses_database
 
 def test_lookup_float():
     mask = BasinMask()
-    assert mask.lookup(-32.32, -36.57) == 7
+    out = mask.lookup(-32.32, -36.57)
+    assert out == 7
 
 
 def test_lookup_array():
     mask = BasinMask()
-    out = mask.lookup(np.arange(-32.1, -32.0, 0.01), np.arange(-36.1, -36.0, 0.01))
+    lats = np.arange(-32.1, -32.0, 0.01)
+    lons = np.arange(-36.1, -36.0, 0.01)
+    out = mask.lookup(lats, lons)
     assert np.all(out == 7)
 
 
