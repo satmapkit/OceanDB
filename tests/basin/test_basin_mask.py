@@ -28,12 +28,12 @@ def test_basin_is_ocean_single_pos():
 def test_basin_is_ocean_single_neg():
     mask = BasinMask()
     assert not mask.basin_is_ocean(-1)
-    assert not mask.basin_is_ocean(2000)
+    assert not mask.basin_is_ocean(1000)
 
 
 def test_basin_is_ocean_array():
     mask = BasinMask()
-    out = mask.basin_is_ocean(np.array([3, 4, 5, -1, 2000], dtype=np.int32))
+    out = mask.basin_is_ocean(np.array([3, 4, 5, -1, 1000]))
     assert np.all(
         np.equal(out, np.array([True, True, True, False, False], dtype=np.bool))
     )
