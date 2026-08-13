@@ -37,3 +37,23 @@ def test_basin_is_ocean_array():
     assert np.all(
         np.equal(out, np.array([True, True, True, False, False], dtype=np.bool))
     )
+
+
+def test_loc_is_ocean_int_pos():
+    mask = BasinMask()
+    assert mask.loc_is_ocean(-32.32, -36.57)
+    assert mask.loc_is_ocean(32.52, -37.57)
+
+
+def test_loc_is_ocean_int_neg():
+    mask = BasinMask()
+    assert not mask.loc_is_ocean(-9.27, -65.30)
+
+
+def test_loc_is_ocean_int_array():
+    mask = BasinMask()
+    out = mask.loc_is_ocean(
+        np.array([-32.32, 32.50, 73.46, 44.238]),
+        np.array([-36.58, -37.3, -40.44, -86.575]),
+    )
+    assert np.all(np.equal(out, np.array([True, True, False, False], dtype=np.bool)))
