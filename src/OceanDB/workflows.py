@@ -193,7 +193,22 @@ def ingest_along_track(
     workers: int = 6,
     debug: bool = False,
     on_progress: ProgressCallback | None = None,
+    init_database_if_not_exists: bool = False,
 ) -> dict[str, Any]:
+    ocean_db_init = OceanDBInit()
+    database_initialized = (
+        ocean_db_init.database_exists() and ocean_db_init.table_exists("along_track")
+    )
+
+    if not database_initialized:
+        if not init_database_if_not_exists:
+            raise RuntimeError(
+                f"Database '{ocean_db_init.db_name}' is not initialized. "
+                "Run database initialization first or set "
+                "init_database_if_not_exists=True."
+            )
+        initialize_database()
+
     discovery = discover_along_track_files(missions, start_date, end_date)
     nc_files: list[Path] = discovery["files"]
     if not nc_files:
