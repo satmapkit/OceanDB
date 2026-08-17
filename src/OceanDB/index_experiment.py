@@ -8,8 +8,6 @@ from OceanDB.query_analysis import (BaseQueryScenario, QueryAnalysisRow,
                                     QueryAnalysisRunner)
 from OceanDB.query_spec import QuerySpec
 
-import optuna
-
 class IndexSpec(QuerySpec):
     def __init__(self, sql_template: LiteralString):
         """
@@ -89,47 +87,3 @@ def run_index_performance_test(
 class IndexNode:
     indexes: list[Index]
     performance: Optional[list[QueryAnalysisRow]] = None
-    error: Optional[float] = None
-
-def optuna_search(
-    node_sampler: Callable[[object], IndexNode],
-    oceanDBInit: OceanDBInit,
-    scenarios: list[BaseQueryScenario],
-    *,
-    n_trials: int = 50,
-    study_name: str = "oceandb_index_search",
-    storage: str | None = None,
-    random_seed: int | None = None,
-) -> tuple[list[IndexNode], optuna.Study]:
-
-    tried_nodes = []
-
-    def objective(trial):
-        node = node_sampler(trial)
-        tried_nodes.append(node)
-
-        try:
-            performance = run_index_performance_test(node.indexes, oceanDBInit, scenarios)
-            error = sum(x.total_time for x in performance)
-            node.performance = performance
-            node.error = error
-        except Exception as ex:
-            error = float("inf")
-            node.error = error
-            trial.set_user_attr("exception", repr(ex))
-
-        trial.set_user_attr("indexes", [index.name for index in node.indexes])
-        trial.set_user_attr("fields", [index.fields for index in node.indexes])
-        return error
-
-    sampler = optuna.samplers.TPESampler(seed=random_seed)
-    study = optuna.create_study(
-        direction="minimize",
-        sampler=sampler,
-        study_name=study_name,
-        storage=storage,
-        load_if_exists=storage is not None,
-    )
-    study.optimize(objective, n_trials=n_trials)
-
-    return tried_nodes, study
