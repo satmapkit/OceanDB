@@ -1,6 +1,6 @@
 from functools import cached_property
 from importlib import resources
-from typing import Any
+from typing import Any, overload
 
 import netCDF4 as nc
 import numpy as np
@@ -9,7 +9,13 @@ from OceanDB.OceanDB import OceanDB
 
 
 class BasinMask:
-    """Domain helper for basin mask lookups from packaged mask data."""
+    """
+    Domain helper for basin mask lookups from packaged mask data.
+
+    0 is land
+    1-999 is ocean basin
+    1000+ is inland lakes
+    """
 
     @cached_property
     def data(self) -> Any:
@@ -24,6 +30,12 @@ class BasinMask:
             ds.close()
             return basin_mask
 
+    @overload
+    def lookup(self, latitude: float, longitude: float) -> int: ...
+    @overload
+    def lookup[S, T: np.dtype[np.floating]](
+        self, latitude: np.ndarray[S, T], longitude: np.ndarray[S, T]
+    ) -> np.ndarray[S, T]: ...
     def lookup(self, latitude, longitude):
         onesixth = 1 / 6
         i = np.floor((latitude + 90) / onesixth).astype(int)
@@ -32,6 +44,24 @@ class BasinMask:
 
     def basin_ids(self) -> np.ndarray:
         return np.unique(self.data)
+
+    @overload
+    def basin_is_ocean(self, basin_mask: int) -> int: ...
+    @overload
+    def basin_is_ocean[S, T: np.dtype[np.integer]](
+        self, basin_mask: np.ndarray[S, T]
+    ) -> np.ndarray[S, np.dtype[np.bool]]: ...
+    def basin_is_ocean(self, basin_mask):
+        return (basin_mask > 0) & (basin_mask < 1000)
+
+    @overload
+    def loc_is_ocean(self, latitude: float, longitude: float) -> int: ...
+    @overload
+    def loc_is_ocean[S, T: np.dtype[np.floating]](
+        self, latitude: np.ndarray[S, T], longitude: np.ndarray[S, T]
+    ) -> np.ndarray[S, np.dtype[np.bool]]: ...
+    def loc_is_ocean(self, latitude, longitude):
+        return self.basin_is_ocean(self.lookup(latitude, longitude))
 
 
 class BasinConnections(OceanDB):
