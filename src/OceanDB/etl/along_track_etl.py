@@ -18,6 +18,8 @@ from OceanDB.schemas.along_track_schema import (along_track_columns,
                                                 along_track_columns_schema)
 from OceanDB.utils.date_time_conversion import compute_date_time
 
+EARLIEST_DATE = datetime(1990, 1, 1)
+
 
 @dataclass
 class AlongTrackMetaData:
@@ -148,6 +150,75 @@ class AlongTrackETL(OceanDBETL):
         "tp",
         "tpn",
     ]
+
+    @staticmethod
+    def _iter_year_months(
+        start: datetime | None, end: datetime | None
+    ) -> Iterator[tuple[int, int]]:
+        start = EARLIEST_DATE if start is None else start
+        end = datetime.now() if end is None else end
+
+        year, month = start.year, start.month
+        while (year < end.year) or (year == end.year and month <= end.month):
+            yield year, month
+            month += 1
+            if month == 13:
+                month = 1
+                year += 1
+
+    def discover_files(
+        self,
+        missions: list[str] | tuple[str, ...],
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> dict[str, Any]:
+        start_date = start_date.replace(tzinfo=None) if start_date is not None else None
+        end_date = end_date.replace(tzinfo=None) if end_date is not None else None
+        selected_missions = list(missions)
+
+        if not selected_missions or selected_missions == ["all"]:
+            selected_missions = list(self.missions)
+
+        invalid_missions = [
+            mission for mission in selected_missions if mission not in self.missions
+        ]
+        if invalid_missions:
+            raise ValueError(
+                f"received invalid arguments {invalid_missions}. "
+                f"Received missions must be from the following list {self.missions}"
+            )
+
+        if start_date and end_date and end_date < start_date:
+            raise ValueError("end_date must be >= start_date")
+
+        year_months = (
+            None
+            if start_date is None and end_date is None
+            else list(self._iter_year_months(start_date, end_date))
+        )
+        prefix = "SEALEVEL_GLO_PHY_L3_MY_008_062"
+        files: list[Path] = []
+
+        for mission in selected_missions:
+            file_structures = [
+                f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411",
+                f"cmems_obs-sl_glo_phy-ssh_my_{mission}-lr-l3-duacs_PT1S_202411",
+            ]
+            for structure in file_structures:
+                ingest_directory = (
+                    Path(self.config.along_track_data_directory) / prefix / structure
+                )
+                if not ingest_directory.exists():
+                    continue
+                if year_months is None:
+                    files.extend(ingest_directory.rglob("*.nc"))
+                    continue
+                for year, month in year_months:
+                    month_dir = ingest_directory / f"{year:04d}" / f"{month:02d}"
+                    if month_dir.exists():
+                        files.extend(month_dir.rglob("*.nc"))
+
+        return {"missions": selected_missions, "files": files}
 
     @cached_property
     def basin_mask_lookup(self) -> BasinMask:

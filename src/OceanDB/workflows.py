@@ -11,7 +11,6 @@ from OceanDB.commands.shared import AVISO_EDDY_FILENAMES
 from OceanDB.OceanDB_Initializer import OceanDBInit
 
 ProgressCallback = Callable[[dict[str, Any]], None]
-EARLIEST_DATE = datetime(1990, 1, 1)
 
 
 def _emit(on_progress: ProgressCallback | None, event: dict[str, Any]) -> None:
@@ -87,80 +86,12 @@ def ingest_eddy(
     return {"processed_files": processed_files}
 
 
-def _iter_year_months(start: datetime | None, end: datetime | None):
-    if start is None:
-        start = EARLIEST_DATE
-    if end is None:
-        end = datetime.now()
-    if end < start:
-        return
-
-    year, month = start.year, start.month
-    end_year, end_month = end.year, end.month
-    while (year < end_year) or (year == end_year and month <= end_month):
-        yield year, month
-        month += 1
-        if month == 13:
-            month = 1
-            year += 1
-
-
 def discover_along_track_files(
     missions: list[str] | tuple[str, ...],
     start_date: datetime | None = None,
     end_date: datetime | None = None,
 ) -> dict[str, Any]:
-    start_date = start_date.replace(tzinfo=None) if start_date is not None else None
-    end_date = end_date.replace(tzinfo=None) if end_date is not None else None
-
-    oceandb_etl = _create_along_track_etl()
-    selected_missions = list(missions)
-
-    if not selected_missions or (
-        len(selected_missions) == 1 and selected_missions[0] == "all"
-    ):
-        selected_missions = list(oceandb_etl.missions)
-
-    invalid_missions = [
-        mission for mission in selected_missions if mission not in oceandb_etl.missions
-    ]
-    if invalid_missions:
-        raise ValueError(
-            f"received invalid arguments {invalid_missions}. "
-            f"Received missions must be from the following list {oceandb_etl.missions}"
-        )
-
-    if start_date and end_date and end_date < start_date:
-        raise ValueError("end_date must be >= start_date")
-
-    year_months = (
-        None
-        if start_date is None and end_date is None
-        else list(_iter_year_months(start_date, end_date))
-    )
-    prefix = "SEALEVEL_GLO_PHY_L3_MY_008_062"
-    files: list[Path] = []
-
-    for mission in selected_missions:
-        file_structures = [
-            f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411",
-            f"cmems_obs-sl_glo_phy-ssh_my_{mission}-lr-l3-duacs_PT1S_202411",
-        ]
-        for structure in file_structures:
-            ingest_directory = (
-                Path(oceandb_etl.config.along_track_data_directory) / prefix / structure
-            )
-            if not ingest_directory.exists():
-                continue
-            if year_months is None:
-                files.extend(ingest_directory.rglob("*.nc"))
-                continue
-            for year, month in year_months:
-                month_dir = ingest_directory / f"{year:04d}" / f"{month:02d}"
-                if month_dir.exists():
-                    files.extend(month_dir.rglob("*.nc"))
-
-    return {"missions": selected_missions, "files": files}
+    return _create_along_track_etl().discover_files(missions, start_date, end_date)
 
 
 def ingest_along_track(
