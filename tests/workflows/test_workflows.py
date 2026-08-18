@@ -25,14 +25,17 @@ class FakeOceanDBInit:
         self.initialize_calls += 1
 
 
-def empty_discovery(missions, start_date=None, end_date=None):
-    return {"missions": list(missions), "files": []}
+class FakeAlongTrackETL:
+    def discover_files(self, missions, start_date=None, end_date=None):
+        return {"missions": list(missions), "files": []}
 
 
 def test_ingest_along_track_uses_initialized_database(monkeypatch):
     ocean_db_init = FakeOceanDBInit(database_exists=True, table_exists=True)
     monkeypatch.setattr(workflows, "OceanDBInit", lambda: ocean_db_init)
-    monkeypatch.setattr(workflows, "discover_along_track_files", empty_discovery)
+    monkeypatch.setattr(
+        workflows, "_create_along_track_etl", lambda debug=False: FakeAlongTrackETL()
+    )
 
     result = workflows.ingest_along_track(["j3"])
 
@@ -54,7 +57,9 @@ def test_ingest_along_track_rejects_uninitialized_database(monkeypatch):
 def test_ingest_along_track_initializes_database_when_enabled(monkeypatch):
     ocean_db_init = FakeOceanDBInit(database_exists=True, table_exists=False)
     monkeypatch.setattr(workflows, "OceanDBInit", lambda: ocean_db_init)
-    monkeypatch.setattr(workflows, "discover_along_track_files", empty_discovery)
+    monkeypatch.setattr(
+        workflows, "_create_along_track_etl", lambda debug=False: FakeAlongTrackETL()
+    )
 
     result = workflows.ingest_along_track(
         ["j3"],

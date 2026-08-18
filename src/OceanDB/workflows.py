@@ -86,14 +86,6 @@ def ingest_eddy(
     return {"processed_files": processed_files}
 
 
-def discover_along_track_files(
-    missions: list[str] | tuple[str, ...],
-    start_date: datetime | None = None,
-    end_date: datetime | None = None,
-) -> dict[str, Any]:
-    return _create_along_track_etl().discover_files(missions, start_date, end_date)
-
-
 def ingest_along_track(
     missions: list[str] | tuple[str, ...],
     start_date: datetime | None = None,
@@ -117,7 +109,8 @@ def ingest_along_track(
             )
         ocean_db_init.initialize_database()
 
-    discovery = discover_along_track_files(missions, start_date, end_date)
+    oceandb_etl = _create_along_track_etl(debug=debug)
+    discovery = oceandb_etl.discover_files(missions, start_date, end_date)
     nc_files: list[Path] = discovery["files"]
     if not nc_files:
         return {
@@ -129,7 +122,6 @@ def ingest_along_track(
             "duration_seconds": 0.0,
         }
 
-    oceandb_etl = _create_along_track_etl(debug=debug)
     metadata_filenames = oceandb_etl.query_metadata()
     along_track_files = [
         file for file in nc_files if file.name not in metadata_filenames

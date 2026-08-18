@@ -5,9 +5,8 @@ from typing import Literal
 import click
 
 from OceanDB.cli_utils import format_status_line
-from OceanDB.commands.shared import (format_duration, render_ingest_mode,
-                                     timestamp_now)
-from OceanDB.workflows import discover_along_track_files
+from OceanDB.commands.shared import (create_along_track_etl, format_duration,
+                                     render_ingest_mode, timestamp_now)
 from OceanDB.workflows import ingest_along_track as run_ingest_along_track
 from OceanDB.workflows import ingest_eddy as run_ingest_eddy
 
@@ -112,7 +111,8 @@ def ingest_along_track(missions, start_date, end_date, workers, debug):
     This command parses and ingests along-track NetCDF files into the OceanDB
     PostgreSQL database.
     """
-    discovery = discover_along_track_files(
+    oceandb_etl = create_along_track_etl(debug=debug)
+    discovery = oceandb_etl.discover_files(
         missions=list(missions),
         start_date=start_date,
         end_date=end_date,

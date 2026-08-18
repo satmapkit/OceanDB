@@ -10,6 +10,7 @@ from OceanDB import cli as cli_module
 from OceanDB.commands import analysis as analysis_commands
 from OceanDB.commands import core as core_commands
 from OceanDB.commands import index as index_commands
+from OceanDB.commands import ingest as ingest_commands
 from OceanDB.commands import shared as shared_commands
 from OceanDB.commands import summary as summary_commands
 
@@ -37,6 +38,15 @@ class FakeAlongTrackETLReturningEmpty:
 class FailingAlongTrackETL:
     def summarize_ingested_missions(self):
         raise pg.OperationalError("connection refused")
+
+
+class FakeAlongTrackDiscoveryETL:
+    def __init__(self):
+        self.calls = []
+
+    def discover_files(self, missions, start_date=None, end_date=None):
+        self.calls.append((missions, start_date, end_date))
+        return {"missions": missions, "files": []}
 
 
 class FakeInitReturningIndices:
@@ -325,6 +335,40 @@ def test_init_exits_early_when_database_exists(monkeypatch):
 
     assert result.exit_code == 0
     assert calls == ["initialize_database"]
+
+
+def test_ingest_along_track_discovers_files_with_etl(monkeypatch):
+    runner = CliRunner()
+    oceandb_etl = FakeAlongTrackDiscoveryETL()
+    debug_values = []
+
+    def create_along_track_etl(debug=False):
+        debug_values.append(debug)
+        return oceandb_etl
+
+    monkeypatch.setattr(
+        ingest_commands,
+        "create_along_track_etl",
+        create_along_track_etl,
+    )
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "ingest-along-track",
+            "j3",
+            "--start-date",
+            "2013-01-01",
+            "--end-date",
+            "2013-01-31",
+            "--debug",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert debug_values == [True]
+    assert oceandb_etl.calls == [(["j3"], datetime(2013, 1, 1), datetime(2013, 1, 31))]
+    assert "No matching along-track files were found" in result.output
 
 
 def test_ingest_mode_status_line_formats():
