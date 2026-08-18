@@ -1,5 +1,6 @@
 from datetime import datetime
 from functools import cached_property
+from pathlib import Path
 from types import SimpleNamespace
 
 import psycopg as pg
@@ -41,12 +42,22 @@ class FailingAlongTrackETL:
 
 
 class FakeAlongTrackDiscoveryETL:
-    def __init__(self):
-        self.calls = []
+    def __init__(self, files=None):
+        self.files = [] if files is None else files
+        self.discovery_calls = []
+        self.ingest_calls = []
 
     def discover_files(self, missions, start_date=None, end_date=None):
-        self.calls.append((missions, start_date, end_date))
-        return {"missions": missions, "files": []}
+        self.discovery_calls.append((missions, start_date, end_date))
+        return {"missions": missions, "files": self.files}
+
+    def ingest(self, **kwargs):
+        self.ingest_calls.append(kwargs)
+        return {
+            "matched_count": len(self.files),
+            "ingested_count": len(self.files),
+            "duration_seconds": 0.0,
+        }
 
 
 class FakeInitReturningIndices:
@@ -367,8 +378,47 @@ def test_ingest_along_track_discovers_files_with_etl(monkeypatch):
 
     assert result.exit_code == 0
     assert debug_values == [True]
-    assert oceandb_etl.calls == [(["j3"], datetime(2013, 1, 1), datetime(2013, 1, 31))]
+    assert oceandb_etl.discovery_calls == [
+        (["j3"], datetime(2013, 1, 1), datetime(2013, 1, 31))
+    ]
+    assert oceandb_etl.ingest_calls == []
     assert "No matching along-track files were found" in result.output
+
+
+def test_ingest_along_track_reuses_discovery_etl(monkeypatch):
+    runner = CliRunner()
+    files = [Path("j3.nc")]
+    oceandb_etl = FakeAlongTrackDiscoveryETL(files=files)
+    created_etls = []
+
+    def create_along_track_etl(debug=False):
+        created_etls.append((debug, oceandb_etl))
+        return oceandb_etl
+
+    monkeypatch.setattr(
+        ingest_commands,
+        "create_along_track_etl",
+        create_along_track_etl,
+    )
+
+    result = runner.invoke(
+        cli_module.cli,
+        ["ingest-along-track", "j3", "--workers", "2"],
+        input="y\n",
+    )
+
+    assert result.exit_code == 0
+    assert created_etls == [(False, oceandb_etl)]
+    assert oceandb_etl.discovery_calls == [(["j3"], None, None)]
+    assert len(oceandb_etl.ingest_calls) == 1
+    ingest_call = oceandb_etl.ingest_calls[0]
+    assert ingest_call["missions"] == ["j3"]
+    assert ingest_call["start_date"] is None
+    assert ingest_call["end_date"] is None
+    assert ingest_call["workers"] == 2
+    assert ingest_call["files"] == files
+    assert callable(ingest_call["on_progress"])
+    assert "Finished ingesting 1 file(s)" in result.output
 
 
 def test_ingest_mode_status_line_formats():

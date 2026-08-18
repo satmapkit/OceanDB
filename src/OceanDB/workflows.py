@@ -16,12 +16,6 @@ def _emit(on_progress: ProgressCallback | None, event: dict[str, Any]) -> None:
         on_progress(event)
 
 
-def _create_along_track_etl(debug: bool = False):
-    from OceanDB.etl.along_track_etl import AlongTrackETL
-
-    return AlongTrackETL(debug=debug)
-
-
 def _create_eddy_etl():
     from OceanDB.etl.eddy_etl import EddyETL
 
@@ -82,25 +76,6 @@ def ingest_eddy(
         )
 
     return {"processed_files": processed_files}
-
-
-def ingest_along_track(
-    missions: list[str] | tuple[str, ...],
-    start_date: datetime | None = None,
-    end_date: datetime | None = None,
-    workers: int = 6,
-    debug: bool = False,
-    on_progress: ProgressCallback | None = None,
-    init_database_if_not_exists: bool = False,
-) -> dict[str, Any]:
-    return _create_along_track_etl(debug=debug).ingest(
-        missions=missions,
-        start_date=start_date,
-        end_date=end_date,
-        workers=workers,
-        on_progress=on_progress,
-        init_database_if_not_exists=init_database_if_not_exists,
-    )
 
 
 def create_all_indices() -> None:

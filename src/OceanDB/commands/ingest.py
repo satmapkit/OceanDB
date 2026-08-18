@@ -7,7 +7,6 @@ import click
 from OceanDB.cli_utils import format_status_line
 from OceanDB.commands.shared import (create_along_track_etl, format_duration,
                                      render_ingest_mode, timestamp_now)
-from OceanDB.workflows import ingest_along_track as run_ingest_along_track
 from OceanDB.workflows import ingest_eddy as run_ingest_eddy
 
 
@@ -186,13 +185,13 @@ def ingest_along_track(missions, start_date, end_date, workers, debug):
                 )
             )
 
-    result = run_ingest_along_track(
-        missions=list(missions),
+    result = oceandb_etl.ingest(
+        missions=selected_missions,
         start_date=start_date,
         end_date=end_date,
         workers=workers,
-        debug=debug,
         on_progress=on_progress,
+        files=nc_files,
     )
 
     if result["matched_count"] and result["ingested_count"] == 0:

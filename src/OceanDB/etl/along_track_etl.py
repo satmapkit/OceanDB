@@ -1,6 +1,6 @@
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from functools import cached_property
@@ -236,6 +236,7 @@ class AlongTrackETL(OceanDBETL):
         workers: int = 6,
         on_progress: ProgressCallback | None = None,
         init_database_if_not_exists: bool = False,
+        files: Sequence[Path] | None = None,
     ) -> dict[str, Any]:
         from OceanDB.OceanDB_Initializer import OceanDBInit
 
@@ -254,7 +255,11 @@ class AlongTrackETL(OceanDBETL):
                 )
             ocean_db_init.initialize_database()
 
-        discovery = self.discover_files(missions, start_date, end_date)
+        discovery = (
+            self.discover_files(missions, start_date, end_date)
+            if files is None
+            else {"missions": list(missions), "files": list(files)}
+        )
         nc_files: list[Path] = discovery["files"]
         if not nc_files:
             return {

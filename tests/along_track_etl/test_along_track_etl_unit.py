@@ -190,6 +190,25 @@ def test_ingest_skips_files_present_in_metadata(monkeypatch, tmp_path):
     }
 
 
+def test_ingest_accepts_pre_discovered_files(monkeypatch, tmp_path):
+    etl = create_etl(tmp_path)
+    initializer = FakeOceanDBInit(database_exists=True, table_exists=True)
+    configure_initializer(monkeypatch, etl, initializer)
+    file = tmp_path / "first.nc"
+    monkeypatch.setattr(
+        etl,
+        "discover_files",
+        lambda *args, **kwargs: pytest.fail("files should not be discovered again"),
+    )
+    monkeypatch.setattr(etl, "query_metadata", lambda: {file.name})
+
+    result = etl.ingest(["j3"], files=[file])
+
+    assert result["missions"] == ["j3"]
+    assert result["matched_count"] == 1
+    assert result["skipped_count"] == 1
+
+
 def test_ingest_processes_new_files_and_emits_progress(monkeypatch, tmp_path):
     etl = create_etl(tmp_path)
     initializer = FakeOceanDBInit(database_exists=True, table_exists=True)
