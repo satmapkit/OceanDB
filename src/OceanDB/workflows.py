@@ -19,12 +19,6 @@ def _emit(on_progress: ProgressCallback | None, event: dict[str, Any]) -> None:
         on_progress(event)
 
 
-def _create_basins_etl():
-    from OceanDB.etl.basins_etl import BasinsETL
-
-    return BasinsETL()
-
-
 def _create_along_track_etl(debug: bool = False):
     from OceanDB.etl.along_track_etl import AlongTrackETL
 
@@ -41,17 +35,7 @@ def initialize_database(
     partition_start: str = "1990-01-01",
     partition_end: str = "2025-11-01",
 ) -> dict[str, bool]:
-    ocean_db_init = OceanDBInit()
-    created_database = ocean_db_init.create_database()
-
-    ocean_db_init.create_tables()
-    ocean_db_init.create_eddy_tables()
-    ocean_db_init.create_partitions(partition_start, partition_end)
-
-    basins_etl = _create_basins_etl()
-    basins_etl.insert_basins_data()
-    basins_etl.insert_basin_connections_data()
-    return {"created_database": created_database, "initialized": True}
+    return OceanDBInit().initialize_database(partition_start, partition_end)
 
 
 def ingest_eddy(

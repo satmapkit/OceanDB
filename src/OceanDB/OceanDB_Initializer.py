@@ -143,6 +143,24 @@ class OceanDBInit(BaseWriteQuery):
         print(f"Database '{self.db_name}' POSTGIS enabled.")
         return created_database
 
+    def initialize_database(
+        self,
+        partition_start: str = "1990-01-01",
+        partition_end: str = "2025-11-01",
+    ) -> dict[str, bool]:
+        from OceanDB.etl.basins_etl import BasinsETL
+
+        created_database = self.create_database()
+        self.create_tables()
+        self.create_eddy_tables()
+        self.create_partitions(partition_start, partition_end)
+
+        basins_etl = BasinsETL(config=self.config)
+        basins_etl.insert_basins_data()
+        basins_etl.insert_basin_connections_data()
+
+        return {"created_database": created_database, "initialized": True}
+
     def create_tables(self):
         for table in table_definitions:
             table_name = table["name"]
