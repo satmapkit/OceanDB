@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import time
 from collections.abc import Callable
 from datetime import datetime
-from multiprocessing import Pool, TimeoutError
 from pathlib import Path
 from typing import Any, Literal
 
@@ -95,120 +93,14 @@ def ingest_along_track(
     on_progress: ProgressCallback | None = None,
     init_database_if_not_exists: bool = False,
 ) -> dict[str, Any]:
-    ocean_db_init = OceanDBInit()
-    database_initialized = (
-        ocean_db_init.database_exists() and ocean_db_init.table_exists("along_track")
+    return _create_along_track_etl(debug=debug).ingest(
+        missions=missions,
+        start_date=start_date,
+        end_date=end_date,
+        workers=workers,
+        on_progress=on_progress,
+        init_database_if_not_exists=init_database_if_not_exists,
     )
-
-    if not database_initialized:
-        if not init_database_if_not_exists:
-            raise RuntimeError(
-                f"Database '{ocean_db_init.db_name}' is not initialized. "
-                "Run database initialization first or set "
-                "init_database_if_not_exists=True."
-            )
-        ocean_db_init.initialize_database()
-
-    oceandb_etl = _create_along_track_etl(debug=debug)
-    discovery = oceandb_etl.discover_files(missions, start_date, end_date)
-    nc_files: list[Path] = discovery["files"]
-    if not nc_files:
-        return {
-            "missions": discovery["missions"],
-            "matched_count": 0,
-            "skipped_count": 0,
-            "ingested_count": 0,
-            "results": [],
-            "duration_seconds": 0.0,
-        }
-
-    metadata_filenames = oceandb_etl.query_metadata()
-    along_track_files = [
-        file for file in nc_files if file.name not in metadata_filenames
-    ]
-    skipped_count = len(nc_files) - len(along_track_files)
-    if not along_track_files:
-        return {
-            "missions": discovery["missions"],
-            "matched_count": len(nc_files),
-            "skipped_count": skipped_count,
-            "ingested_count": 0,
-            "results": [],
-            "duration_seconds": 0.0,
-        }
-
-    _emit(
-        on_progress,
-        {
-            "type": "along_track_start",
-            "matched_count": len(nc_files),
-            "skipped_count": skipped_count,
-            "ingest_count": len(along_track_files),
-            "ingest_mode": oceandb_etl.config.ingest_mode,
-        },
-    )
-
-    start_ingest_time = time.perf_counter()
-    completed = skipped_count
-    total = len(nc_files)
-    results_out: list[dict[str, Any]] = []
-    multiprocessing_pool = Pool(workers)
-    results = multiprocessing_pool.imap_unordered(
-        oceandb_etl.process_along_track_file,
-        along_track_files,
-    )
-
-    try:
-        heartbeat_seconds = 30
-        completed_new_files = 0
-        total_new_files = len(along_track_files)
-
-        while completed_new_files < total_new_files:
-            try:
-                result = results.next(timeout=heartbeat_seconds)
-            except TimeoutError:
-                _emit(
-                    on_progress,
-                    {
-                        "type": "along_track_wait",
-                        "completed": completed,
-                        "total": total,
-                        "completed_new_files": completed_new_files,
-                        "total_new_files": total_new_files,
-                        "active_workers": min(
-                            workers, total_new_files - completed_new_files
-                        ),
-                    },
-                )
-                continue
-
-            completed += 1
-            completed_new_files += 1
-            results_out.append(result)
-            _emit(
-                on_progress,
-                {
-                    "type": "along_track_file_complete",
-                    "completed": completed,
-                    "total": total,
-                    "remaining": total - completed,
-                    "result": result,
-                },
-            )
-    finally:
-        if multiprocessing_pool is not None:
-            multiprocessing_pool.close()
-            multiprocessing_pool.join()
-
-    duration_seconds = time.perf_counter() - start_ingest_time
-    return {
-        "missions": discovery["missions"],
-        "matched_count": len(nc_files),
-        "skipped_count": skipped_count,
-        "ingested_count": len(along_track_files),
-        "results": results_out,
-        "duration_seconds": duration_seconds,
-    }
 
 
 def create_all_indices() -> None:
