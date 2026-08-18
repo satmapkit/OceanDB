@@ -21,7 +21,7 @@ def test_analyze_all(db_with_indices):
         assert output.used_indices.issubset(output.candidate_indices)
 
 
-def test_analyze_along_track_point_r_dt(db_with_indices):
+def test_analyze_along_track_point_r_dt_some_missions(db_with_indices):
     scenario = QueryScenario(
         query_class=AlongTrack,
         method_name="geographic_point_in_r_dt",
@@ -32,6 +32,7 @@ def test_analyze_along_track_point_r_dt(db_with_indices):
             "date": datetime(2013, 1, 4, 23),
             "radius": 500_000,
             "time_window": timedelta(days=10),
+            "missions": ["al", "j3n"],
         },
     )
     runner = QueryAnalysisRunner(config=db_with_indices.config, scenarios=[scenario])
@@ -47,7 +48,36 @@ def test_analyze_along_track_point_r_dt(db_with_indices):
     assert 66.5 < output.total_cost < 66.6
 
 
-def test_analyze_along_track_nearest_neighbor(db_with_indices):
+def test_analyze_along_track_point_r_dt_all_missions(db_with_indices):
+    scenario = QueryScenario(
+        query_class=AlongTrack,
+        method_name="geographic_point_in_r_dt",
+        kwargs={
+            "fields": list(along_track_schema.keys()),
+            "latitude": -39.1,
+            "longitude": 54.7,
+            "date": datetime(2013, 1, 4, 23),
+            "radius": 500_000,
+            "time_window": timedelta(days=10),
+            "missions": None,
+        },
+    )
+    runner = QueryAnalysisRunner(config=db_with_indices.config, scenarios=[scenario])
+    output_all = runner.analyze_queries()
+    assert len(output_all) > 0
+    output = output_all[0]
+
+    assert output.used_indices == {
+        "along_track_time_idx",
+        "along_track_point_date_mission_basin_idx",
+    }
+    assert output.total_cost is not None
+    assert 66.5 < output.total_cost < 66.6
+
+
+def test_analyze_along_track_nearest_neighbor_no_max_radius_some_missions(
+    db_with_indices,
+):
     scenario = QueryScenario(
         query_class=AlongTrack,
         method_name="geographic_nearest_neighbors",
@@ -57,6 +87,34 @@ def test_analyze_along_track_nearest_neighbor(db_with_indices):
             "longitude": 28.1,
             "date": datetime(2013, 1, 4, 23),
             "time_window": timedelta(days=10),
+            "max_radius": None,
+            "missions": ["al", "j3n"],
+        },
+    )
+    runner = QueryAnalysisRunner(config=db_with_indices.config, scenarios=[scenario])
+    output_all = runner.analyze_queries()
+    assert len(output_all) > 0
+    output = output_all[0]
+
+    assert output.used_indices == {"along_track_point_date_mission_idx"}
+    assert output.total_cost is not None
+    assert 18.1 < output.total_cost < 18.2
+
+
+def test_analyze_along_track_nearest_neighbor_no_max_radius_all_missions(
+    db_with_indices,
+):
+    scenario = QueryScenario(
+        query_class=AlongTrack,
+        method_name="geographic_nearest_neighbors",
+        kwargs={
+            "fields": list(along_track_schema.keys()),
+            "latitude": -69,
+            "longitude": 28.1,
+            "date": datetime(2013, 1, 4, 23),
+            "time_window": timedelta(days=10),
+            "max_radius": None,
+            "missions": None,
         },
     )
     runner = QueryAnalysisRunner(config=db_with_indices.config, scenarios=[scenario])
@@ -66,7 +124,58 @@ def test_analyze_along_track_nearest_neighbor(db_with_indices):
 
     assert output.used_indices == {"along_track_point_date_mission_basin_idx"}
     assert output.total_cost is not None
-    assert 23.2 < output.total_cost < 23.4
+    assert 20.0 < output.total_cost < 20.1
+
+
+def test_analyze_along_track_nearest_neighbor_max_radius_some_missions(db_with_indices):
+    scenario = QueryScenario(
+        query_class=AlongTrack,
+        method_name="geographic_nearest_neighbors",
+        kwargs={
+            "fields": list(along_track_schema.keys()),
+            "latitude": -69,
+            "longitude": 28.1,
+            "date": datetime(2013, 1, 4, 23),
+            "time_window": timedelta(days=10),
+            "max_radius": 500_000,
+            "missions": ["al", "j3n"],
+        },
+    )
+    runner = QueryAnalysisRunner(config=db_with_indices.config, scenarios=[scenario])
+    output_all = runner.analyze_queries()
+    assert len(output_all) > 0
+    output = output_all[0]
+
+    assert output.used_indices == {
+        "along_track_point_date_mission_basin_idx",
+        "along_track_point_date_mission_idx",
+    }
+    assert output.total_cost is not None
+    assert 21.5 < output.total_cost < 21.7
+
+
+def test_analyze_along_track_nearest_neighbor_max_radius_all_missions(db_with_indices):
+    scenario = QueryScenario(
+        query_class=AlongTrack,
+        method_name="geographic_nearest_neighbors",
+        kwargs={
+            "fields": list(along_track_schema.keys()),
+            "latitude": -69,
+            "longitude": 28.1,
+            "date": datetime(2013, 1, 4, 23),
+            "time_window": timedelta(days=10),
+            "max_radius": 500_000,
+            "missions": None,
+        },
+    )
+    runner = QueryAnalysisRunner(config=db_with_indices.config, scenarios=[scenario])
+    output_all = runner.analyze_queries()
+    assert len(output_all) > 0
+    output = output_all[0]
+
+    assert output.used_indices == {"along_track_point_date_mission_basin_idx"}
+    assert output.total_cost is not None
+    assert 24.4 < output.total_cost < 24.5
 
 
 def test_analyze_eddy_with_track_id(db_with_indices):
