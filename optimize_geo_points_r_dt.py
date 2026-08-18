@@ -15,6 +15,8 @@ from OceanDB.query_analysis import BatchQueryScenario
 from OceanDB.schemas.along_track_schema import along_track_schema
 import numpy as np
 
+along_track = AlongTrack()
+
 
 def random_datetimes(
     rng: random.Random, start: datetime, end: datetime, count: int
@@ -71,6 +73,9 @@ def batch_scenario_grid(
     lons_grid,lats_grid = np.meshgrid(longitudes, latitudes)
     lons = np.reshape(lons_grid, -1)
     lats = np.reshape(lats_grid, -1)
+    basin_ids = along_track.basin_mask_lookup.lookup(lats, lons)
+    is_ocean = along_track.basin_mask_lookup.basin_is_ocean(basin_ids)
+    lats, lons = lats[is_ocean], lons[is_ocean]
 
     kwargs = {
             "fields": list(along_track_schema.keys()),
