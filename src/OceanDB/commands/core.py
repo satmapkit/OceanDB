@@ -6,8 +6,8 @@ from pathlib import Path
 import click
 
 from OceanDB.commands.shared import logger
+from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.utils.basin_visualization import write_basin_map
-from OceanDB.workflows import initialize_database
 
 
 @click.command()
@@ -17,7 +17,7 @@ def process():
 
 @click.command()
 def init():
-    initialize_database()
+    OceanDBInit().initialize_database()
 
 
 @click.command()

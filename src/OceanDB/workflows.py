@@ -31,13 +31,6 @@ def _create_eddy_etl():
     return EddyETL()
 
 
-def initialize_database(
-    partition_start: str = "1990-01-01",
-    partition_end: str = "2025-11-01",
-) -> dict[str, bool]:
-    return OceanDBInit().initialize_database(partition_start, partition_end)
-
-
 def ingest_eddy(
     only_ingest: Literal["both", "cyclonic", "anticyclonic"] = "both",
     offset_cyclonic: int = 0,
@@ -57,7 +50,7 @@ def ingest_eddy(
                 "Run database initialization first or set "
                 "init_database_if_not_exists=True."
             )
-        initialize_database()
+        ocean_db_init.initialize_database()
 
     oceandb_etl = _create_eddy_etl()
     eddy_directory = Path(oceandb_etl.config.eddy_data_directory)
@@ -191,7 +184,7 @@ def ingest_along_track(
                 "Run database initialization first or set "
                 "init_database_if_not_exists=True."
             )
-        initialize_database()
+        ocean_db_init.initialize_database()
 
     discovery = discover_along_track_files(missions, start_date, end_date)
     nc_files: list[Path] = discovery["files"]

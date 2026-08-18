@@ -12,6 +12,7 @@ class FakeOceanDBInit:
         self._database_exists = database_exists
         self._table_exists = table_exists
         self.checked_tables = []
+        self.initialize_calls = 0
 
     def database_exists(self):
         return self._database_exists
@@ -20,6 +21,9 @@ class FakeOceanDBInit:
         self.checked_tables.append(table)
         return self._table_exists
 
+    def initialize_database(self):
+        self.initialize_calls += 1
+
 
 def empty_discovery(missions, start_date=None, end_date=None):
     return {"missions": list(missions), "files": []}
@@ -27,20 +31,14 @@ def empty_discovery(missions, start_date=None, end_date=None):
 
 def test_ingest_along_track_uses_initialized_database(monkeypatch):
     ocean_db_init = FakeOceanDBInit(database_exists=True, table_exists=True)
-    initialize_calls = []
     monkeypatch.setattr(workflows, "OceanDBInit", lambda: ocean_db_init)
     monkeypatch.setattr(workflows, "discover_along_track_files", empty_discovery)
-    monkeypatch.setattr(
-        workflows,
-        "initialize_database",
-        lambda: initialize_calls.append(True),
-    )
 
     result = workflows.ingest_along_track(["j3"])
 
     assert result["matched_count"] == 0
     assert ocean_db_init.checked_tables == ["along_track"]
-    assert initialize_calls == []
+    assert ocean_db_init.initialize_calls == 0
 
 
 def test_ingest_along_track_rejects_uninitialized_database(monkeypatch):
@@ -55,14 +53,8 @@ def test_ingest_along_track_rejects_uninitialized_database(monkeypatch):
 
 def test_ingest_along_track_initializes_database_when_enabled(monkeypatch):
     ocean_db_init = FakeOceanDBInit(database_exists=True, table_exists=False)
-    initialize_calls = []
     monkeypatch.setattr(workflows, "OceanDBInit", lambda: ocean_db_init)
     monkeypatch.setattr(workflows, "discover_along_track_files", empty_discovery)
-    monkeypatch.setattr(
-        workflows,
-        "initialize_database",
-        lambda: initialize_calls.append(True),
-    )
 
     result = workflows.ingest_along_track(
         ["j3"],
@@ -71,4 +63,4 @@ def test_ingest_along_track_initializes_database_when_enabled(monkeypatch):
 
     assert result["matched_count"] == 0
     assert ocean_db_init.checked_tables == ["along_track"]
-    assert initialize_calls == [True]
+    assert ocean_db_init.initialize_calls == 1

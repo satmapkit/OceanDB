@@ -314,11 +314,12 @@ def test_init_exits_early_when_database_exists(monkeypatch):
     runner = CliRunner()
     calls = []
 
-    def fake_initialize_database():
-        calls.append("initialize_database")
-        return {"created_database": False, "initialized": False}
+    class FakeOceanDBInit:
+        def initialize_database(self):
+            calls.append("initialize_database")
+            return {"created_database": False, "initialized": False}
 
-    monkeypatch.setattr(core_commands, "initialize_database", fake_initialize_database)
+    monkeypatch.setattr(core_commands, "OceanDBInit", FakeOceanDBInit)
 
     result = runner.invoke(cli_module.cli, ["init"])
 
