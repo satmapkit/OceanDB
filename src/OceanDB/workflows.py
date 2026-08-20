@@ -1,34 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Literal
 
 from OceanDB.OceanDB_Initializer import OceanDBInit
-
-ProgressCallback = Callable[[dict[str, Any]], None]
-
-
-def _create_eddy_etl():
-    from OceanDB.etl.eddy_etl import EddyETL
-
-    return EddyETL()
-
-
-def ingest_eddy(
-    only_ingest: Literal["both", "cyclonic", "anticyclonic"] = "both",
-    offset_cyclonic: int = 0,
-    offset_anticyclonic: int = 0,
-    on_progress: ProgressCallback | None = None,
-    init_database_if_not_exists: bool = False,
-) -> dict[str, list[dict[str, Any]]]:
-    return _create_eddy_etl().ingest(
-        only_ingest=only_ingest,
-        offset_cyclonic=offset_cyclonic,
-        offset_anticyclonic=offset_anticyclonic,
-        on_progress=on_progress,
-        init_database_if_not_exists=init_database_if_not_exists,
-    )
 
 
 def create_all_indices() -> None:

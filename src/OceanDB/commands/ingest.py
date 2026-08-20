@@ -5,9 +5,9 @@ from typing import Literal
 import click
 
 from OceanDB.cli_utils import format_status_line
-from OceanDB.commands.shared import (create_along_track_etl, format_duration,
-                                     render_ingest_mode, timestamp_now)
-from OceanDB.workflows import ingest_eddy as run_ingest_eddy
+from OceanDB.commands.shared import (create_along_track_etl, create_eddy_etl,
+                                     format_duration, render_ingest_mode,
+                                     timestamp_now)
 
 
 @click.command("ingest-eddy")
@@ -71,7 +71,7 @@ def ingest_eddy(
             print(f"Starting at {event['offset']}")
         print(f"Processing ingesting {event['filename']}")
 
-    run_ingest_eddy(
+    create_eddy_etl().ingest(
         only_ingest=only_ingest,
         offset_cyclonic=offset_cyclonic,
         offset_anticyclonic=offset_anticyclonic,

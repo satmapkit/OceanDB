@@ -60,6 +60,22 @@ class FakeAlongTrackDiscoveryETL:
         }
 
 
+class FakeEddyETL:
+    def __init__(self):
+        self.ingest_calls = []
+
+    def ingest(self, **kwargs):
+        self.ingest_calls.append(kwargs)
+        kwargs["on_progress"](
+            {
+                "type": "eddy_file_start",
+                "filename": "cyclonic.nc",
+                "offset": kwargs["offset_cyclonic"],
+            }
+        )
+        return {"processed_files": []}
+
+
 class FakeInitReturningIndices:
     @cached_property
     def managed_indices(self):
@@ -419,6 +435,41 @@ def test_ingest_along_track_reuses_discovery_etl(monkeypatch):
     assert ingest_call["files"] == files
     assert callable(ingest_call["on_progress"])
     assert "Finished ingesting 1 file(s)" in result.output
+
+
+def test_ingest_eddy_uses_eddy_etl(monkeypatch):
+    runner = CliRunner()
+    oceandb_etl = FakeEddyETL()
+    created_etls = []
+
+    def create_eddy_etl():
+        created_etls.append(oceandb_etl)
+        return oceandb_etl
+
+    monkeypatch.setattr(ingest_commands, "create_eddy_etl", create_eddy_etl)
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "ingest-eddy",
+            "--cyclonic-only",
+            "--offset-cyclonic",
+            "12",
+            "--offset-anticyclonic",
+            "34",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert created_etls == [oceandb_etl]
+    assert len(oceandb_etl.ingest_calls) == 1
+    ingest_call = oceandb_etl.ingest_calls[0]
+    assert ingest_call["only_ingest"] == "cyclonic"
+    assert ingest_call["offset_cyclonic"] == 12
+    assert ingest_call["offset_anticyclonic"] == 34
+    assert callable(ingest_call["on_progress"])
+    assert "Starting at 12" in result.output
+    assert "Processing ingesting cyclonic.nc" in result.output
 
 
 def test_ingest_mode_status_line_formats():
