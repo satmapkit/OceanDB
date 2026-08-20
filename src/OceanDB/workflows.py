@@ -2,18 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Literal
 
-from OceanDB.commands.shared import AVISO_EDDY_FILENAMES
 from OceanDB.OceanDB_Initializer import OceanDBInit
 
 ProgressCallback = Callable[[dict[str, Any]], None]
-
-
-def _emit(on_progress: ProgressCallback | None, event: dict[str, Any]) -> None:
-    if on_progress is not None:
-        on_progress(event)
 
 
 def _create_eddy_etl():
@@ -29,53 +22,13 @@ def ingest_eddy(
     on_progress: ProgressCallback | None = None,
     init_database_if_not_exists: bool = False,
 ) -> dict[str, list[dict[str, Any]]]:
-    ocean_db_init = OceanDBInit()
-    database_initialized = (
-        ocean_db_init.database_exists() and ocean_db_init.table_exists("eddy")
+    return _create_eddy_etl().ingest(
+        only_ingest=only_ingest,
+        offset_cyclonic=offset_cyclonic,
+        offset_anticyclonic=offset_anticyclonic,
+        on_progress=on_progress,
+        init_database_if_not_exists=init_database_if_not_exists,
     )
-
-    if not database_initialized:
-        if not init_database_if_not_exists:
-            raise RuntimeError(
-                f"Database '{ocean_db_init.db_name}' is not initialized. "
-                "Run database initialization first or set "
-                "init_database_if_not_exists=True."
-            )
-        ocean_db_init.initialize_database()
-
-    oceandb_etl = _create_eddy_etl()
-    eddy_directory = Path(oceandb_etl.config.eddy_data_directory)
-    processed_files: list[dict[str, Any]] = []
-
-    ingest_specs = [
-        ("cyclonic", AVISO_EDDY_FILENAMES[0], -1, offset_cyclonic),
-        ("anticyclonic", AVISO_EDDY_FILENAMES[1], 1, offset_anticyclonic),
-    ]
-    for kind, filename, cyclonic_type, offset in ingest_specs:
-        if only_ingest not in ("both", kind):
-            continue
-
-        filepath = eddy_directory / filename
-        _emit(
-            on_progress,
-            {
-                "type": "eddy_file_start",
-                "kind": kind,
-                "filename": filename,
-                "filepath": filepath,
-                "offset": offset,
-            },
-        )
-        oceandb_etl.ingest_eddy_data_file(
-            filepath,
-            cyclonic_type=cyclonic_type,
-            offset=offset,
-        )
-        processed_files.append(
-            {"kind": kind, "filename": filename, "filepath": filepath, "offset": offset}
-        )
-
-    return {"processed_files": processed_files}
 
 
 def create_all_indices() -> None:

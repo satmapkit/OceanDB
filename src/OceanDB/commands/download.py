@@ -4,11 +4,10 @@ from pathlib import Path
 
 import click
 
+from OceanDB.aviso import (AVISO_EDDY_FILENAMES, AVISO_EDDY_REMOTE_DIRECTORY,
+                           AVISO_HOST, AVISO_PORT)
 from OceanDB.cli_utils import format_key_value, format_status_line
-from OceanDB.commands.shared import (AVISO_EDDY_FILENAMES,
-                                     AVISO_EDDY_REMOTE_DIRECTORY, AVISO_HOST,
-                                     AVISO_PORT,
-                                     create_copernicus_marine_client)
+from OceanDB.commands.shared import create_copernicus_marine_client
 from OceanDB.config import Config
 
 
