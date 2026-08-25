@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from OceanDB.base_write_query import BaseWriteQuery
 from OceanDB.managed_index_oceandb import (
-    PARTITIONED_ALONG_TRACK_INDEX_PATTERN, IndexFile)
+    PARTITIONED_ALONG_TRACK_INDEX_PATTERN, IndexDefinition)
 from OceanDB.query_spec import RawSpec
 
 table_definitions = [
@@ -183,23 +183,25 @@ class OceanDBInit(BaseWriteQuery):
                 self.logger.info(f"{table}")
                 self.logger.info(ex)
 
-    def _create_index_group(self, indices: Sequence[IndexFile]) -> None:
+    def _create_index_group(self, indices: Sequence[IndexDefinition]) -> None:
         for index in indices:
-            table_name = index.name
-            self.logger.info(f"Starting index creation for {table_name}")
-            query = self.parametrize_sql_statements(index)
+            self.logger.info(f"Starting index creation for {index.name}")
+            query = RawSpec(sql.SQL(index.create_sql).format())
             self.execute_write_query(query)
-            self.logger.info(f"Executing {table_name}")
+            self.logger.info(f"Executing {index.name}")
 
     def create_indices(self):
-        self._create_index_group(self.managed_indices.along_track_index_files)
-        self._create_index_group(self.managed_indices.basin_index_files)
+        self._create_index_group(
+            self.managed_indices.definitions_for_tables(
+                "along_track", "basin", "basin_connections"
+            )
+        )
 
     def create_default_indices(self):
-        self._create_index_group(self.managed_indices.default_index_files())
+        self._create_index_group(self.managed_indices.default_definitions())
 
     def create_eddy_indices(self):
-        self._create_index_group(self.managed_indices.eddy_index_files)
+        self._create_index_group(self.managed_indices.definitions_for_tables("eddy"))
 
     def create_along_track_index_by_partition(
         self,
@@ -301,7 +303,7 @@ class OceanDBInit(BaseWriteQuery):
             print(f"Created partition {partition_name}")
             current = next_month
 
-    def parametrize_sql_statements(self, table: Mapping[str, object] | IndexFile):
+    def parametrize_sql_statements(self, table: Mapping[str, object]):
         """
         Some of the SQL statements are parameterized
         Substitute parameters
@@ -316,14 +318,8 @@ class OceanDBInit(BaseWriteQuery):
             },
         }
         """
-        if isinstance(table, IndexFile):
-            query_filepath = table.filepath
-            query_params = (
-                {"index_name": table.index_name} if table.index_name is not None else {}
-            )
-        else:
-            query_filepath = cast(str, table["filepath"])
-            query_params = cast(dict[str, str], table["params"])
+        query_filepath = cast(str, table["filepath"])
+        query_params = cast(dict[str, str], table["params"])
         sql_statement = self.load_sql_file(query_filepath)
         safe_params = {}
         for key, value in query_params.items():
