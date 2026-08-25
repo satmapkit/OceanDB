@@ -390,7 +390,7 @@ class ManagedIndexOceanDB(OceanDB):
         )
 
         managed_rows = self.list_indices(managed_only=True)
-        rows_by_logical_name = []
+        rows_by_logical_name: list[dict[str, str | int | None]] = []
 
         for current_logical_name in logical_names:
             index_info = (
@@ -425,7 +425,7 @@ class ManagedIndexOceanDB(OceanDB):
                 partition_names[0]
             )
 
-            ranges = []
+            ranges: list[list[str]] = []
             for partition_name in partition_names[1:]:
                 current_date = self._parse_along_track_partition_name(partition_name)
                 next_expected_date = (
