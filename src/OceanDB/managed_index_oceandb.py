@@ -6,9 +6,11 @@ from functools import cache, cached_property
 from typing import LiteralString
 
 from dateutil.relativedelta import relativedelta
+from psycopg import sql
 from sqlalchemy import text
 
 from OceanDB.OceanDB import OceanDB
+from OceanDB.query_spec import RawSpec
 from OceanDB.resource_loader import ResourceLoader
 
 
@@ -17,6 +19,9 @@ class IndexDefinition:
     name: str
     table: str
     create_sql: LiteralString
+
+    def to_spec(self):
+        return RawSpec(sql.SQL(self.create_sql).format())
 
 
 @dataclass(frozen=True)

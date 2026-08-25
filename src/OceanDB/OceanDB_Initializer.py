@@ -186,7 +186,7 @@ class OceanDBInit(BaseWriteQuery):
     def _create_index_group(self, indices: Sequence[IndexDefinition]) -> None:
         for index in indices:
             self.logger.info(f"Starting index creation for {index.name}")
-            query = RawSpec(sql.SQL(index.create_sql).format())
+            query = index.to_spec()
             self.execute_write_query(query)
             self.logger.info(f"Executing {index.name}")
 
