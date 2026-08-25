@@ -2,12 +2,12 @@ from typing import Any, Iterable, Mapping
 
 from psycopg.rows import dict_row
 
-from OceanDB.managed_index_oceandb import ManagedIndexOceanDB
 from OceanDB.ocean_data.dataset import K
+from OceanDB.OceanDB import OceanDB
 from OceanDB.query_spec import QuerySpec, log_query
 
 
-class BaseWriteQuery(ManagedIndexOceanDB):
+class BaseWriteQuery(OceanDB):
     """
     Base class for write-only query services.
     """

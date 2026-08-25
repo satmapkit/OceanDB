@@ -7,13 +7,13 @@ from dateutil.relativedelta import relativedelta
 from psycopg.rows import class_row
 from sqlalchemy import text
 
+from OceanDB.base_write_query import BaseWriteQuery
 from OceanDB.managed_indices import (DEFAULT_INDEX_NAMES,
                                      DROP_EDDY_INDEX_FILES, DROP_INDEX_FILES,
                                      INDEX_RESOURCES, INDEX_SQL_PATTERN,
                                      PARTITIONED_ALONG_TRACK_INDEX_PATTERN,
                                      DropIndexFile, IndexDefinition,
                                      ManagedIndices, normalize_sql)
-from OceanDB.OceanDB import OceanDB
 
 __all__ = [
     "DEFAULT_INDEX_NAMES",
@@ -66,7 +66,7 @@ class DatabaseIndex:
         return self.parent_table_name is not None and self.parent_index_name is None
 
 
-class ManagedIndexOceanDB(OceanDB):
+class ManagedIndexOceanDB(BaseWriteQuery):
     def __init__(self, config=None, managed_indices: ManagedIndices | None = None):
         super().__init__(config=config)
         self.managed_indices = managed_indices or ManagedIndices()

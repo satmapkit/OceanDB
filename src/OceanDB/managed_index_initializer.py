@@ -5,13 +5,13 @@ from typing import LiteralString, cast
 from dateutil.relativedelta import relativedelta
 from psycopg import sql
 
-from OceanDB.base_write_query import BaseWriteQuery
+from OceanDB.managed_index_oceandb import ManagedIndexOceanDB
 from OceanDB.managed_indices import (PARTITIONED_ALONG_TRACK_INDEX_PATTERN,
                                      IndexDefinition)
 from OceanDB.query_spec import RawSpec
 
 
-class ManagedIndexInitializer(BaseWriteQuery):
+class ManagedIndexInitializer(ManagedIndexOceanDB):
     def _normalize_month_start(self, value: datetime) -> datetime:
         return value.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
