@@ -1,4 +1,5 @@
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from functools import cached_property
@@ -70,6 +71,14 @@ class ManagedIndexOceanDB(BaseWriteQuery):
     def __init__(self, config=None, managed_indices: ManagedIndices | None = None):
         super().__init__(config=config)
         self.managed_indices = managed_indices or ManagedIndices()
+
+    def create_indexes(self, definitions: Sequence[IndexDefinition]) -> None:
+        for definition in definitions:
+            self.logger.info(f"Starting index creation for {definition.name}")
+            self.execute_write_query(definition.to_spec())
+            self.logger.info(f"Executing {definition.name}")
+
+        self.__dict__.pop("partition_index_name_map", None)
 
     @cached_property
     def partition_index_name_map(self) -> dict[str, str]:
