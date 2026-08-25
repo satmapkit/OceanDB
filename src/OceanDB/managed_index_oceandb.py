@@ -138,15 +138,15 @@ class ManagedIndices(ResourceLoader):
 
     def __init__(
         self,
-        index_resources: Sequence[str] | None = None,
-        drop_index_files: list[DropIndexFile] | None = None,
-        drop_eddy_index_files: list[DropIndexFile] | None = None,
-        default_indices: Collection[str] | None = None,
+        index_resources: Sequence[str] = INDEX_RESOURCES,
+        drop_index_files: list[DropIndexFile] = DROP_INDEX_FILES,
+        drop_eddy_index_files: list[DropIndexFile] = DROP_EDDY_INDEX_FILES,
+        default_indices: Collection[str] = DEFAULT_INDEX_NAMES,
     ):
-        self.index_resources = tuple(index_resources or INDEX_RESOURCES)
-        self.drop_index_files = drop_index_files or DROP_INDEX_FILES
-        self.drop_eddy_index_files = drop_eddy_index_files or DROP_EDDY_INDEX_FILES
-        self.default_indices = default_indices or DEFAULT_INDEX_NAMES
+        self.index_resources = tuple(index_resources)
+        self.drop_index_files = drop_index_files
+        self.drop_eddy_index_files = drop_eddy_index_files
+        self.default_indices = tuple(default_indices)
 
     @cached_property
     def index_definitions(self) -> tuple[IndexDefinition, ...]:
