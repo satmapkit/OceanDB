@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from OceanDB.cli_utils import format_status_line
-from OceanDB.managed_index_oceandb import ManagedIndexOceanDB, ManagedIndices
+from OceanDB.managed_index_oceandb import ManagedIndexOceanDB
+from OceanDB.managed_indices import ManagedIndices
 from OceanDB.utils.logging import get_logger
 
 logger = get_logger()

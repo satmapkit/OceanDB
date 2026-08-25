@@ -6,8 +6,8 @@ from dateutil.relativedelta import relativedelta
 from psycopg import sql
 
 from OceanDB.base_write_query import BaseWriteQuery
-from OceanDB.managed_index_oceandb import (
-    PARTITIONED_ALONG_TRACK_INDEX_PATTERN, IndexDefinition)
+from OceanDB.managed_indices import (PARTITIONED_ALONG_TRACK_INDEX_PATTERN,
+                                     IndexDefinition)
 from OceanDB.query_spec import RawSpec
 
 

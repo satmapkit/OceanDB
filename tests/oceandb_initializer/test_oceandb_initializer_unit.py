@@ -2,7 +2,9 @@ import pytest
 
 from OceanDB.etl import basins_etl as basins_etl_module
 from OceanDB.managed_index_initializer import ManagedIndexInitializer
-from OceanDB.managed_index_oceandb import ManagedIndices
+from OceanDB.managed_index_oceandb import \
+    ManagedIndices as ReexportedManagedIndices
+from OceanDB.managed_indices import ManagedIndices
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from tests.database.fixtures import *
 
@@ -79,3 +81,7 @@ def test_oceandb_init_exposes_index_lifecycle_through_initializer():
 
     assert isinstance(ocean_db_init, ManagedIndexInitializer)
     assert ocean_db_init.managed_indices is managed_indices
+
+
+def test_managed_indices_remains_available_from_inventory_module():
+    assert ReexportedManagedIndices is ManagedIndices
