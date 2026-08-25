@@ -139,6 +139,25 @@ The `DEFINED` section shows:
 
 This is the easiest way to discover what index names are available before using `show` or creating a specific partitioned along-track index.
 
+## Inspect Indexes From Python
+
+Use `inventory_indexes()` when you need structured PostgreSQL catalog details for
+benchmarking or lifecycle automation:
+
+```python
+from OceanDB.OceanDB_Initializer import OceanDBInit
+
+db = OceanDBInit()
+for index in db.inventory_indexes():
+    print(index.table_name, index.index_name, index.index_definition)
+```
+
+Each immutable inventory record includes the canonical `pg_get_indexdef()` output,
+access method, uniqueness and primary-key flags, validity and readiness flags,
+constraint ownership, and partition parent relationships. An attached partition
+index has `parent_index_name` set; an index created independently on a partition has
+`parent_table_name` set without `parent_index_name`.
+
 ## Show the CREATE INDEX Statement
 
 Use `show` to print the `CREATE INDEX` SQL for the managed definitions.

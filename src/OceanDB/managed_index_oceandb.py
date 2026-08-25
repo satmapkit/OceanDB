@@ -7,6 +7,7 @@ from typing import LiteralString
 
 from dateutil.relativedelta import relativedelta
 from psycopg import sql
+from psycopg.rows import class_row
 from sqlalchemy import text
 
 from OceanDB.OceanDB import OceanDB
@@ -28,6 +29,41 @@ class IndexDefinition:
 class DropIndexFile:
     name: str
     filepath: str
+
+
+@dataclass(frozen=True)
+class DatabaseIndex:
+    schema_name: str
+    table_name: str
+    index_name: str
+    index_definition: str
+    access_method: str
+    index_kind: str
+    table_kind: str
+    is_unique: bool
+    is_primary: bool
+    is_valid: bool
+    is_ready: bool
+    constraint_name: str | None
+    constraint_type: str | None
+    parent_index_name: str | None
+    parent_table_name: str | None
+
+    @property
+    def is_constraint_owned(self) -> bool:
+        return self.constraint_name is not None
+
+    @property
+    def is_partitioned_parent(self) -> bool:
+        return self.index_kind == "I"
+
+    @property
+    def is_attached_partition_index(self) -> bool:
+        return self.parent_index_name is not None
+
+    @property
+    def is_standalone_partition_index(self) -> bool:
+        return self.parent_table_name is not None and self.parent_index_name is None
 
 
 INDEX_RESOURCES = (
@@ -281,24 +317,59 @@ class ManagedIndexOceanDB(OceanDB):
         return self._load_partition_index_name_map()
 
     def _load_partition_index_name_map(self) -> dict[str, str]:
-        with self.cursor() as cur:
-            cur.execute("""
-                SELECT
-                    child_idx.relname AS child_index_name,
-                    parent_idx.relname AS parent_index_name
-                FROM pg_inherits inh
-                JOIN pg_class child_idx
-                    ON child_idx.oid = inh.inhrelid
-                JOIN pg_class parent_idx
-                    ON parent_idx.oid = inh.inhparent
-                """)
-            rows = cur.fetchall()
-
         return {
-            child_index_name: parent_index_name
-            for child_index_name, parent_index_name in rows
-            if parent_index_name in self.managed_indices.managed_index_names
+            index.index_name: index.parent_index_name
+            for index in self.inventory_indexes()
+            if index.parent_index_name in self.managed_indices.managed_index_names
         }
+
+    def inventory_indexes(
+        self, schema_name: str = "public"
+    ) -> tuple[DatabaseIndex, ...]:
+        with self.cursor(row_factory=class_row(DatabaseIndex)) as cur:
+            cur.execute(
+                """
+                SELECT
+                    namespace.nspname AS schema_name,
+                    indexed_table.relname AS table_name,
+                    index_relation.relname AS index_name,
+                    pg_get_indexdef(index_relation.oid) AS index_definition,
+                    access_method.amname AS access_method,
+                    index_relation.relkind::text AS index_kind,
+                    indexed_table.relkind::text AS table_kind,
+                    index_metadata.indisunique AS is_unique,
+                    index_metadata.indisprimary AS is_primary,
+                    index_metadata.indisvalid AS is_valid,
+                    index_metadata.indisready AS is_ready,
+                    owning_constraint.conname AS constraint_name,
+                    owning_constraint.contype::text AS constraint_type,
+                    parent_index.relname AS parent_index_name,
+                    parent_table.relname AS parent_table_name
+                FROM pg_index index_metadata
+                JOIN pg_class index_relation
+                    ON index_relation.oid = index_metadata.indexrelid
+                JOIN pg_class indexed_table
+                    ON indexed_table.oid = index_metadata.indrelid
+                JOIN pg_namespace namespace
+                    ON namespace.oid = indexed_table.relnamespace
+                JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                LEFT JOIN pg_constraint owning_constraint
+                    ON owning_constraint.conindid = index_relation.oid
+                LEFT JOIN pg_inherits index_inheritance
+                    ON index_inheritance.inhrelid = index_relation.oid
+                LEFT JOIN pg_class parent_index
+                    ON parent_index.oid = index_inheritance.inhparent
+                LEFT JOIN pg_inherits table_inheritance
+                    ON table_inheritance.inhrelid = indexed_table.oid
+                LEFT JOIN pg_class parent_table
+                    ON parent_table.oid = table_inheritance.inhparent
+                WHERE namespace.nspname = %(schema_name)s
+                ORDER BY indexed_table.relname, index_relation.relname
+                """,
+                {"schema_name": schema_name},
+            )
+            return tuple(cur.fetchall())
 
     def list_along_track_partitions(self) -> list[str]:
         engine = self.get_engine()
@@ -331,27 +402,14 @@ class ManagedIndexOceanDB(OceanDB):
     def list_indices(
         self, schema_name: str = "public", managed_only: bool = True
     ) -> list[dict[str, str]]:
-        engine = self.get_engine()
-
-        with engine.connect() as conn:
-            rows = conn.execute(
-                text("""
-                    SELECT schemaname, tablename, indexname, indexdef
-                    FROM pg_indexes
-                    WHERE schemaname = :schema
-                    ORDER BY tablename, indexname
-                """),
-                {"schema": schema_name},
-            ).fetchall()
-
         index_rows = [
             {
-                "schema_name": row[0],
-                "table_name": row[1],
-                "index_name": row[2],
-                "index_definition": row[3],
+                "schema_name": index.schema_name,
+                "table_name": index.table_name,
+                "index_name": index.index_name,
+                "index_definition": index.index_definition,
             }
-            for row in rows
+            for index in self.inventory_indexes(schema_name=schema_name)
         ]
 
         if not managed_only:
