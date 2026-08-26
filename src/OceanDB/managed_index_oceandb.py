@@ -77,7 +77,7 @@ class ManagedIndexOceanDB(BaseWriteQuery):
     def create_indexes(self, definitions: Sequence[IndexDefinition]) -> None:
         for definition in definitions:
             self.logger.info(f"Starting index creation for {definition.name}")
-            self.execute_write_query(definition.to_spec())
+            self.execute_write_query(definition.create_spec())
             self.logger.info(f"Executing {definition.name}")
 
         self.__dict__.pop("partition_index_name_map", None)

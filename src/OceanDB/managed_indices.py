@@ -16,7 +16,7 @@ class IndexDefinition:
     table: str
     create_sql: LiteralString
 
-    def to_spec(self):
+    def create_spec(self):
         return RawSpec(sql.SQL(self.create_sql).format())
 
 
