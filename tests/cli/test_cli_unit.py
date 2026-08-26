@@ -193,11 +193,8 @@ class FakeInitReturningDefinedButNoBuiltIndices:
 
 
 class FailingDropInit:
-    def drop_indices(self):
+    def drop_indexes(self):
         raise pg.OperationalError("connection refused")
-
-    def drop_eddy_indices(self):
-        raise AssertionError("should not be called")
 
 
 class FailingPartitionCreateInit:
@@ -879,18 +876,15 @@ def test_index_drop_all_command_drops_all_indices(monkeypatch):
     calls = []
 
     class FakeInit:
-        def drop_indices(self):
-            calls.append("drop_indices")
-
-        def drop_eddy_indices(self):
-            calls.append("drop_eddy_indices")
+        def drop_indexes(self):
+            calls.append("drop_indexes")
 
     monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
 
     result = runner.invoke(cli_module.cli, ["index", "drop", "--all", "--yes"])
 
     assert result.exit_code == 0
-    assert calls == ["drop_indices", "drop_eddy_indices"]
+    assert calls == ["drop_indexes"]
     assert "All OceanDB-managed indices were dropped." in result.output
 
 
@@ -908,28 +902,22 @@ def test_index_drop_all_command_supports_confirmation(monkeypatch):
     calls = []
 
     class FakeInit:
-        def drop_indices(self):
-            calls.append("drop_indices")
-
-        def drop_eddy_indices(self):
-            calls.append("drop_eddy_indices")
+        def drop_indexes(self):
+            calls.append("drop_indexes")
 
     monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)
 
     result = runner.invoke(cli_module.cli, ["index", "drop", "--all"], input="y\n")
 
     assert result.exit_code == 0
-    assert calls == ["drop_indices", "drop_eddy_indices"]
+    assert calls == ["drop_indexes"]
 
 
 def test_index_drop_all_command_can_be_canceled(monkeypatch):
     runner = CliRunner()
 
     class FakeInit:
-        def drop_indices(self):
-            raise AssertionError("should not be called")
-
-        def drop_eddy_indices(self):
+        def drop_indexes(self):
             raise AssertionError("should not be called")
 
     monkeypatch.setattr(index_commands, "OceanDBInit", FakeInit)

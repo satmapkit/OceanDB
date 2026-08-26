@@ -40,8 +40,7 @@ def _render_partitioned_index_choices() -> None:
 
 def _drop_all_indices() -> None:
     ocean_db_init = OceanDBInit()
-    ocean_db_init.drop_indices()
-    ocean_db_init.drop_eddy_indices()
+    ocean_db_init.drop_indexes()
 
 
 def _render_index_list() -> None:
