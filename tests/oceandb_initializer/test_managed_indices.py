@@ -65,7 +65,7 @@ def test_initializer_creates_canonical_definition():
     queries = []
     ocean_db_init.execute_write_query = queries.append
 
-    ocean_db_init._create_index_group([definition])
+    ocean_db_init.create_indexes([definition])
 
     assert len(queries) == 1
     assert queries[0].query_string.as_string(None) == definition.create_sql

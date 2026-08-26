@@ -1,4 +1,3 @@
-from collections.abc import Sequence
 from datetime import datetime
 from typing import LiteralString, cast
 
@@ -6,8 +5,7 @@ from dateutil.relativedelta import relativedelta
 from psycopg import sql
 
 from OceanDB.managed_index_oceandb import ManagedIndexOceanDB
-from OceanDB.managed_indices import (PARTITIONED_ALONG_TRACK_INDEX_PATTERN,
-                                     IndexDefinition)
+from OceanDB.managed_indices import PARTITIONED_ALONG_TRACK_INDEX_PATTERN
 from OceanDB.query_spec import RawSpec
 
 
@@ -33,25 +31,18 @@ class ManagedIndexInitializer(ManagedIndexOceanDB):
     def _along_track_partition_name(self, value: datetime) -> str:
         return f"along_track_{value.year}_{value.month:02d}"
 
-    def _create_index_group(self, indices: Sequence[IndexDefinition]) -> None:
-        for index in indices:
-            self.logger.info(f"Starting index creation for {index.name}")
-            query = index.to_spec()
-            self.execute_write_query(query)
-            self.logger.info(f"Executing {index.name}")
-
     def create_indices(self):
-        self._create_index_group(
+        self.create_indexes(
             self.managed_indices.definitions_for_tables(
                 "along_track", "basin", "basin_connections"
             )
         )
 
     def create_default_indices(self):
-        self._create_index_group(self.managed_indices.default_definitions())
+        self.create_indexes(self.managed_indices.default_definitions())
 
     def create_eddy_indices(self):
-        self._create_index_group(self.managed_indices.definitions_for_tables("eddy"))
+        self.create_indexes(self.managed_indices.definitions_for_tables("eddy"))
 
     def create_along_track_index_by_partition(
         self,
