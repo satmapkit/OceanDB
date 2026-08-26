@@ -46,3 +46,19 @@ def test_create_indexes_after_basic_database_initialization(db_with_tables):
     assert created[definition.name].table_name == definition.table
     assert created[definition.name].is_valid is True
     assert created[definition.name].is_ready is True
+
+
+@pytest.mark.uses_database
+def test_drop_indexes_preserves_constraint_indexes(db_with_indices):
+    before = db_with_indices.inventory_indexes()
+    constraint_names = {
+        index.index_name for index in before if index.is_constraint_owned
+    }
+
+    db_with_indices.drop_indexes()
+
+    remaining = {index.index_name for index in db_with_indices.inventory_indexes()}
+    assert constraint_names <= remaining
+    assert not any(
+        db_with_indices._is_managed_index_name(index_name) for index_name in remaining
+    )

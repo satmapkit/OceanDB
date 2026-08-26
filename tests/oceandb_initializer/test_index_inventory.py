@@ -91,6 +91,35 @@ def test_inventory_indexes_returns_structured_catalog_rows(monkeypatch):
     assert "parent_index_name" in executed[0][0]
 
 
+def test_drop_indexes_executes_managed_roots_and_standalone_partitions(monkeypatch):
+    ocean_db = ManagedIndexOceanDB()
+    parent = database_index()
+    standalone = database_index(
+        index_name="along_track_point_idx_2024_01",
+        parent_table_name="along_track",
+        index_kind="i",
+    )
+    attached = database_index(parent_index_name=parent.index_name)
+    constraint = database_index(constraint_name="managed_constraint")
+    unmanaged = database_index(index_name="external_idx")
+    queries = []
+    monkeypatch.setattr(
+        ocean_db,
+        "inventory_indexes",
+        lambda schema_name: (parent, attached, constraint, unmanaged, standalone),
+    )
+    monkeypatch.setattr(ocean_db, "execute_write_query", queries.append)
+    ocean_db.__dict__["partition_index_name_map"] = {"child": "parent"}
+
+    ocean_db.drop_indexes("benchmark")
+
+    assert [query.query_string.as_string(None) for query in queries] == [
+        'DROP INDEX IF EXISTS "benchmark"."along_track_point_idx_2024_01"',
+        'DROP INDEX IF EXISTS "benchmark"."along_track_point_idx"',
+    ]
+    assert "partition_index_name_map" not in ocean_db.__dict__
+
+
 def test_list_indices_preserves_existing_dictionary_api(monkeypatch):
     ocean_db = ManagedIndexOceanDB()
     managed = database_index()

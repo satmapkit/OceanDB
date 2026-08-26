@@ -5,6 +5,7 @@ from datetime import datetime
 from functools import cached_property
 
 from dateutil.relativedelta import relativedelta
+from psycopg import sql
 from psycopg.rows import class_row
 from sqlalchemy import text
 
@@ -15,6 +16,7 @@ from OceanDB.managed_indices import (DEFAULT_INDEX_NAMES,
                                      PARTITIONED_ALONG_TRACK_INDEX_PATTERN,
                                      DropIndexFile, IndexDefinition,
                                      ManagedIndices, normalize_sql)
+from OceanDB.query_spec import RawSpec
 
 __all__ = [
     "DEFAULT_INDEX_NAMES",
@@ -77,6 +79,22 @@ class ManagedIndexOceanDB(BaseWriteQuery):
             self.logger.info(f"Starting index creation for {definition.name}")
             self.execute_write_query(definition.to_spec())
             self.logger.info(f"Executing {definition.name}")
+
+        self.__dict__.pop("partition_index_name_map", None)
+
+    def drop_indexes(self, schema_name: str = "public") -> None:
+        indexes = (
+            index
+            for index in self.inventory_indexes(schema_name)
+            if self._is_managed_index_name(index.index_name)
+            and not index.is_constraint_owned
+            and not index.is_attached_partition_index
+        )
+        for index in sorted(indexes, key=lambda index: index.is_partitioned_parent):
+            query = sql.SQL("DROP INDEX IF EXISTS {}").format(
+                sql.Identifier(schema_name, index.index_name)
+            )
+            self.execute_write_query(RawSpec(query))
 
         self.__dict__.pop("partition_index_name_map", None)
 
