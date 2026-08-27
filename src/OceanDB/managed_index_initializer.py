@@ -91,19 +91,3 @@ class ManagedIndexInitializer(ManagedIndexOceanDB):
             "created_partitions": created_partitions,
             "missing_partitions": missing_partitions,
         }
-
-    def _execute_raw_sql_file(self, filepath: str):
-        sql_statement = self.load_sql_file(filepath)
-        raw_query = cast(sql.Composed, sql.SQL(sql_statement))
-        query = RawSpec(raw_query)
-        self.execute_write_query(query)
-
-    def drop_indices(self):
-        for index in self.managed_indices.drop_index_files:
-            self._execute_raw_sql_file(index.filepath)
-            self.logger.info(f"Dropping {index.name}")
-
-    def drop_eddy_indices(self):
-        for index in self.managed_indices.drop_eddy_index_files:
-            self._execute_raw_sql_file(index.filepath)
-            self.logger.info(f"Dropping {index.name}")

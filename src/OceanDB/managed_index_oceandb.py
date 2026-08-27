@@ -10,23 +10,19 @@ from psycopg.rows import class_row
 from sqlalchemy import text
 
 from OceanDB.base_write_query import BaseWriteQuery
-from OceanDB.managed_indices import (DEFAULT_INDEX_NAMES,
-                                     DROP_EDDY_INDEX_FILES, DROP_INDEX_FILES,
-                                     INDEX_RESOURCES, INDEX_SQL_PATTERN,
+from OceanDB.managed_indices import (DEFAULT_INDEX_NAMES, INDEX_RESOURCES,
+                                     INDEX_SQL_PATTERN,
                                      PARTITIONED_ALONG_TRACK_INDEX_PATTERN,
-                                     DropIndexFile, IndexDefinition,
-                                     ManagedIndices, normalize_sql)
+                                     IndexDefinition, ManagedIndices,
+                                     normalize_sql)
 from OceanDB.query_spec import RawSpec
 
 __all__ = [
     "DEFAULT_INDEX_NAMES",
-    "DROP_EDDY_INDEX_FILES",
-    "DROP_INDEX_FILES",
     "INDEX_RESOURCES",
     "INDEX_SQL_PATTERN",
     "PARTITIONED_ALONG_TRACK_INDEX_PATTERN",
     "DatabaseIndex",
-    "DropIndexFile",
     "IndexDefinition",
     "ManagedIndexOceanDB",
     "ManagedIndices",

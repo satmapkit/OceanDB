@@ -20,12 +20,6 @@ class IndexDefinition:
         return RawSpec(sql.SQL(self.create_sql).format())
 
 
-@dataclass(frozen=True)
-class DropIndexFile:
-    name: str
-    filepath: str
-
-
 INDEX_RESOURCES = (
     "indices/along_track/create_along_track_index_basin.sql",
     "indices/along_track/create_along_track_index_date.sql",
@@ -42,68 +36,6 @@ INDEX_RESOURCES = (
     "indices/eddy/create_eddy_index_point.sql",
     "indices/eddy/create_eddy_index_track_cyclonic_type.sql",
 )
-
-DROP_INDEX_FILES: list[DropIndexFile] = [
-    DropIndexFile(
-        name="along_track_basin_idx",
-        filepath="drop/drop_along_track_index_basin.sql",
-    ),
-    DropIndexFile(
-        name="along_track_date_idx",
-        filepath="drop/drop_along_track_index_date.sql",
-    ),
-    DropIndexFile(
-        name="along_track_file_name_idx",
-        filepath="drop/drop_along_track_index_filename.sql",
-    ),
-    DropIndexFile(
-        name="along_track_mission_idx",
-        filepath="drop/drop_along_track_index_mission.sql",
-    ),
-    DropIndexFile(
-        name="along_track_point_idx",
-        filepath="drop/drop_along_track_index_point.sql",
-    ),
-    DropIndexFile(
-        name="along_track_point_date_idx",
-        filepath="drop/drop_along_track_index_point_date.sql",
-    ),
-    DropIndexFile(
-        name="along_track_point_date_mission_idx",
-        filepath="drop/drop_along_track_index_point_date_mission.sql",
-    ),
-    DropIndexFile(
-        name="along_track_point_date_mission_basin_idx",
-        filepath="drop/drop_along_track_index_point_date_mission_basin.sql",
-    ),
-    DropIndexFile(
-        name="along_track_point_geom_idx",
-        filepath="drop/drop_along_track_index_point_geom.sql",
-    ),
-    DropIndexFile(
-        name="along_track_time_idx",
-        filepath="drop/drop_along_track_index_time.sql",
-    ),
-    DropIndexFile(
-        name="basin_id_idx",
-        filepath="drop/drop_basin_connection_index_basin_id.sql",
-    ),
-    DropIndexFile(
-        name="basin_geog_idx",
-        filepath="drop/drop_basin_index_geom.sql",
-    ),
-]
-
-DROP_EDDY_INDEX_FILES: list[DropIndexFile] = [
-    DropIndexFile(
-        name="eddy_point_idx",
-        filepath="drop/drop_eddy_index_point.sql",
-    ),
-    DropIndexFile(
-        name="track_times_cyclonic_type_idx",
-        filepath="drop/drop_eddy_index_track_cyclonic_type.sql",
-    ),
-]
 
 DEFAULT_INDEX_NAMES = frozenset(
     {
@@ -140,13 +72,9 @@ class ManagedIndices(ResourceLoader):
     def __init__(
         self,
         index_resources: Sequence[str] = INDEX_RESOURCES,
-        drop_index_files: list[DropIndexFile] = DROP_INDEX_FILES,
-        drop_eddy_index_files: list[DropIndexFile] = DROP_EDDY_INDEX_FILES,
         default_indices: Collection[str] = DEFAULT_INDEX_NAMES,
     ):
         self.index_resources = tuple(index_resources)
-        self.drop_index_files = drop_index_files
-        self.drop_eddy_index_files = drop_eddy_index_files
         self.default_indices = tuple(default_indices)
 
     @cached_property
