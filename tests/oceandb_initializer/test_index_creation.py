@@ -28,6 +28,34 @@ def test_create_indexes_executes_canonical_definitions(monkeypatch):
     assert "partition_index_name_map" not in ocean_db.__dict__
 
 
+@pytest.mark.unit
+def test_drop_indexes_by_definition_executes_canonical_definitions(monkeypatch):
+    ocean_db = ManagedIndexOceanDB()
+    definitions = (
+        IndexDefinition(
+            name="mission_idx",
+            table="along_track",
+            create_sql="CREATE INDEX mission_idx ON along_track (mission)",
+        ),
+        IndexDefinition(
+            name="basin_id_idx",
+            table="basin_connections",
+            create_sql="CREATE INDEX basin_id_idx ON basin_connections (basin_id)",
+        ),
+    )
+    queries = []
+    monkeypatch.setattr(ocean_db, "execute_write_query", queries.append)
+    ocean_db.__dict__["partition_index_name_map"] = {"child": "parent"}
+
+    ocean_db.drop_indexes_by_definition(definitions)
+
+    assert [query.query_string.as_string(None) for query in queries] == [
+        'DROP INDEX IF EXISTS "mission_idx"',
+        'DROP INDEX IF EXISTS "basin_id_idx"',
+    ]
+    assert "partition_index_name_map" not in ocean_db.__dict__
+
+
 @pytest.mark.uses_database
 def test_create_indexes_after_basic_database_initialization(db_with_tables):
     definition = next(

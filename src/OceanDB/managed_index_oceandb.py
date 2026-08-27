@@ -78,6 +78,19 @@ class ManagedIndexOceanDB(BaseWriteQuery):
 
         self.__dict__.pop("partition_index_name_map", None)
 
+    def drop_indexes_by_definition(
+        self, definitions: Sequence[IndexDefinition]
+    ) -> None:
+        for definition in definitions:
+            self.logger.info(f"Starting index removal for {definition.name}")
+            query = sql.SQL("DROP INDEX IF EXISTS {}").format(
+                sql.Identifier(definition.name)
+            )
+            self.execute_write_query(RawSpec(query))
+            self.logger.info(f"Executing {definition.name}")
+
+        self.__dict__.pop("partition_index_name_map", None)
+
     def drop_indexes(self, schema_name: str = "public") -> None:
         indexes = (
             index
