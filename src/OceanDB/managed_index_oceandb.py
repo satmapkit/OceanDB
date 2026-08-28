@@ -166,6 +166,18 @@ class ManagedIndexOceanDB(BaseWriteQuery):
             )
             return tuple(cur.fetchall())
 
+    def get_index_size(self, index_name: str, schema_name: str = "public") -> int:
+        qualified_name = sql.Identifier(schema_name, index_name).as_string(None)
+        with self.cursor() as cur:
+            cur.execute(
+                "SELECT pg_relation_size(%(index_name)s::regclass)",
+                {"index_name": qualified_name},
+            )
+            out = cur.fetchone()
+            if out is None or out[0] is None:
+                raise ValueError(f"Error finding index {index_name}")
+            return out[0]
+
     def list_along_track_partitions(self) -> list[str]:
         engine = self.get_engine()
 

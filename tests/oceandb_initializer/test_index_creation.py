@@ -1,3 +1,4 @@
+import psycopg as pg
 import pytest
 
 from OceanDB.managed_index_oceandb import ManagedIndexOceanDB
@@ -74,6 +75,14 @@ def test_create_indexes_after_basic_database_initialization(db_with_tables):
     assert created[definition.name].table_name == definition.table
     assert created[definition.name].is_valid is True
     assert created[definition.name].is_ready is True
+
+
+@pytest.mark.uses_database
+def test_get_index_size_reports_physical_index_bytes(db_with_indices):
+    assert db_with_indices.get_index_size("basin_id_idx") > 0
+
+    with pytest.raises(pg.errors.UndefinedTable):
+        db_with_indices.get_index_size("missing_idx")
 
 
 @pytest.mark.uses_database

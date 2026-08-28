@@ -91,6 +91,34 @@ def test_inventory_indexes_returns_structured_catalog_rows(monkeypatch):
     assert "parent_index_name" in executed[0][0]
 
 
+def test_get_index_size_returns_physical_size_in_bytes(monkeypatch):
+    ocean_db = ManagedIndexOceanDB()
+    executed = []
+
+    class FakeCursor:
+        def execute(self, query, params):
+            executed.append((query, params))
+
+        def fetchone(self):
+            return (32768,)
+
+    @contextmanager
+    def cursor():
+        yield FakeCursor()
+
+    monkeypatch.setattr(ocean_db, "cursor", cursor)
+
+    result = ocean_db.get_index_size('point"idx', schema_name="benchmark")
+
+    assert result == 32768
+    assert executed == [
+        (
+            "SELECT pg_relation_size(%(index_name)s::regclass)",
+            {"index_name": '"benchmark"."point""idx"'},
+        )
+    ]
+
+
 def test_drop_indexes_executes_managed_roots_and_standalone_partitions(monkeypatch):
     ocean_db = ManagedIndexOceanDB()
     parent = database_index()
