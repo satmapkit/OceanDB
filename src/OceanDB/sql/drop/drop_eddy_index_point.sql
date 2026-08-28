@@ -1,1 +1,0 @@
-DROP INDEX IF EXISTS public.eddy_point_idx

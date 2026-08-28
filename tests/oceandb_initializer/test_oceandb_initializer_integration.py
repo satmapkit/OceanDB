@@ -52,6 +52,22 @@ def test_create_tables(db_with_db):
 
 
 def test_indices(db_with_indices):
-    # TODO: verify that indices are there
-    # TODO: remove indices?
-    pass
+    inventory = db_with_indices.inventory_indexes()
+    managed_names = db_with_indices.managed_indices.managed_index_names
+
+    assert managed_names <= {index.index_name for index in inventory}
+    assert all(index.index_definition.startswith("CREATE") for index in inventory)
+    assert all(index.is_valid and index.is_ready for index in inventory)
+    assert any(index.is_constraint_owned for index in inventory)
+
+    attached_indices = [
+        index for index in inventory if index.parent_index_name in managed_names
+    ]
+    assert attached_indices
+    assert all(index.is_attached_partition_index for index in attached_indices)
+    assert all(index.parent_table_name == "along_track" for index in attached_indices)
+
+    partition_index_name_map = db_with_indices.partition_index_name_map
+    assert partition_index_name_map == {
+        index.index_name: index.parent_index_name for index in attached_indices
+    }

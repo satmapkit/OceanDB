@@ -1,1 +1,0 @@
-DROP INDEX IF EXISTS along_track_basin_idx

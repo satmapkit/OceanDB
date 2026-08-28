@@ -1,1 +1,0 @@
-DROP INDEX IF EXISTS along_track_point_date_mission_basin_idx
