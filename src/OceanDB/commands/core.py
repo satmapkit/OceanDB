@@ -5,7 +5,7 @@ from pathlib import Path
 
 import click
 
-from OceanDB.commands.shared import create_basins_etl, logger
+from OceanDB.commands.shared import logger
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.utils.basin_visualization import write_basin_map
 
@@ -17,16 +17,7 @@ def process():
 
 @click.command()
 def init():
-    ocean_db_init = OceanDBInit()
-    successful = ocean_db_init.create_database()
-    if not successful:
-        return
-    ocean_db_init.create_tables()
-    ocean_db_init.create_eddy_tables()
-    ocean_db_init.create_partitions("1990-01-01", "2025-11-01")
-    oceandb_etl = create_basins_etl()
-    oceandb_etl.insert_basins_data()
-    oceandb_etl.insert_basin_connections_data()
+    OceanDBInit().initialize_database()
 
 
 @click.command()

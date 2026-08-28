@@ -1,8 +1,10 @@
 import os
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from functools import cached_property
+from multiprocessing import Pool, TimeoutError
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
@@ -17,6 +19,14 @@ from OceanDB.ocean_data.ocean_data import ColumnField
 from OceanDB.schemas.along_track_schema import (along_track_columns,
                                                 along_track_columns_schema)
 from OceanDB.utils.date_time_conversion import compute_date_time
+
+EARLIEST_DATE = datetime(1990, 1, 1)
+ProgressCallback = Callable[[dict[str, Any]], None]
+
+
+def _emit(on_progress: ProgressCallback | None, event: dict[str, Any]) -> None:
+    if on_progress is not None:
+        on_progress(event)
 
 
 @dataclass
@@ -148,6 +158,205 @@ class AlongTrackETL(OceanDBETL):
         "tp",
         "tpn",
     ]
+
+    @staticmethod
+    def _iter_year_months(
+        start: datetime | None, end: datetime | None
+    ) -> Iterator[tuple[int, int]]:
+        start = EARLIEST_DATE if start is None else start
+        end = datetime.now() if end is None else end
+
+        year, month = start.year, start.month
+        while (year < end.year) or (year == end.year and month <= end.month):
+            yield year, month
+            month += 1
+            if month == 13:
+                month = 1
+                year += 1
+
+    def discover_files(
+        self,
+        missions: list[str] | tuple[str, ...],
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> dict[str, Any]:
+        start_date = start_date.replace(tzinfo=None) if start_date is not None else None
+        end_date = end_date.replace(tzinfo=None) if end_date is not None else None
+        selected_missions = list(missions)
+
+        if not selected_missions or selected_missions == ["all"]:
+            selected_missions = list(self.missions)
+
+        invalid_missions = [
+            mission for mission in selected_missions if mission not in self.missions
+        ]
+        if invalid_missions:
+            raise ValueError(
+                f"received invalid arguments {invalid_missions}. "
+                f"Received missions must be from the following list {self.missions}"
+            )
+
+        if start_date and end_date and end_date < start_date:
+            raise ValueError("end_date must be >= start_date")
+
+        year_months = (
+            None
+            if start_date is None and end_date is None
+            else list(self._iter_year_months(start_date, end_date))
+        )
+        prefix = "SEALEVEL_GLO_PHY_L3_MY_008_062"
+        files: list[Path] = []
+
+        for mission in selected_missions:
+            file_structures = [
+                f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411",
+                f"cmems_obs-sl_glo_phy-ssh_my_{mission}-lr-l3-duacs_PT1S_202411",
+            ]
+            for structure in file_structures:
+                ingest_directory = (
+                    Path(self.config.along_track_data_directory) / prefix / structure
+                )
+                if not ingest_directory.exists():
+                    continue
+                if year_months is None:
+                    files.extend(ingest_directory.rglob("*.nc"))
+                    continue
+                for year, month in year_months:
+                    month_dir = ingest_directory / f"{year:04d}" / f"{month:02d}"
+                    if month_dir.exists():
+                        files.extend(month_dir.rglob("*.nc"))
+
+        return {"missions": selected_missions, "files": files}
+
+    def ingest(
+        self,
+        missions: list[str] | tuple[str, ...],
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        workers: int = 6,
+        on_progress: ProgressCallback | None = None,
+        init_database_if_not_exists: bool = False,
+        files: Sequence[Path] | None = None,
+    ) -> dict[str, Any]:
+        from OceanDB.OceanDB_Initializer import OceanDBInit
+
+        ocean_db_init = OceanDBInit(config=self.config)
+        database_initialized = (
+            ocean_db_init.database_exists()
+            and ocean_db_init.table_exists(self.along_track_table_name)
+        )
+
+        if not database_initialized:
+            if not init_database_if_not_exists:
+                raise RuntimeError(
+                    f"Database '{ocean_db_init.db_name}' is not initialized. "
+                    "Run database initialization first or set "
+                    "init_database_if_not_exists=True."
+                )
+            ocean_db_init.initialize_database()
+
+        discovery = (
+            self.discover_files(missions, start_date, end_date)
+            if files is None
+            else {"missions": list(missions), "files": list(files)}
+        )
+        nc_files: list[Path] = discovery["files"]
+        if not nc_files:
+            return {
+                "missions": discovery["missions"],
+                "matched_count": 0,
+                "skipped_count": 0,
+                "ingested_count": 0,
+                "results": [],
+                "duration_seconds": 0.0,
+            }
+
+        metadata_filenames = self.query_metadata()
+        along_track_files = [
+            file for file in nc_files if file.name not in metadata_filenames
+        ]
+        skipped_count = len(nc_files) - len(along_track_files)
+        if not along_track_files:
+            return {
+                "missions": discovery["missions"],
+                "matched_count": len(nc_files),
+                "skipped_count": skipped_count,
+                "ingested_count": 0,
+                "results": [],
+                "duration_seconds": 0.0,
+            }
+
+        _emit(
+            on_progress,
+            {
+                "type": "along_track_start",
+                "matched_count": len(nc_files),
+                "skipped_count": skipped_count,
+                "ingest_count": len(along_track_files),
+                "ingest_mode": self.config.ingest_mode,
+            },
+        )
+
+        start_ingest_time = time.perf_counter()
+        completed = skipped_count
+        total = len(nc_files)
+        results_out: list[dict[str, Any]] = []
+        multiprocessing_pool = Pool(workers)
+        results = multiprocessing_pool.imap_unordered(
+            self.process_along_track_file,
+            along_track_files,
+        )
+
+        try:
+            heartbeat_seconds = 30
+            completed_new_files = 0
+            total_new_files = len(along_track_files)
+
+            while completed_new_files < total_new_files:
+                try:
+                    result = results.next(timeout=heartbeat_seconds)
+                except TimeoutError:
+                    _emit(
+                        on_progress,
+                        {
+                            "type": "along_track_wait",
+                            "completed": completed,
+                            "total": total,
+                            "completed_new_files": completed_new_files,
+                            "total_new_files": total_new_files,
+                            "active_workers": min(
+                                workers, total_new_files - completed_new_files
+                            ),
+                        },
+                    )
+                    continue
+
+                completed += 1
+                completed_new_files += 1
+                results_out.append(result)
+                _emit(
+                    on_progress,
+                    {
+                        "type": "along_track_file_complete",
+                        "completed": completed,
+                        "total": total,
+                        "remaining": total - completed,
+                        "result": result,
+                    },
+                )
+        finally:
+            multiprocessing_pool.close()
+            multiprocessing_pool.join()
+
+        duration_seconds = time.perf_counter() - start_ingest_time
+        return {
+            "missions": discovery["missions"],
+            "matched_count": len(nc_files),
+            "skipped_count": skipped_count,
+            "ingested_count": len(along_track_files),
+            "results": results_out,
+            "duration_seconds": duration_seconds,
+        }
 
     @cached_property
     def basin_mask_lookup(self) -> BasinMask:

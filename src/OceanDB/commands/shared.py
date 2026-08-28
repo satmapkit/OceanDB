@@ -1,26 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 
-import click
-
-from OceanDB.cli_utils import format_key_value, format_status_line
+from OceanDB.cli_utils import format_status_line
 from OceanDB.managed_index_oceandb import ManagedIndexOceanDB, ManagedIndices
 from OceanDB.utils.logging import get_logger
 
 logger = get_logger()
-
-AVISO_HOST = "ftp-access.aviso.altimetry.fr"
-AVISO_PORT = 2221
-AVISO_EDDY_REMOTE_DIRECTORY = (
-    "value-added/eddy-trajectory/delayed-time/META3.2_DT_allsat"
-)
-AVISO_EDDY_FILENAMES = [
-    "META3.2_DT_allsat_Cyclonic_long_19930101_20220209.nc",
-    "META3.2_DT_allsat_Anticyclonic_long_19930101_20220209.nc",
-]
-EARLIEST_DATE = datetime(1990, 1, 1)
 
 
 def create_basins_etl():
@@ -72,111 +58,6 @@ def partitioned_index_choices() -> list[str]:
 
 def defined_index_choices() -> list[str]:
     return [index["logical_name"] for index in create_managed_indices().definitions]
-
-
-def to_naive(dt: datetime | None) -> datetime | None:
-    if dt is None:
-        return None
-    return dt.replace(tzinfo=None)
-
-
-def iter_year_months(start: datetime | None, end: datetime | None):
-    """Yield (year, month) between start and end (inclusive)."""
-    start = to_naive(start)
-    end = to_naive(end)
-
-    if start is None:
-        start = EARLIEST_DATE
-
-    if end is None:
-        end = datetime.now()
-
-    if end < start:
-        return
-
-    year, month = start.year, start.month
-    end_year, end_month = end.year, end.month
-
-    while (year < end_year) or (year == end_year and month <= end_month):
-        yield year, month
-        month += 1
-        if month == 13:
-            month = 1
-            year += 1
-
-
-def get_netcdf4_files(
-    missions: list[str],
-    start_date: datetime | None = None,
-    end_date: datetime | None = None,
-) -> list[Path]:
-    """Generate along-track NetCDF paths for the selected missions and dates."""
-    oceandb_etl = create_along_track_etl()
-    missions = list(missions)
-
-    if not missions or (len(missions) == 1 and missions[0] == "all"):
-        missions = oceandb_etl.missions
-
-    invalid_missions = [
-        mission for mission in missions if mission not in oceandb_etl.missions
-    ]
-    if invalid_missions:
-        raise ValueError(
-            f"received invalid arguments {invalid_missions}. "
-            f"Received missions must be from the following list {oceandb_etl.missions}"
-        )
-
-    click.echo(
-        format_key_value(
-            "Ingesting missions:",
-            ", ".join(missions),
-            label_color="blue",
-        )
-    )
-
-    prefix = "SEALEVEL_GLO_PHY_L3_MY_008_062"
-    all_netcdf_files: list[Path] = []
-
-    if start_date is None and end_date is None:
-        year_months = None
-    else:
-        if start_date and end_date and end_date < start_date:
-            raise ValueError("end_date must be >= start_date")
-        year_months = list(iter_year_months(start_date, end_date))
-
-    for mission in missions:
-        file_structure = f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411"
-        second_file_structure = (
-            f"cmems_obs-sl_glo_phy-ssh_my_{mission}-lr-l3-duacs_PT1S_202411"
-        )
-
-        for structure in [file_structure, second_file_structure]:
-            ingest_directory = (
-                Path(oceandb_etl.config.along_track_data_directory) / prefix / structure
-            )
-
-            if not ingest_directory.exists():
-                continue
-
-            if year_months is None:
-                nc_files = list(ingest_directory.rglob("*.nc"))
-            else:
-                nc_files = []
-                for year, month in year_months:
-                    month_dir = ingest_directory / f"{year:04d}" / f"{month:02d}"
-                    if month_dir.exists():
-                        nc_files.extend(month_dir.rglob("*.nc"))
-
-            all_netcdf_files.extend(nc_files)
-
-    click.echo(
-        format_status_line(
-            "MATCHED",
-            f"{len(all_netcdf_files)} file(s) for ingestion.",
-            label_color="green",
-        )
-    )
-    return all_netcdf_files
 
 
 def format_duration(seconds: float) -> str:

@@ -1,15 +1,84 @@
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal
 
 import netCDF4 as nc
 
+from OceanDB.aviso import AVISO_EDDY_FILENAMES
 from OceanDB.etl.base_etl import OceanDBETL, batch
 from OceanDB.ocean_data.ocean_data import ColumnField
 from OceanDB.schemas.eddy_schema import eddy_columns, eddy_columns_schema
 
+ProgressCallback = Callable[[dict[str, Any]], None]
+
 
 class EddyETL(OceanDBETL):
+    eddy_table_name = "eddy"
+
+    def ingest(
+        self,
+        only_ingest: Literal["both", "cyclonic", "anticyclonic"] = "both",
+        offset_cyclonic: int = 0,
+        offset_anticyclonic: int = 0,
+        on_progress: ProgressCallback | None = None,
+        init_database_if_not_exists: bool = False,
+    ) -> dict[str, list[dict[str, Any]]]:
+        from OceanDB.OceanDB_Initializer import OceanDBInit
+
+        ocean_db_init = OceanDBInit(config=self.config)
+        database_initialized = (
+            ocean_db_init.database_exists()
+            and ocean_db_init.table_exists(self.eddy_table_name)
+        )
+
+        if not database_initialized:
+            if not init_database_if_not_exists:
+                raise RuntimeError(
+                    f"Database '{ocean_db_init.db_name}' is not initialized. "
+                    "Run database initialization first or set "
+                    "init_database_if_not_exists=True."
+                )
+            ocean_db_init.initialize_database()
+
+        eddy_directory = Path(self.config.eddy_data_directory)
+        processed_files: list[dict[str, Any]] = []
+        ingest_specs = [
+            ("cyclonic", AVISO_EDDY_FILENAMES[0], -1, offset_cyclonic),
+            ("anticyclonic", AVISO_EDDY_FILENAMES[1], 1, offset_anticyclonic),
+        ]
+
+        for kind, filename, cyclonic_type, offset in ingest_specs:
+            if only_ingest not in ("both", kind):
+                continue
+
+            filepath = eddy_directory / filename
+            if on_progress is not None:
+                on_progress(
+                    {
+                        "type": "eddy_file_start",
+                        "kind": kind,
+                        "filename": filename,
+                        "filepath": filepath,
+                        "offset": offset,
+                    }
+                )
+            self.ingest_eddy_data_file(
+                filepath,
+                cyclonic_type=cyclonic_type,
+                offset=offset,
+            )
+            processed_files.append(
+                {
+                    "kind": kind,
+                    "filename": filename,
+                    "filepath": filepath,
+                    "offset": offset,
+                }
+            )
+
+        return {"processed_files": processed_files}
+
     def ingest_eddy_data_file(
         self, file: Path, cyclonic_type: int, batch_size: int = 500000, offset: int = 0
     ):

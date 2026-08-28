@@ -24,7 +24,6 @@ dependencies = [
     "pydantic-settings",
     "paramiko>=3.4.0",
     "PyYAML~=6.0",
-
 ]
 
 [project.scripts]

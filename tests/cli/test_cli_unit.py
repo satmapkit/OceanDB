@@ -1,5 +1,6 @@
 from datetime import datetime
 from functools import cached_property
+from pathlib import Path
 from types import SimpleNamespace
 
 import psycopg as pg
@@ -10,6 +11,7 @@ from OceanDB import cli as cli_module
 from OceanDB.commands import analysis as analysis_commands
 from OceanDB.commands import core as core_commands
 from OceanDB.commands import index as index_commands
+from OceanDB.commands import ingest as ingest_commands
 from OceanDB.commands import shared as shared_commands
 from OceanDB.commands import summary as summary_commands
 
@@ -37,6 +39,41 @@ class FakeAlongTrackETLReturningEmpty:
 class FailingAlongTrackETL:
     def summarize_ingested_missions(self):
         raise pg.OperationalError("connection refused")
+
+
+class FakeAlongTrackDiscoveryETL:
+    def __init__(self, files=None):
+        self.files = [] if files is None else files
+        self.discovery_calls = []
+        self.ingest_calls = []
+
+    def discover_files(self, missions, start_date=None, end_date=None):
+        self.discovery_calls.append((missions, start_date, end_date))
+        return {"missions": missions, "files": self.files}
+
+    def ingest(self, **kwargs):
+        self.ingest_calls.append(kwargs)
+        return {
+            "matched_count": len(self.files),
+            "ingested_count": len(self.files),
+            "duration_seconds": 0.0,
+        }
+
+
+class FakeEddyETL:
+    def __init__(self):
+        self.ingest_calls = []
+
+    def ingest(self, **kwargs):
+        self.ingest_calls.append(kwargs)
+        kwargs["on_progress"](
+            {
+                "type": "eddy_file_start",
+                "filename": "cyclonic.nc",
+                "offset": kwargs["offset_cyclonic"],
+            }
+        )
+        return {"processed_files": []}
 
 
 class FakeInitReturningIndices:
@@ -314,34 +351,125 @@ def test_init_exits_early_when_database_exists(monkeypatch):
     runner = CliRunner()
     calls = []
 
-    class FakeInit:
-        def create_database(self):
-            calls.append("create_database")
-            return False
+    class FakeOceanDBInit:
+        def initialize_database(self):
+            calls.append("initialize_database")
+            return {"created_database": False, "initialized": False}
 
-        def create_tables(self):
-            calls.append("create_tables")
-
-        def create_eddy_tables(self):
-            calls.append("create_eddy_tables")
-
-        def create_partitions(self, min_date, max_date):
-            calls.append(("create_partitions", min_date, max_date))
-
-    class FakeBasinsETL:
-        def insert_basins_data(self):
-            calls.append("insert_basins_data")
-
-        def insert_basin_connections_data(self):
-            calls.append("insert_basin_connections_data")
-
-    monkeypatch.setattr(core_commands, "OceanDBInit", FakeInit)
-    monkeypatch.setattr(core_commands, "create_basins_etl", lambda: FakeBasinsETL())
+    monkeypatch.setattr(core_commands, "OceanDBInit", FakeOceanDBInit)
 
     result = runner.invoke(cli_module.cli, ["init"])
 
     assert result.exit_code == 0
-    assert calls == ["create_database"]
+    assert calls == ["initialize_database"]
+
+
+def test_ingest_along_track_discovers_files_with_etl(monkeypatch):
+    runner = CliRunner()
+    oceandb_etl = FakeAlongTrackDiscoveryETL()
+    debug_values = []
+
+    def create_along_track_etl(debug=False):
+        debug_values.append(debug)
+        return oceandb_etl
+
+    monkeypatch.setattr(
+        ingest_commands,
+        "create_along_track_etl",
+        create_along_track_etl,
+    )
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "ingest-along-track",
+            "j3",
+            "--start-date",
+            "2013-01-01",
+            "--end-date",
+            "2013-01-31",
+            "--debug",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert debug_values == [True]
+    assert oceandb_etl.discovery_calls == [
+        (["j3"], datetime(2013, 1, 1), datetime(2013, 1, 31))
+    ]
+    assert oceandb_etl.ingest_calls == []
+    assert "No matching along-track files were found" in result.output
+
+
+def test_ingest_along_track_reuses_discovery_etl(monkeypatch):
+    runner = CliRunner()
+    files = [Path("j3.nc")]
+    oceandb_etl = FakeAlongTrackDiscoveryETL(files=files)
+    created_etls = []
+
+    def create_along_track_etl(debug=False):
+        created_etls.append((debug, oceandb_etl))
+        return oceandb_etl
+
+    monkeypatch.setattr(
+        ingest_commands,
+        "create_along_track_etl",
+        create_along_track_etl,
+    )
+
+    result = runner.invoke(
+        cli_module.cli,
+        ["ingest-along-track", "j3", "--workers", "2"],
+        input="y\n",
+    )
+
+    assert result.exit_code == 0
+    assert created_etls == [(False, oceandb_etl)]
+    assert oceandb_etl.discovery_calls == [(["j3"], None, None)]
+    assert len(oceandb_etl.ingest_calls) == 1
+    ingest_call = oceandb_etl.ingest_calls[0]
+    assert ingest_call["missions"] == ["j3"]
+    assert ingest_call["start_date"] is None
+    assert ingest_call["end_date"] is None
+    assert ingest_call["workers"] == 2
+    assert ingest_call["files"] == files
+    assert callable(ingest_call["on_progress"])
+    assert "Finished ingesting 1 file(s)" in result.output
+
+
+def test_ingest_eddy_uses_eddy_etl(monkeypatch):
+    runner = CliRunner()
+    oceandb_etl = FakeEddyETL()
+    created_etls = []
+
+    def create_eddy_etl():
+        created_etls.append(oceandb_etl)
+        return oceandb_etl
+
+    monkeypatch.setattr(ingest_commands, "create_eddy_etl", create_eddy_etl)
+
+    result = runner.invoke(
+        cli_module.cli,
+        [
+            "ingest-eddy",
+            "--cyclonic-only",
+            "--offset-cyclonic",
+            "12",
+            "--offset-anticyclonic",
+            "34",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert created_etls == [oceandb_etl]
+    assert len(oceandb_etl.ingest_calls) == 1
+    ingest_call = oceandb_etl.ingest_calls[0]
+    assert ingest_call["only_ingest"] == "cyclonic"
+    assert ingest_call["offset_cyclonic"] == 12
+    assert ingest_call["offset_anticyclonic"] == 34
+    assert callable(ingest_call["on_progress"])
+    assert "Starting at 12" in result.output
+    assert "Processing ingesting cyclonic.nc" in result.output
 
 
 def test_ingest_mode_status_line_formats():
@@ -399,7 +527,10 @@ def test_index_create_command_prompts_for_partitioned_creation(monkeypatch):
             return {
                 "logical_name": logical_name,
                 "base_index_name": "along_track_time_idx",
-                "created_partitions": ["along_track_2024_01", "along_track_2024_02"],
+                "created_partitions": [
+                    "along_track_2024_01",
+                    "along_track_2024_02",
+                ],
                 "missing_partitions": ["along_track_2024_03"],
             }
 
