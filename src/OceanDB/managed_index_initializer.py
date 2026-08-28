@@ -32,6 +32,7 @@ class ManagedIndexInitializer(ManagedIndexOceanDB):
         return f"along_track_{value.year}_{value.month:02d}"
 
     def create_indices(self):
+        """Create all managed along-track and basin indices."""
         self.create_indexes(
             self.managed_indices.definitions_for_tables(
                 "along_track", "basin", "basin_connections"
@@ -39,9 +40,11 @@ class ManagedIndexInitializer(ManagedIndexOceanDB):
         )
 
     def create_default_indices(self):
+        """Create the default set of managed indices."""
         self.create_indexes(self.managed_indices.default_definitions())
 
     def create_eddy_indices(self):
+        """Create all managed eddy indices."""
         self.create_indexes(self.managed_indices.definitions_for_tables("eddy"))
 
     def create_along_track_index_by_partition(
@@ -50,6 +53,23 @@ class ManagedIndexInitializer(ManagedIndexOceanDB):
         start_date: datetime,
         end_date: datetime,
     ) -> dict[str, list[str] | str]:
+        """Create a managed index on existing monthly along-track partitions.
+
+        The date range is inclusive. Partitions absent from the database are reported
+        in the result rather than created.
+
+        Args:
+            logical_name: Logical name of the partitionable managed index.
+            start_date: First month on which to create the index.
+            end_date: Last month on which to create the index.
+
+        Returns:
+            Index metadata and lists of created and missing partitions.
+
+        Raises:
+            ValueError: If the index is unknown, is not partitionable, or the date
+                range is reversed.
+        """
         index_info = self.managed_indices.partitionable_along_track_index_definition(
             logical_name
         )

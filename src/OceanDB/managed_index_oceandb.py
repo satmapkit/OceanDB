@@ -50,18 +50,22 @@ class DatabaseIndex:
 
     @property
     def is_constraint_owned(self) -> bool:
+        """Return whether a database constraint owns the index."""
         return self.constraint_name is not None
 
     @property
     def is_partitioned_parent(self) -> bool:
+        """Return whether this is a parent index on a partitioned table."""
         return self.index_kind == "I"
 
     @property
     def is_attached_partition_index(self) -> bool:
+        """Return whether this index is attached to a parent index."""
         return self.parent_index_name is not None
 
     @property
     def is_standalone_partition_index(self) -> bool:
+        """Return whether this is an unattached index on a table partition."""
         return self.parent_table_name is not None and self.parent_index_name is None
 
 
@@ -71,6 +75,7 @@ class ManagedIndexOceanDB(BaseWriteQuery):
         self.managed_indices = managed_indices or ManagedIndices()
 
     def create_indexes(self, definitions: Sequence[IndexDefinition]) -> None:
+        """Create the supplied managed index definitions."""
         for definition in definitions:
             self.logger.info(f"Starting index creation for {definition.name}")
             self.execute_write_query(definition.create_spec())
@@ -81,6 +86,7 @@ class ManagedIndexOceanDB(BaseWriteQuery):
     def drop_indexes_by_definition(
         self, definitions: Sequence[IndexDefinition]
     ) -> None:
+        """Drop the indices represented by the supplied definitions."""
         for definition in definitions:
             self.logger.info(f"Starting index removal for {definition.name}")
             query = sql.SQL("DROP INDEX IF EXISTS {}").format(
@@ -92,6 +98,11 @@ class ManagedIndexOceanDB(BaseWriteQuery):
         self.__dict__.pop("partition_index_name_map", None)
 
     def drop_indexes(self, schema_name: str = "public") -> None:
+        """Drop non-constraint managed indices from a database schema.
+
+        Attached child indices are omitted because PostgreSQL drops them with their
+        partitioned parent index.
+        """
         indexes = (
             index
             for index in self.inventory_indexes(schema_name)
@@ -109,6 +120,7 @@ class ManagedIndexOceanDB(BaseWriteQuery):
 
     @cached_property
     def partition_index_name_map(self) -> dict[str, str]:
+        """Map attached partition index names to managed parent index names."""
         return self._load_partition_index_name_map()
 
     def _load_partition_index_name_map(self) -> dict[str, str]:
@@ -121,6 +133,7 @@ class ManagedIndexOceanDB(BaseWriteQuery):
     def inventory_indexes(
         self, schema_name: str = "public"
     ) -> tuple[DatabaseIndex, ...]:
+        """Return detailed metadata for all indices in a database schema."""
         with self.cursor(row_factory=class_row(DatabaseIndex)) as cur:
             cur.execute(
                 """
@@ -167,6 +180,11 @@ class ManagedIndexOceanDB(BaseWriteQuery):
             return tuple(cur.fetchall())
 
     def get_index_size(self, index_name: str, schema_name: str = "public") -> int:
+        """Return an index's on-disk size in bytes.
+
+        Raises:
+            ValueError: If PostgreSQL does not return a size for the index.
+        """
         qualified_name = sql.Identifier(schema_name, index_name).as_string(None)
         with self.cursor() as cur:
             cur.execute(
@@ -179,6 +197,7 @@ class ManagedIndexOceanDB(BaseWriteQuery):
             return out[0]
 
     def list_along_track_partitions(self) -> list[str]:
+        """Return the names of public partitions of the along-track table."""
         engine = self.get_engine()
 
         with engine.connect() as conn:
@@ -209,6 +228,12 @@ class ManagedIndexOceanDB(BaseWriteQuery):
     def list_indices(
         self, schema_name: str = "public", managed_only: bool = True
     ) -> list[dict[str, str]]:
+        """Return summary metadata for indices in a database schema.
+
+        Args:
+            schema_name: Database schema to inspect.
+            managed_only: Whether to omit indices not managed by OceanDB.
+        """
         index_rows = [
             {
                 "schema_name": index.schema_name,
@@ -229,6 +254,14 @@ class ManagedIndexOceanDB(BaseWriteQuery):
     def show_index_definitions(
         self, identifier: str | None = None
     ) -> list[dict[str, str]]:
+        """Return managed index definitions, optionally filtered by identifier.
+
+        Args:
+            identifier: Logical or database index name to select.
+
+        Raises:
+            ValueError: If the supplied identifier is not a managed index.
+        """
         index_rows = self.managed_indices.definitions
         if identifier is None:
             return index_rows
@@ -253,6 +286,11 @@ class ManagedIndexOceanDB(BaseWriteQuery):
     def show_partitioned_index_ranges(
         self, logical_name: str | None = None
     ) -> list[dict[str, str | int | None]]:
+        """Summarize contiguous monthly partitions containing managed indices.
+
+        Args:
+            logical_name: Partitionable index to summarize, or all when omitted.
+        """
         logical_names = (
             [logical_name]
             if logical_name is not None

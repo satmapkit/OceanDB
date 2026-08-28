@@ -17,6 +17,7 @@ class IndexDefinition:
     create_sql: LiteralString
 
     def create_spec(self):
+        """Build the raw query specification that creates this index."""
         return RawSpec(sql.SQL(self.create_sql).format())
 
 
@@ -61,6 +62,7 @@ INDEX_SQL_PATTERN = re.compile(
 
 
 def normalize_sql(sql_statement: str) -> str:
+    """Collapse whitespace in a SQL statement to single spaces."""
     return " ".join(sql_statement.split())
 
 
@@ -79,6 +81,7 @@ class ManagedIndices(ResourceLoader):
 
     @cached_property
     def index_definitions(self) -> tuple[IndexDefinition, ...]:
+        """Return managed index definitions sorted by table and index name."""
         definitions = tuple(
             self._load_index_definition(filepath) for filepath in self.index_resources
         )
@@ -102,6 +105,7 @@ class ManagedIndices(ResourceLoader):
         )
 
     def definitions_for_tables(self, *tables: str) -> tuple[IndexDefinition, ...]:
+        """Return managed index definitions for the specified tables."""
         return tuple(
             definition
             for definition in self.index_definitions
@@ -110,6 +114,7 @@ class ManagedIndices(ResourceLoader):
 
     @cache
     def default_definitions(self) -> tuple[IndexDefinition, ...]:
+        """Return definitions for the indices created by default."""
         return tuple(
             definition
             for definition in self.index_definitions
@@ -118,6 +123,7 @@ class ManagedIndices(ResourceLoader):
 
     @cache
     def default_index_definitions(self) -> list[dict[str, str]]:
+        """Return display metadata for the indices created by default."""
         return [
             index
             for index in self.definitions
@@ -126,6 +132,7 @@ class ManagedIndices(ResourceLoader):
 
     @cached_property
     def definitions(self) -> list[dict[str, str]]:
+        """Return display and resource metadata for all managed indices."""
         resource_by_name = {
             self._load_index_definition(filepath).name: filepath
             for filepath in self.index_resources
@@ -143,6 +150,7 @@ class ManagedIndices(ResourceLoader):
         ]
 
     def partitionable_along_track_index_definitions(self) -> list[dict[str, str]]:
+        """Return metadata for indices that can be created per partition."""
         partitionable_indices = []
 
         for definition in self.definitions:
@@ -171,6 +179,11 @@ class ManagedIndices(ResourceLoader):
     def partitionable_along_track_index_definition(
         self, logical_name: str
     ) -> dict[str, str]:
+        """Return partitioned-creation metadata for a managed index.
+
+        Raises:
+            ValueError: If the index is unknown or cannot be created per partition.
+        """
         for index in self.partitionable_along_track_index_definitions():
             if index["logical_name"] == logical_name:
                 return index
@@ -186,9 +199,11 @@ class ManagedIndices(ResourceLoader):
 
     @cached_property
     def managed_index_names(self) -> set[str]:
+        """Return the names of all indices managed by OceanDB."""
         return {definition.name for definition in self.index_definitions}
 
     def list_partitionable_along_track_indices(self) -> list[str]:
+        """Return logical names of indices available for partitioned creation."""
         return [
             index["logical_name"]
             for index in self.partitionable_along_track_index_definitions()
