@@ -1,4 +1,3 @@
-from OceanDB.index_experiment import run_index_performance_test,  Index
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.data_access.along_track import AlongTrack
 from OceanDB.query_analysis import QueryScenario, BaseQueryScenario
