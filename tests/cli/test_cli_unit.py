@@ -943,7 +943,9 @@ def test_analyze_queries_command_prints_metrics_table(monkeypatch):
     runner = CliRunner()
 
     class FakeQueryAnalysisRunner:
-        index_names = {"along_track_point_date_idx", "unused_idx"}
+        managed_indices = SimpleNamespace(
+            managed_index_names={"along_track_point_date_idx", "unused_idx"}
+        )
 
         def analyze_queries(self):
             return [
