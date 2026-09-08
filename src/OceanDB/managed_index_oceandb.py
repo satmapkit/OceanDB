@@ -130,6 +130,11 @@ class ManagedIndexOceanDB(BaseWriteQuery):
             if index.parent_index_name in self.managed_indices.managed_index_names
         }
 
+    def normalize_index_name(self, index_name: str) -> str | None:
+        if index_name in self.managed_indices.managed_index_names:
+            return index_name
+        return self.partition_index_name_map.get(index_name)
+
     def inventory_indexes(
         self, schema_name: str = "public"
     ) -> tuple[DatabaseIndex, ...]:
@@ -216,14 +221,9 @@ class ManagedIndexOceanDB(BaseWriteQuery):
 
     def _is_managed_index_name(self, index_name: str) -> bool:
         managed_names = self.managed_indices.managed_index_names
-        if index_name in managed_names:
-            return True
-
-        for managed_name in managed_names:
-            if index_name.startswith(f"{managed_name}_"):
-                return True
-
-        return False
+        return index_name in managed_names or any(
+            index_name.startswith(f"{managed_name}_") for managed_name in managed_names
+        )
 
     def list_indices(
         self, schema_name: str = "public", managed_only: bool = True

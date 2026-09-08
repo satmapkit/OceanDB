@@ -171,11 +171,6 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
         # searching the string
         return set(match.group(1) for match in SQL_TABLE_PATTERN.finditer(query))
 
-    def normalize_index_name(self, index_name: str) -> str | None:
-        if index_name in self.managed_indices.managed_index_names:
-            return index_name
-        return self.partition_index_name_map.get(index_name)
-
     def extract_used_indices(
         self, explain_output: Iterable[dict[str, Any]]
     ) -> set[str]:
