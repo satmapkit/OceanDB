@@ -42,17 +42,15 @@ def test_dictionary_view_preserves_existing_catalog_shape():
 
 
 def test_catalog_rejects_unparseable_sql(monkeypatch):
-    managed_indices = ManagedIndices(
-        index_resources=["invalid.sql"], default_indices=set()
-    )
     monkeypatch.setattr(
-        managed_indices,
+        ManagedIndices,
         "load_sql_file",
-        lambda _filepath: "SELECT 1;",
+        lambda _self, _filepath: "SELECT 1;",
     )
-
     with pytest.raises(ValueError, match="Unable to parse index SQL resource"):
-        _ = managed_indices.index_definitions
+        managed_indices = ManagedIndices(
+            index_resources=["invalid.sql"], default_indices=set()
+        )
 
 
 def test_initializer_creates_canonical_definition():
