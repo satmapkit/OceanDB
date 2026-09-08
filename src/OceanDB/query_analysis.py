@@ -12,7 +12,7 @@ from OceanDB.config import Config
 from OceanDB.data_access.along_track import AlongTrack
 from OceanDB.data_access.base_query import BaseReadQuery, QueryObserver
 from OceanDB.data_access.eddy import Eddy
-from OceanDB.managed_index_oceandb import ManagedIndexOceanDB
+from OceanDB.managed_index_oceandb import ManagedIndexOceanDB, ManagedIndices
 from OceanDB.schemas.along_track_schema import along_track_schema
 from OceanDB.schemas.eddy_schema import eddy_columns_schema
 
@@ -27,12 +27,6 @@ class QueryCapture:
     query: sql.Composed
     params: Mapping[str, Any]
     rendered: str
-
-
-class QueryCaptureInterrupt(RuntimeError):
-    def __init__(self, query: QueryCapture, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.query = query
 
 
 @dataclass(frozen=True)
@@ -72,14 +66,12 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
         self,
         config: Config | None = None,
         scenarios: list[QueryScenario] | None = None,
-        indices: Iterable[dict[str, Any]] | None = None,
+        managed_indices: ManagedIndices | None = None,
     ):
-        super().__init__(config=config)
+        super().__init__(config=config, managed_indices=managed_indices)
         self.scenarios = (
             scenarios if scenarios is not None else self.default_scenarios()
         )
-        self.indices = tuple(indices if indices is not None else self.default_indices())
-        self.index_names: set[str] = {index["index_name"] for index in self.indices}
 
     def default_scenarios(self) -> list[QueryScenario]:
         all_along_track_fields = list(along_track_schema.keys())
@@ -125,9 +117,6 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
             ),
         ]
 
-    def default_indices(self):
-        return tuple(self.managed_indices.definitions)
-
     def analyze_queries(self) -> list[QueryAnalysisRow]:
         return [self.analyze_statement(scenario) for scenario in self.scenarios]
 
@@ -172,11 +161,10 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
         return explain_output
 
     def candidate_indices_for_tables(self, tables: Iterable[str]) -> set[str]:
-        return set(
-            index["index_name"]
-            for index in self.indices
-            if index["table_name"] in tables
-        )
+        return {
+            definition.name
+            for definition in self.managed_indices.definitions_for_tables(*tables)
+        }
 
     def extract_tables(self, query: str) -> set[str]:
         # TODO: figure out a better way to do this other than
@@ -184,7 +172,7 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
         return set(match.group(1) for match in SQL_TABLE_PATTERN.finditer(query))
 
     def normalize_index_name(self, index_name: str) -> str | None:
-        if index_name in self.index_names:
+        if index_name in self.managed_indices.managed_index_names:
             return index_name
         return self.partition_index_name_map.get(index_name)
 
