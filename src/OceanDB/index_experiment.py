@@ -1,56 +1,28 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Callable, LiteralString, Optional
 
-from psycopg import sql
-
+from OceanDB.managed_indices import IndexDefinition, ManagedIndices
 from OceanDB.OceanDB_Initializer import OceanDBInit
-from OceanDB.query_analysis import (BaseQueryScenario, QueryAnalysisRow,
-                                    QueryAnalysisRunner)
-from OceanDB.query_spec import QuerySpec
-
-class IndexSpec(QuerySpec):
-    def __init__(self, sql_template: LiteralString):
-        """
-        Template should look like
-
-        CREATE INDEX IF NOT EXISTS {name} ON table USING method ({fields}) WITH (buffering=auto);
-
-        or
-
-        DROP INDEX IF EXISTS {name}
-        """
-        super().__init__(sql_template, {}, [])
-
-    def sql_projection_compiler(self, fields):
-        fields_list = list(fields)
-        if not len(fields_list) >= 1:
-            raise ValueError(
-                "IndexSpec requires at least one field to specify the name of the index"
-            )
-
-        fields_sql = sql.SQL(", ").join(
-            sql.Identifier(field) for field in fields_list[1:]
-        )
-        return sql.SQL(self.sql_template).format(name=sql.Identifier(fields_list[0]), fields=fields_sql)
+from OceanDB.query_analysis import (
+    BaseQueryScenario,
+    QueryAnalysisRow,
+    QueryAnalysisRunner,
+)
 
 
-@dataclass(frozen=True)
-class Index:
-    name: str
-    table: str
-    fields: list[str]
-    spec: IndexSpec
+def index_definition(kind: str, fields: tuple[str, ...]) -> IndexDefinition:
+    name = f"along_track_index_{kind}_{'_'.join(fields)}"
+    create_sql = f"""
+        CREATE INDEX IF NOT EXISTS {name}
+        ON along_track USING gist ({", ".join(fields)})
+        WITH (buffering=auto);
+    """
+    return IndexDefinition(name=name, table="along_track", create_sql=create_sql)
 
-    def build(self, init: OceanDBInit):
-        init.execute_write_query(self.spec, fields=[self.name, *self.fields])
-
-    def drop(self, init: OceanDBInit):
-        drop_query = IndexSpec("DROP INDEX IF EXISTS public.{name}")
-        init.execute_write_query(drop_query, fields=[self.name])
 
 def run_index_performance_test(
-    indexes: list[Index],
-    oceanDBInit: OceanDBInit,
+    indexes: Sequence[IndexDefinition],
+    ocean_db_init: OceanDBInit,
     scenarios: list[BaseQueryScenario],
 ) -> list[QueryAnalysisRow]:
     """
@@ -59,31 +31,21 @@ def run_index_performance_test(
     The index is dropped in a finally block so failed scenarios do not leave the
     test index behind.
     """
-    print('building index', end='... ')
     try:
-        for index in indexes:
-            index.build(oceanDBInit)
-        print('done')
+        ocean_db_init.create_indexes(indexes)
         runner = QueryAnalysisRunner(
-            config=oceanDBInit.config,
+            config=ocean_db_init.config,
             scenarios=scenarios,
-            indices=[
-                {"index_name": index.name, "table_name": index.table}
-                for index in indexes
-            ],
+            managed_indices=ManagedIndices(tuple(indexes)),
         )
         return runner.analyze_queries()
-    except Exception as ex:
-        print("error")
-        raise ex
     finally:
-        print('dropping index', end='... ')
-        for index in indexes:
-            index.drop(oceanDBInit)
-        print('done')
+        ocean_db_init.drop_indexes_by_definition(indexes)
 
 
 @dataclass
 class IndexNode:
-    indexes: list[Index]
-    performance: Optional[list[QueryAnalysisRow]] = None
+    index: IndexDefinition
+    fields: tuple[str, ...]
+    performance: list[QueryAnalysisRow] | None = None
+    error: float | None = None

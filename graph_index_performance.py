@@ -29,7 +29,7 @@ scenario_names = [
 performance = {name: [] for name in scenario_names}
 index_names = []
 for node in nodes:
-    index_names.append('_'.join(''.join(field_names_short[x] for x in ix.fields)for ix in node.indexes))
+    index_names.append("".join(field_names_short[field] for field in node.fields))
     print(index_names[-1])
 
     if node.performance is None:

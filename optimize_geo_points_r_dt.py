@@ -1,4 +1,8 @@
-from OceanDB.index_experiment import IndexSpec, IndexNode, Index, run_index_performance_test
+from OceanDB.index_experiment import (
+    IndexNode,
+    index_definition,
+    run_index_performance_test,
+)
 from OceanDB.query_analysis import BaseQueryScenario
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.data_access.along_track import AlongTrack, Mission
@@ -10,9 +14,6 @@ import random
 from datetime import datetime, timedelta
 import itertools
 
-from OceanDB.data_access.along_track import AlongTrack
-from OceanDB.query_analysis import BatchQueryScenario
-from OceanDB.schemas.along_track_schema import along_track_schema
 import numpy as np
 
 along_track = AlongTrack()
@@ -178,28 +179,14 @@ scenarios : list[BaseQueryScenario] = [
 ]
 
 # =======================================
-# setup
-# =======================================
-index_spec = IndexSpec(
-    """
-    CREATE INDEX IF NOT EXISTS {name}
-        ON along_track USING gist
-        ({fields})
-        WITH (buffering=auto)
-    """
-)
-
-# =======================================
 # build basic indexes
 # =======================================
 print("building basic fields")
-for fields in [["mission", "basin_id"], ["along_track_point"], ["date_time"]]:
-    Index(
-        name=f"along_track_index_static_{'_'.join(fields)}",
-        table="along_track",
-        fields=fields,
-        spec=index_spec,
-    ).build(ocean_db_init)
+basic_indexes = [
+    index_definition("static", fields)
+    for fields in (("mission", "basin_id"), ("along_track_point",), ("date_time",))
+]
+ocean_db_init.create_indexes(basic_indexes)
 print("done")
 
 # =======================================
@@ -210,23 +197,17 @@ index_fields = ["along_track_point", "date_time", "basin_id"]
 
 nodes = []
 for fields in itertools.permutations(index_fields):
-    index = Index(
-        name=f"along_track_index_experiment_{'_'.join(fields)}",
-        table="along_track",
-        fields=list(fields),
-        spec=index_spec,
-    )
-    nodes.append(IndexNode([index]))
+    index = index_definition("experiment", fields)
+    nodes.append(IndexNode(index=index, fields=fields))
 
 for node in nodes:
     try:
-        performance = run_index_performance_test(node.indexes, ocean_db_init, scenarios)
+        performance = run_index_performance_test([node.index], ocean_db_init, scenarios)
         error = sum(x.total_time for x in performance)
         node.performance = performance
         node.error = error
-    except Exception as ex:
-        error = float("inf")
-        node.error = error
+    except Exception:
+        node.error = float("inf")
 
 
     # save output

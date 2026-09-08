@@ -44,6 +44,7 @@ def test_geographic_nearest_neighbor(db_with_alongtrack_data):
     # distance should be monotonically increasing
     assert np.all(result["distance"][:-1] <= result["distance"][1:])
 
+
 def test_geographic_nearest_neighbor_max_rad_none(db_with_alongtrack_data):
     """
     TEST single point spatiotemporal query
@@ -69,6 +70,7 @@ def test_geographic_nearest_neighbor_max_rad_none(db_with_alongtrack_data):
     # result should have been gotten
     assert result is None
 
+
 def test_geographic_nearest_neighbor_max_rad_not_none(db_with_alongtrack_data):
     """
     TEST single point spatiotemporal query
@@ -92,7 +94,7 @@ def test_geographic_nearest_neighbor_max_rad_not_none(db_with_alongtrack_data):
     )
 
     # result should have been gotten
-    assert result is  not None
+    assert result is not None
 
     # all requested fields should exist and be identical shape
     shape = result[fields[0]].shape
