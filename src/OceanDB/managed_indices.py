@@ -2,7 +2,7 @@ import re
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from functools import cache, cached_property
-from typing import LiteralString
+from typing import LiteralString, Self
 
 from psycopg import sql
 
@@ -71,26 +71,22 @@ class ManagedIndices(ResourceLoader):
     Helper for loading and describing OceanDB-managed index definitions.
     """
 
-    def __init__(
-        self,
+    @classmethod
+    def from_resources(
+        cls,
         index_resources: Sequence[str] = INDEX_RESOURCES,
         default_indices: Collection[str] = DEFAULT_INDEX_NAMES,
-    ):
-        self.index_resources = tuple(index_resources)
-        self.default_indices = tuple(default_indices)
+    ) -> Self:
+        index_resources = tuple(index_resources)
 
         definitions = tuple(
-            self._load_index_definition(filepath) for filepath in self.index_resources
+            cls._load_index_definition(filepath) for filepath in index_resources
         )
-        self.index_definitions = tuple(
-            sorted(
-                definitions,
-                key=lambda definition: (definition.table, definition.name),
-            )
-        )
+        return cls(definitions, default_indices)
 
-    def _load_index_definition(self, filepath: str) -> IndexDefinition:
-        create_sql = self.load_sql_file(filepath)
+    @classmethod
+    def _load_index_definition(cls, filepath: str) -> IndexDefinition:
+        create_sql = cls.load_sql_file(filepath)
         match = INDEX_SQL_PATTERN.search(create_sql)
         if not match:
             raise ValueError(f"Unable to parse index SQL resource '{filepath}'")
@@ -99,6 +95,19 @@ class ManagedIndices(ResourceLoader):
             name=match.group("index_name").replace("public.", ""),
             table=match.group("table_name").replace("public.", ""),
             create_sql=create_sql,
+        )
+
+    def __init__(
+        self,
+        definitions: tuple[IndexDefinition, ...],
+        default_indices: Collection[str] = [],
+    ):
+        self.default_indices = tuple(default_indices)
+        self.index_definitions = tuple(
+            sorted(
+                definitions,
+                key=lambda definition: (definition.table, definition.name),
+            )
         )
 
     def definitions_for_tables(self, *tables: str) -> tuple[IndexDefinition, ...]:
@@ -130,10 +139,6 @@ class ManagedIndices(ResourceLoader):
     @cached_property
     def definitions(self) -> list[dict[str, str]]:
         """Return display and resource metadata for all managed indices."""
-        resource_by_name = {
-            self._load_index_definition(filepath).name: filepath
-            for filepath in self.index_resources
-        }
         return [
             {
                 "logical_name": definition.name,
@@ -141,7 +146,6 @@ class ManagedIndices(ResourceLoader):
                 "index_name": definition.name,
                 "index_definition": normalize_sql(definition.create_sql),
                 "index_definition_multiline": definition.create_sql.strip(),
-                "filepath": resource_by_name.get(definition.name, ""),
             }
             for definition in self.index_definitions
         ]
@@ -166,7 +170,6 @@ class ManagedIndices(ResourceLoader):
             partitionable_indices.append(
                 {
                     "logical_name": definition["logical_name"],
-                    "filepath": definition["filepath"],
                     "base_index_name": match.group("index_name"),
                 }
             )

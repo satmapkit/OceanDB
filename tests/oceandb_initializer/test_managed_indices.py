@@ -7,9 +7,8 @@ pytestmark = pytest.mark.unit
 
 
 def test_builtin_index_definitions_are_loaded_from_one_catalog():
-    managed_indices = ManagedIndices()
+    managed_indices = ManagedIndices.from_resources()
 
-    assert len(managed_indices.index_resources) == 14
     assert len(managed_indices.index_definitions) == 14
     assert len(managed_indices.definitions_for_tables("along_track")) == 10
     assert (
@@ -19,7 +18,7 @@ def test_builtin_index_definitions_are_loaded_from_one_catalog():
 
 
 def test_dictionary_view_preserves_existing_catalog_shape():
-    managed_indices = ManagedIndices()
+    managed_indices = ManagedIndices.from_resources()
     definition = next(
         definition
         for definition in managed_indices.index_definitions
@@ -37,7 +36,6 @@ def test_dictionary_view_preserves_existing_catalog_shape():
         "index_name": definition.name,
         "index_definition": " ".join(definition.create_sql.split()),
         "index_definition_multiline": definition.create_sql.strip(),
-        "filepath": "indices/along_track/create_along_track_index_point.sql",
     }
 
 
@@ -45,12 +43,10 @@ def test_catalog_rejects_unparseable_sql(monkeypatch):
     monkeypatch.setattr(
         ManagedIndices,
         "load_sql_file",
-        lambda _self, _filepath: "SELECT 1;",
+        lambda _filepath: "SELECT 1;",
     )
     with pytest.raises(ValueError, match="Unable to parse index SQL resource"):
-        managed_indices = ManagedIndices(
-            index_resources=["invalid.sql"], default_indices=set()
-        )
+        ManagedIndices._load_index_definition("fake_filepath")
 
 
 def test_initializer_creates_canonical_definition():

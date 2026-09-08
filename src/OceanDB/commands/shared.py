@@ -39,7 +39,7 @@ def create_managed_index_oceandb():
 
 
 def create_managed_indices():
-    return ManagedIndices()
+    return ManagedIndices.from_resources()
 
 
 def render_ingest_mode(mode: str) -> str:

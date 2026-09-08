@@ -72,7 +72,7 @@ class DatabaseIndex:
 class ManagedIndexOceanDB(BaseWriteQuery):
     def __init__(self, config=None, managed_indices: ManagedIndices | None = None):
         super().__init__(config=config)
-        self.managed_indices = managed_indices or ManagedIndices()
+        self.managed_indices = managed_indices or ManagedIndices.from_resources()
 
     def create_indexes(self, definitions: Sequence[IndexDefinition]) -> None:
         """Create the supplied managed index definitions."""
