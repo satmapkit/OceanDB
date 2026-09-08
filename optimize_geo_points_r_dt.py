@@ -8,6 +8,7 @@ from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.data_access.along_track import AlongTrack, Mission
 from OceanDB.query_analysis import BatchQueryScenario
 from OceanDB.schemas.along_track_schema import along_track_schema
+from OceanDB.managed_indices import ManagedIndices
 
 import pickle
 import random
@@ -107,30 +108,6 @@ pickle_output = "no_mission_singleton_indexes.pickle"
 
 
 # =======================================
-# init oceandb
-# =======================================
-print("creating db")
-
-ocean_db_init = OceanDBInit()
-# try:
-#     ocean_db_init.drop_database()
-# except:
-#     print("database already deleted")
-#
-# ocean_db_init.create_database()
-# ocean_db_init.create_tables()
-# ocean_db_init.create_partitions("2000-01-01", "2000-03-01")
-#
-# # ingest basin data
-# oceandb_etl = BasinsETL()
-# oceandb_etl.insert_basins_data()
-# oceandb_etl.insert_basin_connections_data()
-#
-# # ingest along track data
-# ingest_along_track(['all'], '2000-01-29', '2000-02-03', 4, False)
-
-
-# =======================================
 # create scenarios
 # =======================================
 # TODO: gridded locations vs random
@@ -179,36 +156,53 @@ scenarios : list[BaseQueryScenario] = [
 ]
 
 # =======================================
-# build basic indexes
+# define indexes
 # =======================================
-print("building basic fields")
+
+# static indexes always added
 basic_indexes = [
     index_definition("static", fields)
     for fields in (("mission", "basin_id"), ("along_track_point",), ("date_time",))
 ]
+
+trial_index_fields = ["along_track_point", "date_time", "basin_id"]
+trial_indexes = [
+    [index_definition("experiment", fields)]
+    for fields in itertools.permutations(trial_index_fields)
+        ]
+trial_indexes.append([])
+
+all_indexes = tuple(basic_indexes) + \
+              tuple(index for trial in trial_indexes for index in trial )
+
+# =======================================
+# init oceandb
+# =======================================
+
+ocean_db_init = OceanDBInit(managed_indices=ManagedIndices(all_indexes))
+print("creating db")
+# TODO: create me
+print("done")
+print("building basic fields")
 ocean_db_init.create_indexes(basic_indexes)
 print("done")
+
 
 # =======================================
 # search
 # =======================================
 print("searching")
-index_fields = ["along_track_point", "date_time", "basin_id"]
 
 nodes = []
-for fields in itertools.permutations(index_fields):
-    index = index_definition("experiment", fields)
-    nodes.append(IndexNode(index=index, fields=fields))
-
-for node in nodes:
+for trial in trial_indexes:
+    node = IndexNode(trial_indexes=trial)
     try:
-        performance = run_index_performance_test([node.index], ocean_db_init, scenarios)
-        error = sum(x.total_time for x in performance)
+        performance = run_index_performance_test(trial, ocean_db_init, scenarios)
         node.performance = performance
-        node.error = error
+        node.error = sum(x.total_time for x in performance)
     except Exception:
         node.error = float("inf")
-
+    nodes.append(node)
 
     # save output
     print("saving")

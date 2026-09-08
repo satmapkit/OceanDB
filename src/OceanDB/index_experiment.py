@@ -9,7 +9,6 @@ from OceanDB.query_analysis import (
     QueryAnalysisRunner,
 )
 
-
 def index_definition(kind: str, fields: tuple[str, ...]) -> IndexDefinition:
     name = f"along_track_index_{kind}_{'_'.join(fields)}"
     create_sql = f"""
@@ -45,7 +44,7 @@ def run_index_performance_test(
 
 @dataclass
 class IndexNode:
-    index: IndexDefinition
-    fields: tuple[str, ...]
+    trial_indexes: list[IndexDefinition] | None = None
+    # fields: tuple[str, ...]
     performance: list[QueryAnalysisRow] | None = None
     error: float | None = None
