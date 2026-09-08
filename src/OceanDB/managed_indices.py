@@ -79,13 +79,10 @@ class ManagedIndices(ResourceLoader):
         self.index_resources = tuple(index_resources)
         self.default_indices = tuple(default_indices)
 
-    @cached_property
-    def index_definitions(self) -> tuple[IndexDefinition, ...]:
-        """Return managed index definitions sorted by table and index name."""
         definitions = tuple(
             self._load_index_definition(filepath) for filepath in self.index_resources
         )
-        return tuple(
+        self.index_definitions = tuple(
             sorted(
                 definitions,
                 key=lambda definition: (definition.table, definition.name),
