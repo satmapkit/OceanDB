@@ -1,25 +1,28 @@
-from OceanDB.index_experiment import (
-    IndexNode,
-    index_definition,
-    run_index_performance_test,
-    setup_index_performance_test,
-)
-from OceanDB.query_analysis import BaseQueryScenario
-from OceanDB.OceanDB_Initializer import OceanDBInit
-from OceanDB.data_access.along_track import AlongTrack, Mission
-from OceanDB.etl import AlongTrackETL
-from OceanDB.query_analysis import BatchQueryScenario
-from OceanDB.schemas.along_track_schema import along_track_schema
-from OceanDB.managed_indices import ManagedIndices
-
-import pickle
-import random
-from datetime import datetime, timedelta
 import itertools
+import json
+import random
+from dataclasses import asdict
+from datetime import datetime, timedelta
 
 import numpy as np
 
+from OceanDB.data_access.along_track import AlongTrack, Mission
+from OceanDB.etl import AlongTrackETL
+from OceanDB.index_experiment import (IndexNode, index_definition,
+                                      run_index_performance_test,
+                                      setup_index_performance_test)
+from OceanDB.managed_indices import ManagedIndices
+from OceanDB.OceanDB_Initializer import OceanDBInit
+from OceanDB.query_analysis import BaseQueryScenario, BatchQueryScenario
+from OceanDB.schemas.along_track_schema import along_track_schema
+
 along_track = AlongTrack()
+
+
+def json_default(value: object) -> object:
+    if isinstance(value, set):
+        return sorted(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def random_datetimes(
@@ -105,7 +108,7 @@ def batch_scenario_grid(
 # =======================================
 n_trials = 50
 seed = 1828
-pickle_output = "no_mission_singleton_indexes.pickle"
+json_output = "no_mission_singleton_indexes.json"
 central_date = datetime(2022, 10, 15)
 time_window = timedelta(days=10)
 data_start = central_date - time_window
@@ -234,7 +237,12 @@ for node, test_db in zip(nodes, test_dbs):
 
     # save output
     print("saving")
-    print(pickle_output)
-    with open(pickle_output, "wb") as output_file:
-        print("pickle.dumping")
-        pickle.dump(nodes, output_file)
+    print(json_output)
+    with open(json_output, "w", encoding="utf-8") as output_file:
+        json.dump(
+            [asdict(node) for node in nodes],
+            output_file,
+            default=json_default,
+            indent=2,
+            allow_nan=False,
+        )
