@@ -96,9 +96,57 @@ def export_summary(nodes, index_names, output_file):
             writer.writerow(row)
 
 
+def plot_performance_size_tradeoff(nodes, index_names, output_file):
+    baseline = next(node for node in nodes if not node["trial_indexes"])
+    baseline_runtime = baseline["error"]
+    baseline_size = total_index_size(baseline)
+    if baseline_runtime is None or baseline_runtime <= 0 or baseline_size is None:
+        raise ValueError("Baseline trial does not contain runtime and index size data")
+
+    plotted_nodes = [
+        (node, index_name, size)
+        for node, index_name in zip(nodes, index_names, strict=True)
+        if node["error"] is not None
+        if (size := total_index_size(node)) is not None
+    ]
+    added_size_mib = [
+        (size - baseline_size) / (1024**2) for _, _, size in plotted_nodes
+    ]
+    improvement_percent = [
+        100 * (baseline_runtime - node["error"]) / baseline_runtime
+        for node, _, _ in plotted_nodes
+    ]
+
+    fig, ax = plt.subplots(figsize=(10, 7), layout="constrained")
+    ax.scatter(added_size_mib, improvement_percent, s=70, color="#176B87")
+    for (_, index_name, _), size, improvement in zip(
+        plotted_nodes, added_size_mib, improvement_percent, strict=True
+    ):
+        ax.annotate(
+            index_name or "Baseline",
+            (size, improvement),
+            xytext=(5, 5),
+            textcoords="offset points",
+        )
+
+    ax.axhline(0, color="black", linewidth=0.8)
+    ax.axvline(0, color="black", linewidth=0.8)
+    ax.set_title("Runtime Improvement Versus Added Index Size")
+    ax.set_xlabel("Index size added over baseline (MiB)")
+    ax.set_ylabel("Total runtime improvement over baseline (%)")
+    ax.grid(alpha=0.25)
+    fig.savefig(output_file, dpi=180)
+    plt.close(fig)
+
+
 output_directory = Path("artifacts/index_performance")
 output_directory.mkdir(parents=True, exist_ok=True)
 export_summary(nodes, index_names, output_directory / "summary.csv")
+plot_performance_size_tradeoff(
+    nodes,
+    index_names,
+    output_directory / "performance_size_tradeoff.png",
+)
 
 fig, ax = plt.subplots(layout='constrained')
 
