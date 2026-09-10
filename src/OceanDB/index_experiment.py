@@ -1,6 +1,8 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from psycopg import sql
+
 from OceanDB.managed_indices import IndexDefinition, ManagedIndices
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.query_analysis import (BaseQueryScenario, QueryAnalysisRow,
@@ -17,32 +19,66 @@ def index_definition(kind: str, fields: tuple[str, ...]) -> IndexDefinition:
     return IndexDefinition(name=name, table="along_track", create_sql=create_sql)
 
 
-def run_index_performance_test(
+def ocean_db_init_for_test_db(
+    source_db: OceanDBInit, test_database: str
+) -> OceanDBInit:
+    test_config = source_db.config.model_copy(
+        update={"postgres_database": test_database}
+    )
+    return OceanDBInit(
+        config=test_config,
+        managed_indices=ManagedIndices(tuple(indexes)),
+    )
+
+
+def setup_index_performance_test(
+    source_db: OceanDBInit,
     indexes: Sequence[IndexDefinition],
+    test_database: str,
+) -> OceanDBInit:
+    """Clone the source database and create the indexes for a performance test."""
+    test_db = ocean_db_init_for_test_db(source_db, test_database)
+
+    if test_db.database_exists():
+        return test_db
+
+    with source_db.cursor(
+        autocommit=True,
+        connection_string=source_db.config.postgres_dsn_admin,
+    ) as cur:
+        cur.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
+                sql.Identifier(test_database),
+                sql.Identifier(source_db.db_name),
+            )
+        )
+
+    try:
+        test_db.create_indexes(indexes)
+    except Exception:
+        test_db.drop_database()
+        raise
+
+    return test_db
+
+
+def run_index_performance_test(
     ocean_db_init: OceanDBInit,
     scenarios: list[BaseQueryScenario],
 ) -> list[QueryAnalysisRow]:
-    """
-    Create an index, run query performance scenarios, and drop the index.
-
-    The index is dropped in a finally block so failed scenarios do not leave the
-    test index behind.
-    """
-    try:
-        ocean_db_init.create_indexes(indexes)
-        runner = QueryAnalysisRunner(
-            config=ocean_db_init.config,
-            scenarios=scenarios,
-            managed_indices=ManagedIndices(tuple(indexes)),
-        )
-        return runner.analyze_queries()
-    finally:
-        ocean_db_init.drop_indexes_by_definition(indexes)
+    """Run query performance scenarios against a prepared test database."""
+    runner = QueryAnalysisRunner(
+        config=ocean_db_init.config,
+        scenarios=scenarios,
+        managed_indices=ocean_db_init.managed_indices,
+    )
+    return runner.analyze_queries()
 
 
 @dataclass
 class IndexNode:
-    trial_indexes: list[IndexDefinition] | None = None
+    database_name: str
+    trial_indexes: list[IndexDefinition]
     # fields: tuple[str, ...]
     performance: list[QueryAnalysisRow] | None = None
     error: float | None = None
