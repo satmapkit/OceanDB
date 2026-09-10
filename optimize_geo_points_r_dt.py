@@ -2,6 +2,7 @@ from OceanDB.index_experiment import (
     IndexNode,
     index_definition,
     run_index_performance_test,
+    setup_index_performance_test,
 )
 from OceanDB.query_analysis import BaseQueryScenario
 from OceanDB.OceanDB_Initializer import OceanDBInit
@@ -199,21 +200,32 @@ AlongTrackETL(config=ocean_db_init.config).ingest(
     workers=4,
 )
 print("done")
-print("building basic fields")
-ocean_db_init.create_indexes(basic_indexes)
-print("done")
 
+
+# =======================================
+# build indexes for each test
+# =======================================
+nodes = [
+        IndexNode(
+            database_name=f'trial_{i}',
+            trial_indexes=trial
+        )
+        for i,trial in enumerate(trial_indexes)
+        ]
+test_dbs = [setup_index_performance_test(
+            source_db=ocean_db_init,
+            indexes=[*basic_indexes, *node.trial_indexes],
+            test_database=node.database_name,
+        ) for node in nodes]
 
 # =======================================
 # search
 # =======================================
 print("searching")
 
-nodes = []
-for trial in trial_indexes:
-    node = IndexNode(trial_indexes=trial)
+for node, test_db in zip(nodes, test_dbs):
     try:
-        performance = run_index_performance_test(trial, ocean_db_init, scenarios)
+        performance = run_index_performance_test(test_db, scenarios)
         node.performance = performance
         node.error = sum(x.total_time for x in performance)
     except Exception:
