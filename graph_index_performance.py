@@ -1,4 +1,7 @@
+import csv
 import json
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 
 
@@ -41,6 +44,61 @@ for node in nodes:
     for scenario_i, res in enumerate(node["performance"]):
         name = scenario_names[scenario_i]
         performance[name].append(res["total_time"])
+
+
+def total_index_size(node):
+    index_sizes = node["index_sizes"]
+    return sum(index_sizes.values()) if index_sizes is not None else None
+
+
+def export_summary(nodes, index_names, output_file):
+    baseline = next(node for node in nodes if not node["trial_indexes"])
+    baseline_size = total_index_size(baseline)
+    fieldnames = [
+        "index",
+        "trial_indexes",
+        "status",
+        "total_runtime_seconds",
+        "total_index_size_bytes",
+        "added_index_size_bytes",
+        *[f"{scenario} runtime seconds" for scenario in scenario_names],
+    ]
+
+    with output_file.open("w", encoding="utf-8", newline="") as output:
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        for node, index_name in zip(nodes, index_names, strict=True):
+            node_performance = node["performance"]
+            size = total_index_size(node)
+            row = {
+                "index": index_name or "Baseline",
+                "trial_indexes": ";".join(
+                    index["name"] for index in node["trial_indexes"]
+                ),
+                "status": "ok" if node_performance is not None else "failed",
+                "total_runtime_seconds": node["error"],
+                "total_index_size_bytes": size,
+                "added_index_size_bytes": (
+                    size - baseline_size
+                    if size is not None and baseline_size is not None
+                    else None
+                ),
+            }
+            if node_performance is not None:
+                row.update(
+                    {
+                        f"{scenario} runtime seconds": result["total_time"]
+                        for scenario, result in zip(
+                            scenario_names, node_performance, strict=True
+                        )
+                    }
+                )
+            writer.writerow(row)
+
+
+output_directory = Path("artifacts/index_performance")
+output_directory.mkdir(parents=True, exist_ok=True)
+export_summary(nodes, index_names, output_directory / "summary.csv")
 
 fig, ax = plt.subplots(layout='constrained')
 
