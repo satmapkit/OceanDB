@@ -3,11 +3,9 @@ from dataclasses import dataclass
 
 from OceanDB.managed_indices import IndexDefinition, ManagedIndices
 from OceanDB.OceanDB_Initializer import OceanDBInit
-from OceanDB.query_analysis import (
-    BaseQueryScenario,
-    QueryAnalysisRow,
-    QueryAnalysisRunner,
-)
+from OceanDB.query_analysis import (BaseQueryScenario, QueryAnalysisRow,
+                                    QueryAnalysisRunner)
+
 
 def index_definition(kind: str, fields: tuple[str, ...]) -> IndexDefinition:
     name = f"along_track_index_{kind}_{'_'.join(fields)}"

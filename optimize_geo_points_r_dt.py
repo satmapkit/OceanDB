@@ -6,6 +6,7 @@ from OceanDB.index_experiment import (
 from OceanDB.query_analysis import BaseQueryScenario
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.data_access.along_track import AlongTrack, Mission
+from OceanDB.etl import AlongTrackETL
 from OceanDB.query_analysis import BatchQueryScenario
 from OceanDB.schemas.along_track_schema import along_track_schema
 from OceanDB.managed_indices import ManagedIndices
@@ -104,6 +105,10 @@ def batch_scenario_grid(
 n_trials = 50
 seed = 1828
 pickle_output = "no_mission_singleton_indexes.pickle"
+central_date = datetime(2022, 10, 15)
+time_window = timedelta(days=10)
+data_start = central_date - time_window
+data_end = central_date + time_window
 
 
 
@@ -124,32 +129,32 @@ scenarios : list[BaseQueryScenario] = [
     batch_scenario_grid(
         method_name="geographic_point_in_r_dt_batch",
         radius=50_000,
-        time_window=timedelta(days=10),
-        central_date=datetime(2022, 10, 15),
+        time_window=time_window,
+        central_date=central_date,
         resolution=2,
         # all missions
         ),
     batch_scenario_grid(
         method_name="geographic_nearest_neighbors_batch",
         radius=50_000,
-        time_window=timedelta(days=10),
-        central_date=datetime(2022, 10, 15),
+        time_window=time_window,
+        central_date=central_date,
         resolution=2,
         # all missions
         ),
     batch_scenario_grid(
         method_name="geographic_point_in_r_dt_batch",
         radius=50_000,
-        time_window=timedelta(days=10),
-        central_date=datetime(2022, 10, 15),
+        time_window=time_window,
+        central_date=central_date,
         resolution=2,
         missions=["s6a", "j3n"]
         ),
     batch_scenario_grid(
         method_name="geographic_nearest_neighbors_batch",
         radius=50_000,
-        time_window=timedelta(days=10),
-        central_date=datetime(2022, 10, 15),
+        time_window=time_window,
+        central_date=central_date,
         resolution=2,
         missions=["s6a", "j3n"]
         ),
@@ -180,8 +185,19 @@ all_indexes = tuple(basic_indexes) + \
 # =======================================
 
 ocean_db_init = OceanDBInit(managed_indices=ManagedIndices(all_indexes))
-print("creating db")
-# TODO: create me
+print("preparing database")
+if ocean_db_init.database_exists():
+    ocean_db_init.drop_database()
+ocean_db_init.initialize_database(
+    partition_start="2022-10-01",
+    partition_end="2022-11-01",
+)
+AlongTrackETL(config=ocean_db_init.config).ingest(
+    missions=["all"],
+    start_date=data_start,
+    end_date=data_end,
+    workers=4,
+)
 print("done")
 print("building basic fields")
 ocean_db_init.create_indexes(basic_indexes)
