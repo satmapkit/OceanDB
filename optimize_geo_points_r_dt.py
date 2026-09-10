@@ -229,7 +229,7 @@ for node, test_db in zip(nodes, test_dbs):
         node.performance = performance
         node.error = sum(x.total_time for x in performance)
     except Exception:
-        node.error = float("inf")
+        node.error = None
     nodes.append(node)
 
     # save output
