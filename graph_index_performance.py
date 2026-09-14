@@ -10,13 +10,6 @@ title = "Compound index without mission + 4 singleton indexes, -60 to 60 lat"
 with open(filename, encoding="utf-8") as file:
     nodes = json.load(file)
 
-field_names_short = {
-        "mission": "m",
-        "basin_id": "b",
-        "along_track_point": "p",
-        "date_time": "d",
-        }
-
 scenario_names = [
         "rdt all missions",
         "NN  all missions",
@@ -26,16 +19,12 @@ scenario_names = [
 performance = {name: [] for name in scenario_names}
 index_names = []
 for node in nodes:
-    index_name = (
-        "" if not node["trial_indexes"] else node["trial_indexes"][0]["name"]
-    )
-    for field, short_name in field_names_short.items():
-        index_name = index_name.replace(field, short_name)
-    index_name = index_name.removeprefix("along_track_index_experiment_").replace(
-        "_", ""
-    )
+    if node["trial_indexes"]:
+        index_name = "_".join(index["name"] for index in node["trial_indexes"])
+        index_name = index_name.replace("exp_", "")
+    else:
+        index_name = "baseline"
     index_names.append(index_name)
-    print(index_names[-1])
 
     if node["performance"] is None:
         for name in scenario_names:
@@ -136,7 +125,7 @@ def plot_performance_size_tradeoff(nodes, index_names, output_file):
     ax.set_ylabel("Total runtime improvement over baseline (%)")
     ax.grid(alpha=0.25)
     fig.savefig(output_file, dpi=180)
-    plt.close(fig)
+    # plt.close(fig)
 
 
 output_directory = Path("artifacts/index_performance")
