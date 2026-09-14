@@ -140,7 +140,7 @@ def main():
             radius=50_000,
             time_window=time_window,
             central_date=central_date,
-            resolution=2,
+            resolution=1,
             # all missions
             ),
         batch_scenario_grid(
@@ -148,7 +148,7 @@ def main():
             radius=50_000,
             time_window=time_window,
             central_date=central_date,
-            resolution=2,
+            resolution=1,
             # all missions
             ),
         batch_scenario_grid(
@@ -156,7 +156,7 @@ def main():
             radius=50_000,
             time_window=time_window,
             central_date=central_date,
-            resolution=2,
+            resolution=1,
             missions=["s6a", "j3n"]
             ),
         batch_scenario_grid(
@@ -164,7 +164,7 @@ def main():
             radius=50_000,
             time_window=time_window,
             central_date=central_date,
-            resolution=2,
+            resolution=1,
             missions=["s6a", "j3n"]
             ),
     ]
@@ -176,7 +176,7 @@ def main():
     # static indexes always added
     basic_indexes = [
         index_definition("static", fields)
-        for fields in (("mission", "basin_id"), ("along_track_point",), ("date_time",))
+        for fields in (("mission",), ("basin_id",), ("along_track_point",), ("date_time",))
     ]
 
     trial_index_fields = ["along_track_point", "date_time", "basin_id"]
