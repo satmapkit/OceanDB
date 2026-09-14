@@ -8,9 +8,11 @@ from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.query_analysis import (BaseQueryScenario, QueryAnalysisRow,
                                     QueryAnalysisRunner)
 
+def fields_short_name(fields: tuple[str, ...]) -> str:
+    return ''.join(field[0] for field in fields)
 
 def index_definition(kind: str, fields: tuple[str, ...]) -> IndexDefinition:
-    name = f"along_track_index_{kind}_{'_'.join(fields)}"
+    name = f"{kind}_{fields_short_name(fields)}"
     create_sql = f"""
         CREATE INDEX IF NOT EXISTS {name}
         ON along_track USING gist ({", ".join(fields)})
@@ -39,6 +41,8 @@ def setup_index_performance_test(
     test_database: str,
 ) -> tuple[OceanDBInit, dict[str, int]]:
     """Clone the source database and create the indexes for a performance test."""
+
+    print("cloning data into ", test_database, "with indexes", indexes)
     test_db = ocean_db_init_for_test_db(source_db, test_database, indexes)
 
     if not test_db.database_exists():
@@ -58,6 +62,8 @@ def setup_index_performance_test(
         except Exception:
             test_db.drop_database()
             raise
+    else:
+        print("already exists")
 
     database_indexes = test_db.inventory_indexes()
     index_sizes = {
