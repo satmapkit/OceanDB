@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from psycopg import sql
 
+from OceanDB.managed_index_oceandb import DatabaseIndex
 from OceanDB.managed_indices import IndexDefinition, ManagedIndices
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.query_analysis import (BaseQueryScenario, QueryAnalysisRow,
@@ -35,6 +36,52 @@ def ocean_db_init_for_test_db(
     )
 
 
+def _index_def_to_key(index: IndexDefinition) -> tuple[str, str]:
+    return (index.table, index.name)
+
+def _index_db_to_key(index: DatabaseIndex) -> tuple[str, str]:
+    return (index.table_name, index.index_name)
+
+def index_database_is_reusable(
+    source_indexes: Sequence[DatabaseIndex],
+    desired_indexes: Sequence[IndexDefinition],
+    actual_indexes: Sequence[DatabaseIndex],
+) -> bool:
+    """Return whether a test database has only its baseline and desired indexes."""
+
+    source_by_key = {_index_db_to_key(index): index for index in source_indexes}
+    database_by_key = {_index_db_to_key(index): index for index in actual_indexes}
+
+    source_indexes_match = all(
+        (database_index := database_by_key.get(key)) is not None
+        and database_index.index_definition == source_index.index_definition
+        and database_index.is_valid
+        and database_index.is_ready
+        for key, source_index in source_by_key.items()
+    )
+
+    desired_keys = {_index_def_to_key(index) for index in desired_indexes}
+    desired_names = {definition.name for definition in desired_indexes}
+    desired_indexes_match = all(
+        (database_index := database_by_key.get(key)) is not None
+        and database_index.is_valid
+        and database_index.is_ready
+        for key in desired_keys
+    )
+
+    allowed_keys = source_by_key.keys() | desired_keys
+    has_unexpected_indexes = any(
+        key not in allowed_keys and index.parent_index_name not in desired_names
+        for key, index in database_by_key.items()
+    )
+
+    return (
+        source_indexes_match
+        and desired_indexes_match
+        and not has_unexpected_indexes
+    )
+
+
 def setup_index_performance_test(
     source_db: OceanDBInit,
     indexes: Sequence[IndexDefinition],
@@ -45,7 +92,20 @@ def setup_index_performance_test(
     print("cloning data into ", test_database, "with indexes", indexes)
     test_db = ocean_db_init_for_test_db(source_db, test_database, indexes)
 
-    if not test_db.database_exists():
+    source_indexes = source_db.inventory_indexes()
+    database_indexes: Sequence[DatabaseIndex] = ()
+    needs_create = True
+
+    if test_db.database_exists():
+        database_indexes = test_db.inventory_indexes()
+        if index_database_is_reusable(source_indexes, indexes, database_indexes):
+            print("already exists with the desired indexes")
+            needs_create = False
+        else:
+            print("existing database has unexpected or missing indexes; recreating")
+            test_db.drop_database()
+
+    if needs_create:
         with source_db.cursor(
             autocommit=True,
             connection_string=source_db.config.postgres_dsn_admin,
@@ -59,13 +119,17 @@ def setup_index_performance_test(
 
         try:
             test_db.create_indexes(indexes)
+            database_indexes = test_db.inventory_indexes()
+            if not index_database_is_reusable(
+                source_indexes, indexes, database_indexes
+            ):
+                raise RuntimeError(
+                    f"Database '{test_database}' does not have the expected indexes"
+                )
         except Exception:
             test_db.drop_database()
             raise
-    else:
-        print("already exists")
 
-    database_indexes = test_db.inventory_indexes()
     index_sizes = {
         definition.name: sum(
             test_db.get_index_size(database_index.index_name)
