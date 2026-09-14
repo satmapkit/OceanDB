@@ -3,6 +3,7 @@ import json
 import random
 from dataclasses import asdict
 from datetime import datetime, timedelta
+import time
 
 import numpy as np
 
@@ -194,11 +195,14 @@ def main():
     # =======================================
 
     ocean_db_init = OceanDBInit(managed_indices=ManagedIndices(all_indexes))
+
+    # if you want to reset database, run:
+    # ocean_db_init.drop_database()
+
     print("preparing database")
+    t1 = time.time()
     if ocean_db_init.database_exists():
-        # ocean_db_init.drop_database()
         print("database already exists. Assuming prepped")
-        pass
     else:
         ocean_db_init.initialize_database(
             partition_start="2022-9-01",
@@ -211,12 +215,14 @@ def main():
             end_date=data_end,
             workers=4,
         )
-        print("done")
+    print("done in", time.time() - t1, "seconds")
 
 
     # =======================================
     # build indexes for each test
     # =======================================
+    print("building indexes for each test")
+    t1 = time.time()
     nodes = [
             IndexNode(
                 database_name=f'trial_{i}',
@@ -229,6 +235,7 @@ def main():
                 indexes=[*basic_indexes, *node.trial_indexes],
                 test_database=node.database_name,
             ) for node in nodes]
+    print("finished building all indexes in", time.time() - t1, "seconds")
 
     # =======================================
     # search
@@ -236,6 +243,8 @@ def main():
     print("searching")
 
     for node, (test_db, index_sizes) in zip(nodes, test_dbs):
+        print("running trial for db", node.database_name)
+        t1 = time.time()
         node.index_sizes = index_sizes
         try:
             performance = run_index_performance_test(test_db, scenarios)
@@ -245,6 +254,7 @@ def main():
             node.error = None
 
         # save output
+        print("done in", time.time() - t1, "seconds.")
         print("saving")
         print(json_output)
         with open(json_output, "w", encoding="utf-8") as output_file:

@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
+import time
 
 from psycopg import sql
 
@@ -90,6 +91,7 @@ def setup_index_performance_test(
     """Clone the source database and create the indexes for a performance test."""
 
     print("cloning data into ", test_database, "with indexes", indexes)
+    t1 = time.time()
     test_db = ocean_db_init_for_test_db(source_db, test_database, indexes)
 
     source_indexes = source_db.inventory_indexes()
@@ -139,6 +141,7 @@ def setup_index_performance_test(
         )
         for definition in indexes
     }
+    print("done in", time.time() - t1)
     return test_db, index_sizes
 
 
