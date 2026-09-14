@@ -104,146 +104,154 @@ def batch_scenario_grid(
     )
 
 
-# =======================================
-# setup output
-# =======================================
-n_trials = 50
-seed = 1828
-json_output = "no_mission_singleton_indexes.json"
-central_date = datetime(2022, 10, 15)
-time_window = timedelta(days=10)
-data_start = central_date - time_window
-data_end = central_date + time_window
+
+
+def main():
+    # =======================================
+    # setup output
+    # =======================================
+    n_trials = 50
+    seed = 1828
+    json_output = "no_mission_singleton_indexes.json"
+    central_date = datetime(2022, 10, 15)
+    time_window = timedelta(days=10)
+    data_start = central_date - time_window
+    data_end = central_date + time_window
 
 
 
-# =======================================
-# create scenarios
-# =======================================
-# TODO: gridded locations vs random
-# TODO: sorted random vs random
-# TODO: nearest neighbor
-# TODO: improve search to reduce duplicated queries
-# TODO: put results in documentation
-# TODO: add version which selects on mission
-# TODO: nearest neighbor
-# TODO: nearest neighbor with speed
-# TODO: choose date after 2022 with s6a (sentinel 6a)
-# TODO: filesize via something like SELECT schemaname, relname as table_name, indexrelname AS index_name, pg_size_pretty(pg_relation_size(indexrelid)) AS index_size FROM pg_stat_user_indexes ORDER BY pg_relation_size(indexrelid) DESC LIMIT 20;
-scenarios : list[BaseQueryScenario] = [
-    batch_scenario_grid(
-        method_name="geographic_point_in_r_dt_batch",
-        radius=50_000,
-        time_window=time_window,
-        central_date=central_date,
-        resolution=2,
-        # all missions
-        ),
-    batch_scenario_grid(
-        method_name="geographic_nearest_neighbors_batch",
-        radius=50_000,
-        time_window=time_window,
-        central_date=central_date,
-        resolution=2,
-        # all missions
-        ),
-    batch_scenario_grid(
-        method_name="geographic_point_in_r_dt_batch",
-        radius=50_000,
-        time_window=time_window,
-        central_date=central_date,
-        resolution=2,
-        missions=["s6a", "j3n"]
-        ),
-    batch_scenario_grid(
-        method_name="geographic_nearest_neighbors_batch",
-        radius=50_000,
-        time_window=time_window,
-        central_date=central_date,
-        resolution=2,
-        missions=["s6a", "j3n"]
-        ),
-]
 
-# =======================================
-# define indexes
-# =======================================
+    # =======================================
+    # create scenarios
+    # =======================================
+    # TODO: gridded locations vs random
+    # TODO: sorted random vs random
+    # TODO: nearest neighbor
+    # TODO: improve search to reduce duplicated queries
+    # TODO: put results in documentation
+    # TODO: add version which selects on mission
+    # TODO: nearest neighbor
+    # TODO: nearest neighbor with speed
+    # TODO: choose date after 2022 with s6a (sentinel 6a)
+    # TODO: filesize via something like SELECT schemaname, relname as table_name, indexrelname AS index_name, pg_size_pretty(pg_relation_size(indexrelid)) AS index_size FROM pg_stat_user_indexes ORDER BY pg_relation_size(indexrelid) DESC LIMIT 20;
+    scenarios : list[BaseQueryScenario] = [
+        batch_scenario_grid(
+            method_name="geographic_point_in_r_dt_batch",
+            radius=50_000,
+            time_window=time_window,
+            central_date=central_date,
+            resolution=2,
+            # all missions
+            ),
+        batch_scenario_grid(
+            method_name="geographic_nearest_neighbors_batch",
+            radius=50_000,
+            time_window=time_window,
+            central_date=central_date,
+            resolution=2,
+            # all missions
+            ),
+        batch_scenario_grid(
+            method_name="geographic_point_in_r_dt_batch",
+            radius=50_000,
+            time_window=time_window,
+            central_date=central_date,
+            resolution=2,
+            missions=["s6a", "j3n"]
+            ),
+        batch_scenario_grid(
+            method_name="geographic_nearest_neighbors_batch",
+            radius=50_000,
+            time_window=time_window,
+            central_date=central_date,
+            resolution=2,
+            missions=["s6a", "j3n"]
+            ),
+    ]
 
-# static indexes always added
-basic_indexes = [
-    index_definition("static", fields)
-    for fields in (("mission", "basin_id"), ("along_track_point",), ("date_time",))
-]
+    # =======================================
+    # define indexes
+    # =======================================
 
-trial_index_fields = ["along_track_point", "date_time", "basin_id"]
-trial_indexes = [
-    [index_definition("experiment", fields)]
-    for fields in itertools.permutations(trial_index_fields)
-        ]
-trial_indexes.append([])
+    # static indexes always added
+    basic_indexes = [
+        index_definition("static", fields)
+        for fields in (("mission", "basin_id"), ("along_track_point",), ("date_time",))
+    ]
 
-all_indexes = tuple(basic_indexes) + \
-              tuple(index for trial in trial_indexes for index in trial )
+    trial_index_fields = ["along_track_point", "date_time", "basin_id"]
+    trial_indexes = [
+        [index_definition("experiment", fields)]
+        for fields in itertools.permutations(trial_index_fields)
+            ]
+    trial_indexes.append([])
 
-# =======================================
-# init oceandb
-# =======================================
+    all_indexes = tuple(basic_indexes) + \
+                  tuple(index for trial in trial_indexes for index in trial )
 
-ocean_db_init = OceanDBInit(managed_indices=ManagedIndices(all_indexes))
-print("preparing database")
-if ocean_db_init.database_exists():
-    ocean_db_init.drop_database()
-ocean_db_init.initialize_database(
-    partition_start="2022-10-01",
-    partition_end="2022-11-01",
-)
-AlongTrackETL(config=ocean_db_init.config).ingest(
-    missions=["all"],
-    start_date=data_start,
-    end_date=data_end,
-    workers=4,
-)
-print("done")
+    # =======================================
+    # init oceandb
+    # =======================================
+
+    ocean_db_init = OceanDBInit(managed_indices=ManagedIndices(all_indexes))
+    print("preparing database")
+    if ocean_db_init.database_exists():
+        ocean_db_init.drop_database()
+    ocean_db_init.initialize_database(
+        partition_start="2022-10-01",
+        partition_end="2022-11-01",
+    )
+    AlongTrackETL(config=ocean_db_init.config).ingest(
+        missions=["all"],
+        start_date=data_start,
+        end_date=data_end,
+        workers=4,
+    )
+    print("done")
 
 
-# =======================================
-# build indexes for each test
-# =======================================
-nodes = [
-        IndexNode(
-            database_name=f'trial_{i}',
-            trial_indexes=trial
-        )
-        for i,trial in enumerate(trial_indexes)
-        ]
-test_dbs = [setup_index_performance_test(
-            source_db=ocean_db_init,
-            indexes=[*basic_indexes, *node.trial_indexes],
-            test_database=node.database_name,
-        ) for node in nodes]
+    # =======================================
+    # build indexes for each test
+    # =======================================
+    nodes = [
+            IndexNode(
+                database_name=f'trial_{i}',
+                trial_indexes=trial
+            )
+            for i,trial in enumerate(trial_indexes)
+            ]
+    test_dbs = [setup_index_performance_test(
+                source_db=ocean_db_init,
+                indexes=[*basic_indexes, *node.trial_indexes],
+                test_database=node.database_name,
+            ) for node in nodes]
 
-# =======================================
-# search
-# =======================================
-print("searching")
+    # =======================================
+    # search
+    # =======================================
+    print("searching")
 
-for node, test_db in zip(nodes, test_dbs):
-    try:
-        performance = run_index_performance_test(test_db, scenarios)
-        node.performance = performance
-        node.error = sum(x.total_time for x in performance)
-    except Exception:
-        node.error = None
-    nodes.append(node)
+    for node, test_db in zip(nodes, test_dbs):
+        try:
+            performance = run_index_performance_test(test_db, scenarios)
+            node.performance = performance
+            node.error = sum(x.total_time for x in performance)
+        except Exception:
+            node.error = None
+        nodes.append(node)
 
-    # save output
-    print("saving")
-    print(json_output)
-    with open(json_output, "w", encoding="utf-8") as output_file:
-        json.dump(
-            [asdict(node) for node in nodes],
-            output_file,
-            default=json_default,
-            indent=2,
-            allow_nan=False,
-        )
+        # save output
+        print("saving")
+        print(json_output)
+        with open(json_output, "w", encoding="utf-8") as output_file:
+            json.dump(
+                [asdict(node) for node in nodes],
+                output_file,
+                default=json_default,
+                indent=2,
+                allow_nan=False,
+            )
+
+
+if __name__ == "__main__":
+    main()
