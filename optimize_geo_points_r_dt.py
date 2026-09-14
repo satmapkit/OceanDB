@@ -235,14 +235,14 @@ def main():
     # =======================================
     print("searching")
 
-    for node, test_db in zip(nodes, test_dbs):
+    for node, (test_db, index_sizes) in zip(nodes, test_dbs):
+        node.index_sizes = index_sizes
         try:
             performance = run_index_performance_test(test_db, scenarios)
             node.performance = performance
             node.error = sum(x.total_time for x in performance)
         except Exception:
             node.error = None
-        nodes.append(node)
 
         # save output
         print("saving")

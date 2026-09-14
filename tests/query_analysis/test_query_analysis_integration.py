@@ -135,4 +135,5 @@ def test_analyze_batch_query(db_with_indices):
 
     assert len(output.used_indices) > 0
     assert output.total_cost is not None
-    assert 0 < output.total_cost < 66.6 * 10
+    assert output.total_cost > 0
+    assert output.total_cost == output.explain_result_dict[0]["Plan"]["Total Cost"]
