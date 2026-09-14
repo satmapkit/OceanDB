@@ -20,7 +20,9 @@ def index_definition(kind: str, fields: tuple[str, ...]) -> IndexDefinition:
 
 
 def ocean_db_init_for_test_db(
-    source_db: OceanDBInit, test_database: str
+    source_db: OceanDBInit,
+    test_database: str,
+    indexes: Sequence[IndexDefinition],
 ) -> OceanDBInit:
     test_config = source_db.config.model_copy(
         update={"postgres_database": test_database}
@@ -37,38 +39,36 @@ def setup_index_performance_test(
     test_database: str,
 ) -> tuple[OceanDBInit, dict[str, int]]:
     """Clone the source database and create the indexes for a performance test."""
-    test_db = ocean_db_init_for_test_db(source_db, test_database)
+    test_db = ocean_db_init_for_test_db(source_db, test_database, indexes)
 
-    if test_db.database_exists():
-        return test_db
-
-    with source_db.cursor(
-        autocommit=True,
-        connection_string=source_db.config.postgres_dsn_admin,
-    ) as cur:
-        cur.execute(
-            sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
-                sql.Identifier(test_database),
-                sql.Identifier(source_db.db_name),
+    if not test_db.database_exists():
+        with source_db.cursor(
+            autocommit=True,
+            connection_string=source_db.config.postgres_dsn_admin,
+        ) as cur:
+            cur.execute(
+                sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
+                    sql.Identifier(test_database),
+                    sql.Identifier(source_db.db_name),
+                )
             )
+
+        try:
+            test_db.create_indexes(indexes)
+        except Exception:
+            test_db.drop_database()
+            raise
+
+    database_indexes = test_db.inventory_indexes()
+    index_sizes = {
+        definition.name: sum(
+            test_db.get_index_size(database_index.index_name)
+            for database_index in database_indexes
+            if database_index.index_name == definition.name
+            or database_index.parent_index_name == definition.name
         )
-
-    try:
-        test_db.create_indexes(indexes)
-        database_indexes = test_db.inventory_indexes()
-        index_sizes = {
-            definition.name: sum(
-                test_db.get_index_size(database_index.index_name)
-                for database_index in database_indexes
-                if database_index.index_name == definition.name
-                or database_index.parent_index_name == definition.name
-            )
-            for definition in indexes
-        }
-    except Exception:
-        test_db.drop_database()
-        raise
-
+        for definition in indexes
+    }
     return test_db, index_sizes
 
 
