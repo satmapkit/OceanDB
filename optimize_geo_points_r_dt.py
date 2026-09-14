@@ -196,18 +196,22 @@ def main():
     ocean_db_init = OceanDBInit(managed_indices=ManagedIndices(all_indexes))
     print("preparing database")
     if ocean_db_init.database_exists():
-        ocean_db_init.drop_database()
-    ocean_db_init.initialize_database(
-        partition_start="2022-9-01",
-        partition_end="2022-11-01",
-    )
-    AlongTrackETL(config=ocean_db_init.config).ingest(
-        missions=["all"],
-        start_date=data_start,
-        end_date=data_end,
-        workers=4,
-    )
-    print("done")
+        # ocean_db_init.drop_database()
+        print("database already exists. Assuming prepped")
+        pass
+    else:
+        ocean_db_init.initialize_database(
+            partition_start="2022-9-01",
+            partition_end="2022-11-01",
+        )
+        print("ingesting")
+        AlongTrackETL(config=ocean_db_init.config).ingest(
+            missions=["all"],
+            start_date=data_start,
+            end_date=data_end,
+            workers=4,
+        )
+        print("done")
 
 
     # =======================================
