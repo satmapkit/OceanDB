@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import numpy as np
 
 from OceanDB.data_access.along_track import AlongTrack, Mission
+from OceanDB.ocean_data.basins import BasinMask
 from OceanDB.etl import AlongTrackETL
 from OceanDB.index_experiment import (IndexNode, index_definition,
                                       run_index_performance_test,
@@ -15,8 +16,6 @@ from OceanDB.managed_indices import ManagedIndices
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.query_analysis import BaseQueryScenario, BatchQueryScenario
 from OceanDB.schemas.along_track_schema import along_track_schema
-
-along_track = AlongTrack()
 
 
 def json_default(value: object) -> object:
@@ -80,8 +79,10 @@ def batch_scenario_grid(
     lons_grid,lats_grid = np.meshgrid(longitudes, latitudes)
     lons = np.reshape(lons_grid, -1)
     lats = np.reshape(lats_grid, -1)
-    basin_ids = along_track.basin_mask_lookup.lookup(lats, lons)
-    is_ocean = along_track.basin_mask_lookup.basin_is_ocean(basin_ids)
+
+    basin_mask = BasinMask()
+    basin_ids = basin_mask.lookup(lats, lons)
+    is_ocean = basin_mask.basin_is_ocean(basin_ids)
     lats, lons = lats[is_ocean], lons[is_ocean]
 
     kwargs = {
