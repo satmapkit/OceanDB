@@ -198,7 +198,7 @@ def main():
     if ocean_db_init.database_exists():
         ocean_db_init.drop_database()
     ocean_db_init.initialize_database(
-        partition_start="2022-10-01",
+        partition_start="2022-9-01",
         partition_end="2022-11-01",
     )
     AlongTrackETL(config=ocean_db_init.config).ingest(
