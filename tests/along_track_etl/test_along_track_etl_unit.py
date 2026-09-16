@@ -269,6 +269,8 @@ def test_ingest_processes_new_files_and_emits_progress(monkeypatch, tmp_path):
         return pool
 
     monkeypatch.setattr(along_track_etl_module, "Pool", create_pool)
+    vacuum_calls = []
+    monkeypatch.setattr(etl, "vacuum_analyze", lambda table: vacuum_calls.append(table))
 
     result = etl.ingest(["j3"], workers=2, on_progress=events.append)
 
@@ -283,5 +285,6 @@ def test_ingest_processes_new_files_and_emits_progress(monkeypatch, tmp_path):
         "along_track_wait",
         "along_track_file_complete",
     ]
+    assert vacuum_calls == ["along_track"]
     assert pools[0].closed is True
     assert pools[0].joined is True
