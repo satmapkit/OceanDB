@@ -65,4 +65,5 @@ class BasinsETL(OceanDBETL):
             table_name=self.basin_connections_table_name,
             rename_map={"basinid": "basin_id", "connected_basin": "connected_id"},
         )
+        self.vacuum_analyze(self.basin_connections_table_name)
         print(f"Inserted {row_count} rows in to the basin connections table")
