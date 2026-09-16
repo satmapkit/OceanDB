@@ -64,12 +64,18 @@ def test_ingest_initializes_database_when_enabled(monkeypatch, tmp_path):
         "ingest_eddy_data_file",
         lambda file, cyclonic_type, offset: calls.append((file, cyclonic_type, offset)),
     )
+    monkeypatch.setattr(
+        etl, "vacuum_analyze", lambda table: calls.append(("vacuum", table))
+    )
 
     etl.ingest(only_ingest="cyclonic", init_database_if_not_exists=True)
 
     assert initializer.checked_tables == ["eddy"]
     assert initializer.initialize_calls == 1
-    assert calls == [(tmp_path / AVISO_EDDY_FILENAMES[0], -1, 0)]
+    assert calls == [
+        (tmp_path / AVISO_EDDY_FILENAMES[0], -1, 0),
+        ("vacuum", "eddy"),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -96,6 +102,9 @@ def test_ingest_selects_files_and_emits_progress(
         "ingest_eddy_data_file",
         lambda file, cyclonic_type, offset: calls.append((file, cyclonic_type, offset)),
     )
+    monkeypatch.setattr(
+        etl, "vacuum_analyze", lambda table: calls.append(("vacuum", table))
+    )
 
     result = etl.ingest(
         only_ingest=only_ingest,
@@ -111,7 +120,7 @@ def test_ingest_selects_files_and_emits_progress(
     expected_specs = [specs[index] for index in expected_indices]
     assert initializer.checked_tables == ["eddy"]
     assert initializer.initialize_calls == 0
-    assert calls == expected_specs
+    assert calls == [*expected_specs, ("vacuum", "eddy")]
     assert [event["type"] for event in events] == [
         "eddy_file_start" for _ in expected_indices
     ]
