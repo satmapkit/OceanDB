@@ -150,6 +150,7 @@ def run_index_performance_test(
     scenarios: list[BaseQueryScenario],
 ) -> list[QueryAnalysisRow]:
     """Run query performance scenarios against a prepared test database."""
+    ocean_db_init.vacuum_analyze("along_track")
     runner = QueryAnalysisRunner(
         config=ocean_db_init.config,
         scenarios=scenarios,
