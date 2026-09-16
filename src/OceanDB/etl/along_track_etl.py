@@ -348,6 +348,7 @@ class AlongTrackETL(OceanDBETL):
             multiprocessing_pool.close()
             multiprocessing_pool.join()
 
+        self.vacuum_analyze(self.along_track_table_name)
         duration_seconds = time.perf_counter() - start_ingest_time
         return {
             "missions": discovery["missions"],
