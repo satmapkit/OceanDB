@@ -77,6 +77,8 @@ class EddyETL(OceanDBETL):
                 }
             )
 
+        if processed_files:
+            self.vacuum_analyze(self.eddy_table_name)
         return {"processed_files": processed_files}
 
     def ingest_eddy_data_file(
