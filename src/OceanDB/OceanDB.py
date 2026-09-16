@@ -91,11 +91,14 @@ class OceanDB(ResourceLoader):
         engine = create_engine(url, echo=echo)
         return engine
 
-    def vacuum_analyze(self):
+    def vacuum_analyze(self, table_name: str | None = None):
         print(f"Starting VACUUM ANALYZE...")
         start = time.time()
+        query = sql.SQL("VACUUM ANALYZE")
+        if table_name is not None:
+            query += sql.SQL(" {}").format(sql.Identifier("public", table_name))
         with self.cursor(autocommit=True) as cur:
-            cur.execute("VACUUM ANALYZE")
+            cur.execute(query)
         end = time.time()
         print(f"Finished. Total time: {end - start}")
 
