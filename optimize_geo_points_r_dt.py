@@ -4,6 +4,7 @@ import random
 from dataclasses import asdict
 from datetime import datetime, timedelta
 import time
+from typing import Any
 
 import numpy as np
 
@@ -67,11 +68,11 @@ def batch_scenario_random(
 def batch_scenario_grid(
     *,
     method_name: str,
-    radius: float,
     time_window: timedelta,
     central_date: datetime,
     resolution: float = 1.0,
     missions: list[Mission]|None = None,
+    scenario_kwargs: dict[str, Any] = {},
 ) -> BatchQueryScenario:
 
     latitudes = np.arange(-60, 60, resolution)
@@ -92,11 +93,10 @@ def batch_scenario_grid(
             "longitudes": lons,
             "dates": [central_date for _ in range(lons.size)],
             "time_window": time_window,
+            **scenario_kwargs
         }
     if missions is not None:
         kwargs["missions"] = missions
-    if method_name == "geographic_point_in_r_dt_batch":
-        kwargs["radius"] = radius
 
     return BatchQueryScenario(
         query_class=AlongTrack,
@@ -138,15 +138,14 @@ def main():
     scenarios : list[BaseQueryScenario] = [
         batch_scenario_grid(
             method_name="geographic_point_in_r_dt_batch",
-            radius=50_000,
             time_window=time_window,
             central_date=central_date,
             resolution=1,
             # all missions
+            scenario_kwargs={"radius":50_000},
             ),
         batch_scenario_grid(
             method_name="geographic_nearest_neighbors_batch",
-            radius=50_000,
             time_window=time_window,
             central_date=central_date,
             resolution=1,
@@ -154,19 +153,18 @@ def main():
             ),
         batch_scenario_grid(
             method_name="geographic_point_in_r_dt_batch",
-            radius=50_000,
             time_window=time_window,
             central_date=central_date,
             resolution=1,
-            missions=["s6a", "j3n"]
+            missions=["s6a", "j3n"],
+            scenario_kwargs={"radius":50_000},
             ),
         batch_scenario_grid(
             method_name="geographic_nearest_neighbors_batch",
-            radius=50_000,
             time_window=time_window,
             central_date=central_date,
             resolution=1,
-            missions=["s6a", "j3n"]
+            missions=["s6a", "j3n"],
             ),
     ]
 
