@@ -4,7 +4,7 @@ import random
 from dataclasses import asdict
 from datetime import datetime, timedelta
 import time
-from typing import Any
+from typing import Any, get_args
 
 import numpy as np
 
@@ -135,13 +135,16 @@ def main():
     # TODO: nearest neighbor with speed
     # TODO: choose date after 2022 with s6a (sentinel 6a)
     # TODO: filesize via something like SELECT schemaname, relname as table_name, indexrelname AS index_name, pg_size_pretty(pg_relation_size(indexrelid)) AS index_size FROM pg_stat_user_indexes ORDER BY pg_relation_size(indexrelid) DESC LIMIT 20;
+
+    all_missions = list(get_args(Mission))
+
     scenarios : list[BaseQueryScenario] = [
+        # all missions
         batch_scenario_grid(
             method_name="geographic_point_in_r_dt_batch",
             time_window=time_window,
             central_date=central_date,
             resolution=1,
-            # all missions
             scenario_kwargs={"radius":50_000},
             ),
         batch_scenario_grid(
@@ -149,8 +152,41 @@ def main():
             time_window=time_window,
             central_date=central_date,
             resolution=1,
-            # all missions
+            scenario_kwargs={"max_radius": None},
             ),
+        batch_scenario_grid(
+            method_name="geographic_nearest_neighbors_batch",
+            time_window=time_window,
+            central_date=central_date,
+            resolution=1,
+            scenario_kwargs={"max_radius": 500_000},
+            ),
+        # all missions, separately enumerated
+        batch_scenario_grid(
+            method_name="geographic_point_in_r_dt_batch",
+            time_window=time_window,
+            central_date=central_date,
+            resolution=1,
+            missions=all_missions,
+            scenario_kwargs={"radius":50_000},
+            ),
+        batch_scenario_grid(
+            method_name="geographic_nearest_neighbors_batch",
+            time_window=time_window,
+            central_date=central_date,
+            resolution=1,
+            missions=all_missions,
+            scenario_kwargs={"max_radius": None},
+            ),
+        batch_scenario_grid(
+            method_name="geographic_nearest_neighbors_batch",
+            time_window=time_window,
+            central_date=central_date,
+            resolution=1,
+            missions=all_missions,
+            scenario_kwargs={"max_radius": 500_000},
+            ),
+        # nonpolar missions
         batch_scenario_grid(
             method_name="geographic_point_in_r_dt_batch",
             time_window=time_window,
@@ -165,6 +201,15 @@ def main():
             central_date=central_date,
             resolution=1,
             missions=["s6a", "j3n"],
+            scenario_kwargs={"max_radius": None},
+            ),
+        batch_scenario_grid(
+            method_name="geographic_nearest_neighbors_batch",
+            time_window=time_window,
+            central_date=central_date,
+            resolution=1,
+            missions=["s6a", "j3n"],
+            scenario_kwargs={"max_radius": 500_000}
             ),
     ]
 
