@@ -34,6 +34,15 @@ for node in nodes:
         name = scenario_names[scenario_i]
         performance[name].append(res["total_time"])
 
+    print(f'=================== {index_name} ===================')
+    print("used indices:")
+    print([x["used_indices"] for x in node["performance"]])
+    print("explain result str:")
+    print(''.join(x["scenario_name"]+'\n'+x["explain_result_str"] for x in node["performance"]))
+    print()
+    # print(node['performance'][0].keys())
+    # print(node['performance']["explain_result_str"])
+
 
 def total_index_size(node):
     index_sizes = node["index_sizes"]
