@@ -242,7 +242,12 @@ def main():
     # =======================================
     print("searching")
 
+    indexes_to_skip = ['trial_2', 'trial_3']
+
     for node, (test_db, index_sizes) in zip(nodes, test_dbs):
+        if node.database_name in indexes_to_skip:
+            print(f"trial for db {node.database_name} marked for skipping. skipping")
+            continue
         print("running trial for db", node.database_name)
         t1 = time.time()
         node.index_sizes = index_sizes
