@@ -248,7 +248,7 @@ def main():
         if node.database_name in indexes_to_skip:
             print(f"trial for db {node.database_name} marked for skipping. skipping")
             continue
-        print("running trial for db", node.database_name)
+        print("running trial for db", node.database_name, node.pretty_name())
         t1 = time.time()
         node.index_sizes = index_sizes
         try:
@@ -260,8 +260,7 @@ def main():
 
         # save output
         print("done in", time.time() - t1, "seconds.")
-        print("saving")
-        print(json_output)
+        print("saving to", json_output)
         with open(json_output, "w", encoding="utf-8") as output_file:
             json.dump(
                 [asdict(node) for node in nodes],
