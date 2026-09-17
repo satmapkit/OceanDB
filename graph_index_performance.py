@@ -125,7 +125,6 @@ def plot_performance_size_tradeoff(nodes, index_names, output_file):
     ax.set_ylabel("Total runtime improvement over baseline (%)")
     ax.grid(alpha=0.25)
     fig.savefig(output_file, dpi=180)
-    # plt.close(fig)
 
 
 output_directory = Path("artifacts/index_performance")
