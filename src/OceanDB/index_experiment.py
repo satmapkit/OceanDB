@@ -167,3 +167,6 @@ class IndexNode:
     index_sizes: dict[str, int] | None = None
     performance: list[QueryAnalysisRow] | None = None
     error: float | None = None
+
+    def pretty_name(self):
+        return "_".join(x.name for x in self.trial_indexes)
