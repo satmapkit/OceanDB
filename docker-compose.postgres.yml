@@ -6,6 +6,7 @@ networks:
 services:
   postgres:
     image: postgis/postgis:16-3.4
+    shm_size: 1gb
     hostname: postgres
     container_name: postgres
     ports:
