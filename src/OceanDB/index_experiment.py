@@ -1,6 +1,6 @@
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-import time
 
 from psycopg import sql
 
@@ -10,8 +10,10 @@ from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.query_analysis import (BaseQueryScenario, QueryAnalysisRow,
                                     QueryAnalysisRunner)
 
+
 def fields_short_name(fields: tuple[str, ...]) -> str:
-    return ''.join(field[0] for field in fields)
+    return "".join(field[0] for field in fields)
+
 
 def index_definition(kind: str, fields: tuple[str, ...]) -> IndexDefinition:
     name = f"{kind}_{fields_short_name(fields)}"
@@ -40,8 +42,10 @@ def ocean_db_init_for_test_db(
 def _index_def_to_key(index: IndexDefinition) -> tuple[str, str]:
     return (index.table, index.name)
 
+
 def _index_db_to_key(index: DatabaseIndex) -> tuple[str, str]:
     return (index.table_name, index.index_name)
+
 
 def index_database_is_reusable(
     source_indexes: Sequence[DatabaseIndex],
@@ -76,11 +80,7 @@ def index_database_is_reusable(
         for key, index in database_by_key.items()
     )
 
-    return (
-        source_indexes_match
-        and desired_indexes_match
-        and not has_unexpected_indexes
-    )
+    return source_indexes_match and desired_indexes_match and not has_unexpected_indexes
 
 
 def setup_index_performance_test(
