@@ -1,169 +1,197 @@
-import csv
+"""Render the index benchmark graph and relative-improvement table."""
+
 import json
+import math
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-filename = "no_mission_singleton_indexes.json"
-title = "Compound index without mission + 4 singleton indexes, -60 to 60 lat"
-with open(filename, encoding="utf-8") as file:
-    nodes = json.load(file)
+RESULT_FILES = (Path("index_benchmark.json"),)
+OUTPUT_DIRECTORY = Path("artifacts/index_performance")
+FIELD_NAMES = {
+    "a": "along_track_point",
+    "b": "basin_id",
+    "d": "date_time",
+    "m": "mission",
+}
+PLOT_STYLES = {
+    0: ("Baseline", "*", "#222B35"),
+    2: ("Pair", "s", "#AD731D"),
+    3: ("Triplet", "o", "#147D92"),
+    4: ("Quadruplet", "D", "#9A5CB5"),
+}
 
-scenario_names = [
-    "rdt all missions",
-    "NN  all missions",
-    "rdt reference missions",
-    "NN  reference mission",
-]
-performance = {name: [] for name in scenario_names}
-index_names = []
-for node in nodes:
-    if node["trial_indexes"]:
-        index_name = "_".join(index["name"] for index in node["trial_indexes"])
-        index_name = index_name.replace("exp_", "")
-    else:
-        index_name = "baseline"
-    index_names.append(index_name)
 
-    if node["performance"] is None:
-        for name in scenario_names:
-            performance[name].append(float("nan"))
-        continue
-    for scenario_i, res in enumerate(node["performance"]):
-        name = scenario_names[scenario_i]
-        performance[name].append(res["total_time"])
+def total_index_size(node: dict) -> int | None:
+    sizes = node.get("index_sizes")
+    return sum(sizes.values()) if sizes is not None else None
 
-    print(f"=================== {index_name} ===================")
-    print("used indices:")
-    print([x["used_indices"] for x in node["performance"]])
-    print("explain result str:")
-    print(
-        "".join(
-            x["scenario_name"] + "\n" + x["explain_result_str"]
-            for x in node["performance"]
-        )
+
+def index_label(node: dict) -> str:
+    if not node["trial_indexes"]:
+        return "Baseline"
+    names = [
+        index["name"].removeprefix("experiment_").removeprefix("exp_")
+        for index in node["trial_indexes"]
+    ]
+    return "+".join(names).upper()
+
+
+def index_key(node: dict) -> tuple[tuple[str, str, str], ...]:
+    return tuple(
+        (index["table"], index["name"], index["create_sql"])
+        for index in node["trial_indexes"]
     )
-    print()
-    # print(node['performance'][0].keys())
-    # print(node['performance']["explain_result_str"])
 
 
-def total_index_size(node):
-    index_sizes = node["index_sizes"]
-    return sum(index_sizes.values()) if index_sizes is not None else None
+def scenario_times(node: dict) -> list[float] | None:
+    performance = node.get("performance")
+    if not performance:
+        return None
+    times = [float(result["total_time"]) for result in performance]
+    if not all(math.isfinite(time) and time > 0 for time in times):
+        return None
+    return times
 
 
-def export_summary(nodes, index_names, output_file):
-    baseline = next(node for node in nodes if not node["trial_indexes"])
+def completed_nodes(nodes: list[dict]) -> tuple[list[dict], dict]:
+    baselines = [node for node in nodes if not node["trial_indexes"]]
+    if len(baselines) != 1:
+        raise ValueError("Expected exactly one baseline")
+
+    baseline = baselines[0]
+    baseline_times = scenario_times(baseline)
+    if baseline_times is None or total_index_size(baseline) is None:
+        raise ValueError("Baseline does not contain complete performance and size data")
+
+    complete = [
+        node
+        for node in nodes
+        if (times := scenario_times(node)) is not None
+        and len(times) == len(baseline_times)
+        and total_index_size(node) is not None
+    ]
+    return complete, baseline
+
+
+def relative_row(node: dict, baseline: dict) -> dict:
+    baseline_times = scenario_times(baseline)
+    times = scenario_times(node)
+    if baseline_times is None or times is None:
+        raise ValueError("Incomplete node cannot be summarized")
+
+    ratios = [
+        time / baseline_time
+        for time, baseline_time in zip(times, baseline_times, strict=True)
+    ]
+    saved = [100 * (1 - ratio) for ratio in ratios]
+    size = total_index_size(node)
     baseline_size = total_index_size(baseline)
-    fieldnames = [
-        "index",
-        "trial_indexes",
-        "status",
-        "total_runtime_seconds",
-        "total_index_size_bytes",
-        "added_index_size_bytes",
-        *[f"{scenario} runtime seconds" for scenario in scenario_names],
-    ]
+    if size is None or baseline_size is None:
+        raise ValueError("Missing index size")
 
-    with output_file.open("w", encoding="utf-8", newline="") as output:
-        writer = csv.DictWriter(output, fieldnames=fieldnames)
-        writer.writeheader()
-        for node, index_name in zip(nodes, index_names, strict=True):
-            node_performance = node["performance"]
-            size = total_index_size(node)
-            row = {
-                "index": index_name or "Baseline",
-                "trial_indexes": ";".join(
-                    index["name"] for index in node["trial_indexes"]
-                ),
-                "status": "ok" if node_performance is not None else "failed",
-                "total_runtime_seconds": node["error"],
-                "total_index_size_bytes": size,
-                "added_index_size_bytes": (
-                    size - baseline_size
-                    if size is not None and baseline_size is not None
-                    else None
-                ),
-            }
-            if node_performance is not None:
-                row.update(
-                    {
-                        f"{scenario} runtime seconds": result["total_time"]
-                        for scenario, result in zip(
-                            scenario_names, node_performance, strict=True
-                        )
-                    }
-                )
-            writer.writerow(row)
+    label = index_label(node)
+    columns = (
+        []
+        if label == "Baseline"
+        else [
+            FIELD_NAMES[letter.lower()]
+            for letter in label
+            if letter.lower() in FIELD_NAMES
+        ]
+    )
+    return {
+        "index": label,
+        "index_columns": columns,
+        "column_count": len(columns),
+        "added_size_mib": (size - baseline_size) / 1024**2,
+        "mean_time_saved_percent": sum(saved) / len(saved),
+        "geometric_mean_speedup": math.exp(
+            -sum(math.log(ratio) for ratio in ratios) / len(ratios)
+        ),
+        "worst_time_saved_percent": min(saved),
+        "total_seconds": sum(times),
+    }
 
 
-def plot_performance_size_tradeoff(nodes, index_names, output_file):
-    baseline = next(node for node in nodes if not node["trial_indexes"])
-    baseline_runtime = baseline["error"]
-    baseline_size = total_index_size(baseline)
-    if baseline_runtime is None or baseline_runtime <= 0 or baseline_size is None:
-        raise ValueError("Baseline trial does not contain runtime and index size data")
+def combine_results(result_files: tuple[Path, ...]) -> list[dict]:
+    rows_by_index: dict[tuple[tuple[str, str, str], ...], dict] = {}
+    for result_file in result_files:
+        nodes = json.loads(result_file.read_text(encoding="utf-8"))
+        complete, baseline = completed_nodes(nodes)
+        for node in complete:
+            # Later files replace prior measurements of the same index definition.
+            rows_by_index[index_key(node)] = relative_row(node, baseline)
+    return sorted(
+        rows_by_index.values(),
+        key=lambda row: (-row["mean_time_saved_percent"], row["index"]),
+    )
 
-    plotted_nodes = [
-        (node, index_name, size)
-        for node, index_name in zip(nodes, index_names, strict=True)
-        if node["error"] is not None
-        if (size := total_index_size(node)) is not None
-    ]
-    added_size_mib = [
-        (size - baseline_size) / (1024**2) for _, _, size in plotted_nodes
-    ]
-    improvement_percent = [
-        100 * (baseline_runtime - node["error"]) / baseline_runtime
-        for node, _, _ in plotted_nodes
-    ]
 
+def plot_mean_performance_size_tradeoff(rows: list[dict], output_file: Path) -> None:
     fig, ax = plt.subplots(figsize=(10, 7), layout="constrained")
-    ax.scatter(added_size_mib, improvement_percent, s=70, color="#176B87")
-    for (_, index_name, _), size, improvement in zip(
-        plotted_nodes, added_size_mib, improvement_percent, strict=True
-    ):
-        ax.annotate(
-            index_name or "Baseline",
-            (size, improvement),
-            xytext=(5, 5),
-            textcoords="offset points",
-        )
+    for column_count, (label, marker, color) in PLOT_STYLES.items():
+        points = [row for row in rows if row["column_count"] == column_count]
+        if points:
+            ax.scatter(
+                [row["added_size_mib"] for row in points],
+                [row["mean_time_saved_percent"] for row in points],
+                color=color,
+                label=label,
+                marker=marker,
+                s=100 if column_count == 0 else 55,
+            )
 
     ax.axhline(0, color="black", linewidth=0.8)
-    ax.axvline(0, color="black", linewidth=0.8)
-    ax.set_title("Runtime Improvement Versus Added Index Size")
-    ax.set_xlabel("Index size added over baseline (MiB)")
-    ax.set_ylabel("Total runtime improvement over baseline (%)")
-    ax.grid(alpha=0.25)
+    ax.set_title("Index Storage vs Mean Scenario Improvement")
+    ax.set_xlabel("Added GiST index storage over baseline (MiB)")
+    ax.set_ylabel("Mean scenario time saved versus baseline (%)")
+    ax.legend()
     fig.savefig(output_file, dpi=180)
+    plt.close(fig)
 
 
-output_directory = Path("artifacts/index_performance")
-output_directory.mkdir(parents=True, exist_ok=True)
-export_summary(nodes, index_names, output_directory / "summary.csv")
-plot_performance_size_tradeoff(
-    nodes,
-    index_names,
-    output_directory / "performance_size_tradeoff.png",
-)
-
-fig, ax = plt.subplots(layout="constrained")
-
-res = ax.grouped_bar(performance, tick_labels=index_names, group_spacing=1)
-for container in res.bar_containers:
-    ax.bar_label(
-        container, padding=5, fmt="%.0f", label_type="edge", rotation="vertical"
+def write_relative_scenario_improvement(rows: list[dict], output_file: Path) -> None:
+    headers = (
+        "Rank",
+        "Index",
+        "Ordered composite columns",
+        "Mean time saved",
+        "Geometric speedup",
+        "Worst scenario",
+        "Total seconds",
     )
-    # ax.bar_label(rects1, padding=5, fmt='%.2f', label_type='edge', fontsize=9, rotation='vertical')
+    body = [
+        (
+            str(rank),
+            row["index"],
+            ", ".join(row["index_columns"]) or "None",
+            f"{row['mean_time_saved_percent']:+.1f}%",
+            f"{row['geometric_mean_speedup']:.3f}x",
+            f"{row['worst_time_saved_percent']:+.1f}%",
+            f"{row['total_seconds']:.1f}",
+        )
+        for rank, row in enumerate(rows, 1)
+    ]
+    table = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+        *["| " + " | ".join(row) + " |" for row in body],
+    ]
+    output_file.write_text("\n".join(table) + "\n", encoding="utf-8")
 
-max_time = max(max(group) for group in performance.values())
-ax.set_ylim((0, max_time * 1.3))
 
-# Add some text for labels, title, etc.
-ax.set_ylabel("Time (s)")
-ax.legend(loc="upper left")
-ax.set_title(title)
+def generate_outputs(
+    result_files: tuple[Path, ...], output_directory: Path
+) -> tuple[Path, Path]:
+    rows = combine_results(result_files)
+    output_directory.mkdir(parents=True, exist_ok=True)
+    graph_file = output_directory / "mean_performance_size_tradeoff.png"
+    table_file = output_directory / "relative_scenario_improvement.md"
+    plot_mean_performance_size_tradeoff(rows, graph_file)
+    write_relative_scenario_improvement(rows, table_file)
+    return graph_file, table_file
 
-plt.show()
+
+if __name__ == "__main__":
+    generate_outputs(RESULT_FILES, OUTPUT_DIRECTORY)
