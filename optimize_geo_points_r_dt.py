@@ -4,7 +4,7 @@ import random
 import time
 from dataclasses import asdict
 from datetime import datetime, timedelta
-from typing import Any, get_args
+from typing import Any
 
 import numpy as np
 
@@ -111,9 +111,7 @@ def main():
     # =======================================
     # setup output
     # =======================================
-    n_trials = 50
-    seed = 1828
-    json_output = "no_mission_singleton_indexes.json"
+    json_output = "index_benchmark.json"
     central_date = datetime(2022, 10, 15)
     time_window = timedelta(days=10)
     data_start = central_date - time_window
@@ -122,21 +120,7 @@ def main():
     # =======================================
     # create scenarios
     # =======================================
-    # TODO: gridded locations vs random
-    # TODO: sorted random vs random
-    # TODO: nearest neighbor
-    # TODO: improve search to reduce duplicated queries
-    # TODO: put results in documentation
-    # TODO: add version which selects on mission
-    # TODO: nearest neighbor
-    # TODO: nearest neighbor with speed
-    # TODO: choose date after 2022 with s6a (sentinel 6a)
-    # TODO: filesize via something like SELECT schemaname, relname as table_name, indexrelname AS index_name, pg_size_pretty(pg_relation_size(indexrelid)) AS index_size FROM pg_stat_user_indexes ORDER BY pg_relation_size(indexrelid) DESC LIMIT 20;
-
-    all_missions = list(get_args(Mission))
-
     scenarios: list[BaseQueryScenario] = [
-        # all missions
         batch_scenario_grid(
             method_name="geographic_point_in_r_dt_batch",
             time_window=time_window,
@@ -158,32 +142,6 @@ def main():
             resolution=1,
             scenario_kwargs={"max_radius": 500_000},
         ),
-        # all missions, separately enumerated
-        batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"radius": 50_000},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_nearest_neighbors_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"max_radius": None},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_nearest_neighbors_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"max_radius": 500_000},
-        ),
-        # nonpolar missions
         batch_scenario_grid(
             method_name="geographic_point_in_r_dt_batch",
             time_window=time_window,
@@ -225,10 +183,19 @@ def main():
         )
     ]
 
-    trial_index_fields = ["along_track_point", "date_time", "basin_id"]
+    trial_index_fields = (
+        "along_track_point",
+        "basin_id",
+        "date_time",
+        "mission",
+    )
     trial_indexes = [
         [index_definition("experiment", fields)]
-        for fields in itertools.permutations(trial_index_fields)
+        for length in (2, 3, 4)
+        for fields in itertools.permutations(trial_index_fields, length)
+        if fields[0] != "date_time"
+        if "date_time" not in fields
+        or fields.index("along_track_point") < fields.index("date_time")
     ]
     trial_indexes.append([])
 
@@ -287,12 +254,7 @@ def main():
     # =======================================
     print("searching")
 
-    indexes_to_skip = ["trial_2", "trial_3"]
-
     for node, (test_db, index_sizes) in zip(nodes, test_dbs):
-        if node.database_name in indexes_to_skip:
-            print(f"trial for db {node.database_name} marked for skipping. skipping")
-            continue
         print("running trial for db", node.database_name, node.pretty_name())
         t1 = time.time()
         node.index_sizes = index_sizes
