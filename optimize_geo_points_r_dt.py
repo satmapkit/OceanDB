@@ -1,20 +1,20 @@
 import itertools
 import json
 import random
+import time
 from dataclasses import asdict
 from datetime import datetime, timedelta
-import time
 from typing import Any, get_args
 
 import numpy as np
 
 from OceanDB.data_access.along_track import AlongTrack, Mission
-from OceanDB.ocean_data.basins import BasinMask
 from OceanDB.etl import AlongTrackETL
 from OceanDB.index_experiment import (IndexNode, index_definition,
                                       run_index_performance_test,
                                       setup_index_performance_test)
 from OceanDB.managed_indices import ManagedIndices
+from OceanDB.ocean_data.basins import BasinMask
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.query_analysis import BaseQueryScenario, BatchQueryScenario
 from OceanDB.schemas.along_track_schema import along_track_schema
@@ -31,14 +31,15 @@ def random_datetimes(
 ) -> list[datetime]:
     span_seconds = int((end - start).total_seconds())
     return [
-        start + timedelta(seconds=rng.randrange(span_seconds + 1))
-        for _ in range(count)
+        start + timedelta(seconds=rng.randrange(span_seconds + 1)) for _ in range(count)
     ]
+
 
 def random_points(rng: random.Random, count: int) -> tuple[list[float], list[float]]:
     latitudes = [rng.uniform(-80.0, 80.0) for _ in range(count)]
     longitudes = [rng.uniform(-180.0, 180.0) for _ in range(count)]
     return latitudes, longitudes
+
 
 def batch_scenario_random(
     seed: int,
@@ -47,7 +48,7 @@ def batch_scenario_random(
     time_window: timedelta,
     date_start: datetime,
     date_end: datetime,
-    n_points: int = 1000
+    n_points: int = 1000,
 ) -> BatchQueryScenario:
     rng = random.Random(seed)
     latitudes, longitudes = random_points(rng, n_points)
@@ -65,20 +66,21 @@ def batch_scenario_random(
         },
     )
 
+
 def batch_scenario_grid(
     *,
     method_name: str,
     time_window: timedelta,
     central_date: datetime,
     resolution: float = 1.0,
-    missions: list[Mission]|None = None,
+    missions: list[Mission] | None = None,
     scenario_kwargs: dict[str, Any] = {},
 ) -> BatchQueryScenario:
 
     latitudes = np.arange(-60, 60, resolution)
     longitudes = np.arange(-180, 180, resolution)
 
-    lons_grid,lats_grid = np.meshgrid(longitudes, latitudes)
+    lons_grid, lats_grid = np.meshgrid(longitudes, latitudes)
     lons = np.reshape(lons_grid, -1)
     lats = np.reshape(lats_grid, -1)
 
@@ -88,13 +90,13 @@ def batch_scenario_grid(
     lats, lons = lats[is_ocean], lons[is_ocean]
 
     kwargs = {
-            "fields": list(along_track_schema.keys()),
-            "latitudes": lats,
-            "longitudes": lons,
-            "dates": [central_date for _ in range(lons.size)],
-            "time_window": time_window,
-            **scenario_kwargs
-        }
+        "fields": list(along_track_schema.keys()),
+        "latitudes": lats,
+        "longitudes": lons,
+        "dates": [central_date for _ in range(lons.size)],
+        "time_window": time_window,
+        **scenario_kwargs,
+    }
     if missions is not None:
         kwargs["missions"] = missions
 
@@ -103,8 +105,6 @@ def batch_scenario_grid(
         method_name=method_name,
         kwargs=kwargs,
     )
-
-
 
 
 def main():
@@ -118,9 +118,6 @@ def main():
     time_window = timedelta(days=10)
     data_start = central_date - time_window
     data_end = central_date + time_window
-
-
-
 
     # =======================================
     # create scenarios
@@ -138,29 +135,29 @@ def main():
 
     all_missions = list(get_args(Mission))
 
-    scenarios : list[BaseQueryScenario] = [
+    scenarios: list[BaseQueryScenario] = [
         # all missions
         batch_scenario_grid(
             method_name="geographic_point_in_r_dt_batch",
             time_window=time_window,
             central_date=central_date,
             resolution=1,
-            scenario_kwargs={"radius":50_000},
-            ),
+            scenario_kwargs={"radius": 50_000},
+        ),
         batch_scenario_grid(
             method_name="geographic_nearest_neighbors_batch",
             time_window=time_window,
             central_date=central_date,
             resolution=1,
             scenario_kwargs={"max_radius": None},
-            ),
+        ),
         batch_scenario_grid(
             method_name="geographic_nearest_neighbors_batch",
             time_window=time_window,
             central_date=central_date,
             resolution=1,
             scenario_kwargs={"max_radius": 500_000},
-            ),
+        ),
         # all missions, separately enumerated
         batch_scenario_grid(
             method_name="geographic_point_in_r_dt_batch",
@@ -168,8 +165,8 @@ def main():
             central_date=central_date,
             resolution=1,
             missions=all_missions,
-            scenario_kwargs={"radius":50_000},
-            ),
+            scenario_kwargs={"radius": 50_000},
+        ),
         batch_scenario_grid(
             method_name="geographic_nearest_neighbors_batch",
             time_window=time_window,
@@ -177,7 +174,7 @@ def main():
             resolution=1,
             missions=all_missions,
             scenario_kwargs={"max_radius": None},
-            ),
+        ),
         batch_scenario_grid(
             method_name="geographic_nearest_neighbors_batch",
             time_window=time_window,
@@ -185,7 +182,7 @@ def main():
             resolution=1,
             missions=all_missions,
             scenario_kwargs={"max_radius": 500_000},
-            ),
+        ),
         # nonpolar missions
         batch_scenario_grid(
             method_name="geographic_point_in_r_dt_batch",
@@ -193,8 +190,8 @@ def main():
             central_date=central_date,
             resolution=1,
             missions=["s6a", "j3n"],
-            scenario_kwargs={"radius":50_000},
-            ),
+            scenario_kwargs={"radius": 50_000},
+        ),
         batch_scenario_grid(
             method_name="geographic_nearest_neighbors_batch",
             time_window=time_window,
@@ -202,15 +199,15 @@ def main():
             resolution=1,
             missions=["s6a", "j3n"],
             scenario_kwargs={"max_radius": None},
-            ),
+        ),
         batch_scenario_grid(
             method_name="geographic_nearest_neighbors_batch",
             time_window=time_window,
             central_date=central_date,
             resolution=1,
             missions=["s6a", "j3n"],
-            scenario_kwargs={"max_radius": 500_000}
-            ),
+            scenario_kwargs={"max_radius": 500_000},
+        ),
     ]
 
     # =======================================
@@ -220,18 +217,24 @@ def main():
     # static indexes always added
     basic_indexes = [
         index_definition("static", fields)
-        for fields in (("mission",), ("basin_id",), ("along_track_point",), ("date_time",))
+        for fields in (
+            ("mission",),
+            ("basin_id",),
+            ("along_track_point",),
+            ("date_time",),
+        )
     ]
 
     trial_index_fields = ["along_track_point", "date_time", "basin_id"]
     trial_indexes = [
         [index_definition("experiment", fields)]
         for fields in itertools.permutations(trial_index_fields)
-            ]
+    ]
     trial_indexes.append([])
 
-    all_indexes = tuple(basic_indexes) + \
-                  tuple(index for trial in trial_indexes for index in trial )
+    all_indexes = tuple(basic_indexes) + tuple(
+        index for trial in trial_indexes for index in trial
+    )
 
     # =======================================
     # init oceandb
@@ -260,24 +263,23 @@ def main():
         )
     print("done in", time.time() - t1, "seconds")
 
-
     # =======================================
     # build indexes for each test
     # =======================================
     print("building indexes for each test")
     t1 = time.time()
     nodes = [
-            IndexNode(
-                database_name=f'trial_{i}',
-                trial_indexes=trial
-            )
-            for i,trial in enumerate(trial_indexes)
-            ]
-    test_dbs = [setup_index_performance_test(
-                source_db=ocean_db_init,
-                indexes=[*basic_indexes, *node.trial_indexes],
-                test_database=node.database_name,
-            ) for node in nodes]
+        IndexNode(database_name=f"trial_{i}", trial_indexes=trial)
+        for i, trial in enumerate(trial_indexes)
+    ]
+    test_dbs = [
+        setup_index_performance_test(
+            source_db=ocean_db_init,
+            indexes=[*basic_indexes, *node.trial_indexes],
+            test_database=node.database_name,
+        )
+        for node in nodes
+    ]
     print("finished building all indexes in", time.time() - t1, "seconds")
 
     # =======================================
@@ -285,7 +287,7 @@ def main():
     # =======================================
     print("searching")
 
-    indexes_to_skip = ['trial_2', 'trial_3']
+    indexes_to_skip = ["trial_2", "trial_3"]
 
     for node, (test_db, index_sizes) in zip(nodes, test_dbs):
         if node.database_name in indexes_to_skip:

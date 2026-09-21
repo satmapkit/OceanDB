@@ -4,18 +4,17 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-
 filename = "no_mission_singleton_indexes.json"
 title = "Compound index without mission + 4 singleton indexes, -60 to 60 lat"
 with open(filename, encoding="utf-8") as file:
     nodes = json.load(file)
 
 scenario_names = [
-        "rdt all missions",
-        "NN  all missions",
-        "rdt reference missions",
-        "NN  reference mission",
-        ]
+    "rdt all missions",
+    "NN  all missions",
+    "rdt reference missions",
+    "NN  reference mission",
+]
 performance = {name: [] for name in scenario_names}
 index_names = []
 for node in nodes:
@@ -28,17 +27,22 @@ for node in nodes:
 
     if node["performance"] is None:
         for name in scenario_names:
-            performance[name].append(float('nan'))
+            performance[name].append(float("nan"))
         continue
     for scenario_i, res in enumerate(node["performance"]):
         name = scenario_names[scenario_i]
         performance[name].append(res["total_time"])
 
-    print(f'=================== {index_name} ===================')
+    print(f"=================== {index_name} ===================")
     print("used indices:")
     print([x["used_indices"] for x in node["performance"]])
     print("explain result str:")
-    print(''.join(x["scenario_name"]+'\n'+x["explain_result_str"] for x in node["performance"]))
+    print(
+        "".join(
+            x["scenario_name"] + "\n" + x["explain_result_str"]
+            for x in node["performance"]
+        )
+    )
     print()
     # print(node['performance'][0].keys())
     # print(node['performance']["explain_result_str"])
@@ -145,19 +149,21 @@ plot_performance_size_tradeoff(
     output_directory / "performance_size_tradeoff.png",
 )
 
-fig, ax = plt.subplots(layout='constrained')
+fig, ax = plt.subplots(layout="constrained")
 
 res = ax.grouped_bar(performance, tick_labels=index_names, group_spacing=1)
 for container in res.bar_containers:
-    ax.bar_label(container, padding=5, fmt='%.0f', label_type="edge", rotation='vertical')
+    ax.bar_label(
+        container, padding=5, fmt="%.0f", label_type="edge", rotation="vertical"
+    )
     # ax.bar_label(rects1, padding=5, fmt='%.2f', label_type='edge', fontsize=9, rotation='vertical')
 
 max_time = max(max(group) for group in performance.values())
-ax.set_ylim((0, max_time*1.3))
+ax.set_ylim((0, max_time * 1.3))
 
 # Add some text for labels, title, etc.
-ax.set_ylabel('Time (s)')
-ax.legend(loc='upper left')
+ax.set_ylabel("Time (s)")
+ax.legend(loc="upper left")
 ax.set_title(title)
 
 plt.show()
