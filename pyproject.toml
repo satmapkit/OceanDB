@@ -56,7 +56,7 @@ include = ["OceanDB*"]
 
 "OceanDB.data.basin_masks" = ["*.nc"]
 
-"OceanDB.data.basins" = ["*.csv"]
+"OceanDB.data.basins" = ["*.csv", "*.txt"]
 
 [tool.pytest.ini_options]
 markers = [
