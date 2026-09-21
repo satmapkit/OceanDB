@@ -1,7 +1,12 @@
+import multiprocessing
+import os
 import time
+import traceback
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import psycopg
 from psycopg import sql
 
 from OceanDB.managed_index_oceandb import DatabaseIndex
@@ -157,6 +162,130 @@ def run_index_performance_test(
         managed_indices=ocean_db_init.managed_indices,
     )
     return runner.analyze_queries()
+
+
+def _run_index_performance_test_worker(
+    config,
+    indexes: tuple[IndexDefinition, ...],
+    scenarios: list[BaseQueryScenario],
+    connection,
+    application_name: str,
+) -> None:
+    os.environ["PGAPPNAME"] = application_name
+    try:
+        test_db = OceanDBInit(
+            config=config,
+            managed_indices=ManagedIndices(indexes),
+        )
+        connection.send(("completed", run_index_performance_test(test_db, scenarios)))
+    except BaseException:
+        connection.send(("failed", traceback.format_exc()))
+    finally:
+        connection.close()
+
+
+def _stop_index_performance_worker(worker: multiprocessing.Process) -> None:
+    if worker.is_alive():
+        worker.terminate()
+        worker.join(timeout=2)
+    if worker.is_alive():
+        worker.kill()
+    worker.join(timeout=2)
+
+
+def _cleanup_index_performance_sessions(config, application_name: str) -> None:
+    """Cancel only the stopped benchmark worker's PostgreSQL sessions."""
+
+    try:
+        with psycopg.connect(
+            config.postgres_dsn_admin,
+            autocommit=True,
+            connect_timeout=5,
+            application_name="index_performance_cleanup",
+            options="-c statement_timeout=5000",
+        ) as connection:
+            args = (config.postgres_database, application_name)
+            predicate = (
+                "datname=%s AND application_name=%s "
+                "AND backend_type='client backend'"
+            )
+            connection.execute(
+                "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE "
+                + predicate,
+                args,
+            )
+            connection.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE "
+                + predicate,
+                args,
+            )
+            deadline = time.monotonic() + 5
+            while connection.execute(
+                "SELECT count(*) FROM pg_stat_activity WHERE " + predicate,
+                args,
+            ).fetchone()[0]:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(
+                        f"PostgreSQL sessions remain for {application_name}"
+                    )
+                time.sleep(0.05)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Could not clean up PostgreSQL sessions for {application_name}"
+        ) from exc
+
+
+def run_index_performance_test_with_timeout(
+    ocean_db_init: OceanDBInit,
+    scenarios: list[BaseQueryScenario],
+    timeout_seconds: float,
+) -> list[QueryAnalysisRow]:
+    """Run all scenarios in a worker that can be stopped at one deadline."""
+
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
+
+    context = multiprocessing.get_context("spawn")
+    parent, child = context.Pipe(duplex=False)
+    application_name = f"index_performance_{uuid.uuid4().hex}"
+    worker = context.Process(
+        target=_run_index_performance_test_worker,
+        args=(
+            ocean_db_init.config,
+            ocean_db_init.managed_indices.index_definitions,
+            scenarios,
+            child,
+            application_name,
+        ),
+        daemon=True,
+    )
+    worker.start()
+    child.close()
+
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(
+                    f"Index performance test exceeded {timeout_seconds:g} seconds"
+                )
+            if parent.poll(min(remaining, 0.2)):
+                break
+            if not worker.is_alive():
+                raise RuntimeError("Index performance worker exited without a result")
+
+        status, result = parent.recv()
+        if status == "failed":
+            raise RuntimeError(result)
+        return result
+    finally:
+        _stop_index_performance_worker(worker)
+        parent.close()
+        _cleanup_index_performance_sessions(
+            ocean_db_init.config,
+            application_name,
+        )
 
 
 @dataclass

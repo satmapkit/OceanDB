@@ -11,13 +11,15 @@ import numpy as np
 from OceanDB.data_access.along_track import AlongTrack, Mission
 from OceanDB.etl import AlongTrackETL
 from OceanDB.index_experiment import (IndexNode, index_definition,
-                                      run_index_performance_test,
+                                      run_index_performance_test_with_timeout,
                                       setup_index_performance_test)
 from OceanDB.managed_indices import ManagedIndices
 from OceanDB.ocean_data.basins import BasinMask
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.query_analysis import BaseQueryScenario, BatchQueryScenario
 from OceanDB.schemas.along_track_schema import along_track_schema
+
+TIMEOUT_SECONDS = 900
 
 
 def json_default(value: object) -> object:
@@ -259,7 +261,11 @@ def main():
         t1 = time.time()
         node.index_sizes = index_sizes
         try:
-            performance = run_index_performance_test(test_db, scenarios)
+            performance = run_index_performance_test_with_timeout(
+                test_db,
+                scenarios,
+                timeout_seconds=TIMEOUT_SECONDS,
+            )
             node.performance = performance
             node.error = sum(x.total_time for x in performance)
         except Exception:
