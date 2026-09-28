@@ -186,6 +186,8 @@ Parameters:
 - `radius`
 - `time_window`
 - `missions`
+- `n_jobs` (defaults to `1`, preserving sequential execution)
+- `chunk_size` (maximum query points in one chunk)
 
 Example:
 
@@ -270,6 +272,8 @@ Parameters:
 - `dates`
 - `time_window`
 - `missions`
+- `n_jobs` (defaults to `1`, preserving sequential execution)
+- `chunk_size` (maximum query points in one chunk)
 
 Example:
 

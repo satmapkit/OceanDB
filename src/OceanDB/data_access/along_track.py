@@ -135,6 +135,9 @@ class AlongTrack(BaseReadQuery):
         radius: float = 500_000.0,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
+        *,
+        n_jobs: int = 1,
+        chunk_size: int = 16,
     ) -> Generator[Dataset[along_track_fields] | None, None, None]:
         """
         Query along-track points for multiple spatial + temporal windows.
@@ -142,22 +145,20 @@ class AlongTrack(BaseReadQuery):
         Yields one Dataset per query point, or None where no rows are returned.
         """
 
-        query_spec, params_batch, _basin_ids = self._build_spatiotemporal_batch(
-            fields,
-            latitudes,
-            longitudes,
-            dates,
-            radius,
-            time_window,
-            missions,
-        )
-
-        return self.execute_batch_read_query(
-            query_spec=query_spec,
+        results: list[Dataset[along_track_fields] | None] = [None] * len(latitudes)
+        for index, result in self.geographic_point_in_r_dt_stream(
             fields=fields,
-            params_batch=params_batch,
-            dataset_name="along_track",
-        )
+            latitudes=latitudes,
+            longitudes=longitudes,
+            dates=dates,
+            radius=radius,
+            time_window=time_window,
+            missions=missions,
+            n_jobs=n_jobs,
+            chunk_size=chunk_size,
+        ):
+            results[index] = result
+        yield from results
 
     def geographic_point_in_r_dt_stream(
         self,
@@ -265,6 +266,9 @@ class AlongTrack(BaseReadQuery):
         dates: list[datetime],
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
+        *,
+        n_jobs: int = 1,
+        chunk_size: int = 16,
     ) -> Generator[Dataset[along_track_fields] | None, None, None]:
         """
         Query nearest neighbors for multiple points using a prepared batch query.
@@ -272,16 +276,19 @@ class AlongTrack(BaseReadQuery):
         Yields one Dataset per query point, or None where no rows are returned.
         """
 
-        query_spec, params_batch, _basin_ids = self._build_nearest_neighbor_batch(
-            fields, latitudes, longitudes, dates, time_window, missions
-        )
-
-        return self.execute_batch_read_query(
-            query_spec=query_spec,
+        results: list[Dataset[along_track_fields] | None] = [None] * len(latitudes)
+        for index, result in self.geographic_nearest_neighbors_stream(
             fields=fields,
-            params_batch=params_batch,
-            dataset_name="along_track",
-        )
+            latitudes=latitudes,
+            longitudes=longitudes,
+            dates=dates,
+            time_window=time_window,
+            missions=missions,
+            n_jobs=n_jobs,
+            chunk_size=chunk_size,
+        ):
+            results[index] = result
+        yield from results
 
     def geographic_nearest_neighbors_stream(
         self,

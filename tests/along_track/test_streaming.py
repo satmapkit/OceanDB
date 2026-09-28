@@ -97,3 +97,30 @@ def test_geographic_r_dt_stream(config, monkeypatch):
     assert (0, [("data 1", [14])]) in result
     assert (1, [("data 2", [3])]) in result
     assert (2, [("data 3", [13])]) in result
+
+
+def test_ordered_batch_wrapper_reorders_stream_results(monkeypatch):
+    query = AlongTrack.__new__(AlongTrack)
+    first, last = object(), object()
+    captured = {}
+
+    def fake_stream(**kwargs):
+        captured.update(kwargs)
+        return iter([(2, last), (0, first), (1, None)])
+
+    monkeypatch.setattr(query, "geographic_nearest_neighbors_stream", fake_stream)
+
+    results = list(
+        query.geographic_nearest_neighbors_batch(
+            fields=list(along_track_schema.keys()),
+            latitudes=[1.0, 2.0, 3.0],
+            longitudes=[4.0, 5.0, 6.0],
+            dates=[datetime(2020, 1, 1)] * 3,
+            n_jobs=3,
+            chunk_size=1,
+        )
+    )
+
+    assert results == [first, None, last]
+    assert captured["n_jobs"] == 3
+    assert captured["chunk_size"] == 1
