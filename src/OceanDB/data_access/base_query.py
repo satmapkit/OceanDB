@@ -69,7 +69,7 @@ class BaseReadQuery(OceanDB):
         fields: Iterable[K],
         params: Mapping[str, Any],
         dataset_name: str = "query_result",
-    ) -> Dataset[K, Any] | None:
+    ) -> Dataset[K] | None:
         """
         Execute a single query and return a Dataset, or None if empty.
 
@@ -125,7 +125,7 @@ class BaseReadQuery(OceanDB):
         fields: Iterable[K],
         params_batch: Iterable[Mapping[str, Any]],
         dataset_name: str = "query_result",
-    ) -> Generator[Dataset[K, Any] | None, None, None]:
+    ) -> Generator[Dataset[K] | None, None, None]:
         """
         Execute the same query over many different parameters.
         For each result, yield a Dataset, or None if empty.
@@ -194,7 +194,7 @@ class BaseReadQuery(OceanDB):
         schema: Mapping[K, OceanDataField],
         rows: list[Mapping[str, Any]],
         dataset_name: str = "query_result",
-    ) -> Dataset[K, Any]:
+    ) -> Dataset[K]:
         """
         Given a schema and a nonempty list of dict rows, construct a Dataset.
 
