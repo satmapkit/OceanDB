@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from queue import Queue
 from typing import Any, Callable, Generator, Iterable, Mapping
 
 import numpy as np
@@ -12,6 +15,57 @@ from OceanDB.OceanDB import OceanDB
 from OceanDB.query_spec import QuerySpec, render_query
 
 QueryObserver = Callable[[sql.Composed, Mapping[str, Any], str], None]
+
+
+QueryJob = list[list[int]]
+
+
+@dataclass(frozen=True)
+class QueryPlan:
+    """Assignment of every input query to exactly one worker chunk."""
+
+    chunks: dict[int, int]  # index -> chunk
+    jobs: dict[int, int]  # chunk -> job
+
+    def validate(self, n_queries: int) -> None:
+        if not set(self.chunks.keys()) == set(range(n_queries)):
+            raise ValueError(
+                "Invalid query plan: all indices must be allocated to a chunk"
+            )
+        if not set(self.chunks.values()) == set(self.jobs.keys()):
+            raise ValueError(
+                "Invalid query plan: all chunks must be allocated to a job"
+            )
+
+    def __len__(self) -> int:
+        """Number of jobs in this plan"""
+        return len(set(self.jobs.values()))
+
+    def job_chunks(self) -> list[QueryJob]:
+        chunks: dict[int, list[int]] = {}
+        for index, chunk in self.chunks.items():
+            if chunk not in chunks:
+                chunks[chunk] = []
+            chunks[chunk].append(index)
+
+        jobs: dict[int, list[list[int]]] = {}
+        for chunk, job in self.jobs.items():
+            if job not in jobs:
+                jobs[job] = []
+            jobs[job].append(chunks[chunk])
+
+        return list(jobs.values())
+
+
+@dataclass(frozen=True)
+class _QueryResult:
+    index: int
+    result: Any
+
+
+@dataclass(frozen=True)
+class _WorkerFinished:
+    error: Exception | None = None
 
 
 class BaseReadQuery(OceanDB):
@@ -187,6 +241,62 @@ class BaseReadQuery(OceanDB):
 
                 if not cur.nextset():
                     break
+
+    def execute_batch_read_query_stream(
+        self,
+        query_spec: QuerySpec,
+        *,
+        fields: Iterable[K],
+        params_batch: Iterable[Mapping[str, Any]],
+        plan: QueryPlan,
+        dataset_name: str = "query_result",
+    ) -> Generator[tuple[int, Dataset[K] | None], None, None]:
+        """Execute a planned batch concurrently and yield indexed results.
+
+        A worker processes its chunks sequentially, executing one batch query
+        per chunk. Results are placed on an internal thread-safe queue and
+        yielded in completion order; the index preserves their input identity.
+        """
+        params = list(params_batch)
+        plan.validate(len(params))
+
+        selected_fields = tuple(fields)
+        results: Queue[_QueryResult | _WorkerFinished] = Queue()
+
+        def run_job(job: QueryJob) -> None:
+            print("running job", job)
+            try:
+                for chunk in job:
+                    print("running chunk", chunk, "of job", job)
+                    chunk_params = [params[index] for index in chunk]
+                    chunk_results = self.execute_batch_read_query(
+                        query_spec=query_spec,
+                        fields=selected_fields,
+                        params_batch=chunk_params,
+                        dataset_name=dataset_name,
+                    )
+                    print("done with chunk", chunk, "now putting results in")
+                    for index, result in zip(chunk, chunk_results, strict=True):
+                        results.put(_QueryResult(index, result))
+            except Exception as error:
+                results.put(_WorkerFinished(error))
+            else:
+                results.put(_WorkerFinished())
+
+        with ThreadPoolExecutor(max_workers=len(plan.jobs)) as executor:
+            for job in plan.job_chunks():
+                executor.submit(run_job, job)
+
+            finished = 0
+            while finished < len(plan):
+                result = results.get()
+                if isinstance(result, _WorkerFinished):
+                    finished += 1
+                    print("worker finished! Now at", finished, "out of", len(plan))
+                    if result.error is not None:
+                        raise result.error
+                else:
+                    yield result.index, result.result
 
     def _build_dataset(
         self,
