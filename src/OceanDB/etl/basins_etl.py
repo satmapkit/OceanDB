@@ -116,7 +116,9 @@ class BasinsETL(OceanDBETL):
 
     def insert_basins_data(self):
         if self._table_has_rows(self.basin_table_name):
-            print("Skipping basin seed data: basin table already contains rows")
+            self.logger.info(
+                "Skipping basin seed data: basin table already contains rows"
+            )
             return
 
         row_count = self._insert_csv(
@@ -125,11 +127,12 @@ class BasinsETL(OceanDBETL):
             table_name=self.basin_table_name,
             rename_map={"geom": "basin_geog"},
         )
-        print(f"Inserted {row_count} rows in to the basins table")
+        self.vacuum_analyze(self.basin_table_name)
+        self.logger.info(f"Inserted {row_count} rows in to the basins table")
 
     def insert_basin_connections_data(self):
         if self._table_has_rows(self.basin_connections_table_name):
-            print(
+            self.logger.info(
                 "Skipping basin connection seed data: basin_connections table already contains rows"
             )
             return
@@ -141,4 +144,5 @@ class BasinsETL(OceanDBETL):
             key_name="basin_id",
             value_name="connected_id",
         )
-        print(f"Inserted {row_count} rows in to the basin connections table")
+        self.vacuum_analyze(self.basin_connections_table_name)
+        self.logger.info(f"Inserted {row_count} rows in to the basin connections table")

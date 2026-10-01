@@ -91,13 +91,16 @@ class OceanDB(ResourceLoader):
         engine = create_engine(url, echo=echo)
         return engine
 
-    def vacuum_analyze(self):
-        print(f"Starting VACUUM ANALYZE...")
+    def vacuum_analyze(self, table_name: str | None = None):
+        self.logger.info(f"Starting VACUUM ANALYZE...")
         start = time.time()
+        query = sql.SQL("VACUUM ANALYZE")
+        if table_name is not None:
+            query += sql.SQL(" {}").format(sql.Identifier("public", table_name))
         with self.cursor(autocommit=True) as cur:
-            cur.execute("VACUUM ANALYZE")
+            cur.execute(query)
         end = time.time()
-        print(f"Finished. Total time: {end - start}")
+        self.logger.info(f"Finished. Total time: {end - start}")
 
     def drop_database(self):
         with self.cursor(
@@ -113,7 +116,7 @@ class OceanDB(ResourceLoader):
                 )
             )
 
-        print(f"Database '{self.db_name}' dropped.")
+        self.logger.info(f"Database '{self.db_name}' dropped.")
 
     def truncate_table(self, name):
         query_truncate_table = sql.SQL("""TRUNCATE public.{table_name}""").format(
@@ -122,4 +125,6 @@ class OceanDB(ResourceLoader):
 
         with self.cursor(commit=True) as cur:
             cur.execute(query_truncate_table)
-        print(f"All data removed from table '{name} in database.'{self.db_name}'.")
+        self.logger.info(
+            f"All data removed from table '{name} in database.'{self.db_name}'."
+        )
