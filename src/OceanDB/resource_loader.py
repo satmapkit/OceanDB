@@ -3,8 +3,9 @@ from typing import IO, Literal, LiteralString
 
 
 class ResourceLoader:
+    @classmethod
     def load_module_file(
-        self,
+        cls,
         module: str,
         filename: str,
         encoding="utf-8",
@@ -23,11 +24,12 @@ class ResourceLoader:
             return file_path.open(mode)
         return file_path.open(mode, encoding=encoding)
 
-    def load_sql_file(self, filename: str) -> LiteralString:
+    @classmethod
+    def load_sql_file(cls, filename: str) -> LiteralString:
         """
         Load the contents of a SQL file
         """
-        with self.load_module_file(
+        with cls.load_module_file(
             module="OceanDB.sql", filename=filename, mode="r", encoding="utf-8"
         ) as f:
             query = f.read()

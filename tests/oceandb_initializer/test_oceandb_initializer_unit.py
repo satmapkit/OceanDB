@@ -77,7 +77,7 @@ def test_initialize_database_uses_initializer_config(monkeypatch, config):
 
 
 def test_oceandb_init_exposes_index_lifecycle_through_initializer():
-    managed_indices = ManagedIndices(index_resources=(), default_indices=())
+    managed_indices = ManagedIndices(definitions=(), default_indices=())
 
     ocean_db_init = OceanDBInit(managed_indices=managed_indices)
 

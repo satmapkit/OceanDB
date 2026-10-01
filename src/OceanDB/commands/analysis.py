@@ -22,7 +22,7 @@ def analyze_queries():
     """Run representative queries and show their index usage matrix."""
     runner = create_query_analysis_runner()
     rows = runner.analyze_queries()
-    all_indices = runner.index_names
+    all_indices = runner.managed_indices.managed_index_names
     used_indices = set.union(*[row.used_indices for row in rows])
     unused_indices = all_indices - used_indices
 
