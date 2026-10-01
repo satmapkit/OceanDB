@@ -174,14 +174,15 @@ class AlongTrack(BaseReadQuery):
         chunk_size: int = 16,
     ) -> Generator[tuple[int, Dataset[along_track_fields] | None], None, None]:
         """Stream indexed spatial-temporal query results as workers finish."""
-        query_spec, params_batch, basin_ids = self._build_spatiotemporal_batch(
-            fields,
-            latitudes,
-            longitudes,
-            dates,
-            radius,
-            time_window,
-            missions,
+        query_spec, params_batch, basin_ids = self._build_basin_query_batch(
+            latitudes=latitudes,
+            longitudes=longitudes,
+            dates=dates,
+            time_window=time_window,
+            missions=missions,
+            sql_with_missions=self._along_track_spatiotemporal_query,
+            sql_without_missions=self._along_track_spatiotemporal_without_mission_query,
+            extra_params={"distance": radius},
         )
         return self.execute_batch_read_query_stream(
             query_spec=query_spec,
@@ -190,47 +191,6 @@ class AlongTrack(BaseReadQuery):
             plan=plan_by_basin(basin_ids, n_jobs=n_jobs, chunk_size=chunk_size),
             dataset_name="along_track",
         )
-
-    def _build_spatiotemporal_batch(
-        self,
-        fields: list[along_track_fields],
-        latitudes: list[float],
-        longitudes: list[float],
-        dates: list[datetime],
-        radius: float,
-        time_window: timedelta,
-        missions: list[Mission] | None,
-    ) -> tuple[QuerySpec[along_track_fields], list[dict[str, Any]], list[int]]:
-        sql_file = (
-            self._along_track_spatiotemporal_without_mission_query
-            if missions is None
-            else self._along_track_spatiotemporal_query
-        )
-        query_spec: QuerySpec[along_track_fields] = QuerySpec(
-            sql_template=self.load_sql_file(sql_file), schema=along_track_schema
-        )
-        basin_ids = [
-            self.basin_mask_lookup.lookup(latitude, longitude)
-            for latitude, longitude in zip(latitudes, longitudes, strict=True)
-        ]
-        connected_basin_ids = [
-            self.basin_connections.connection_map[basin_id] for basin_id in basin_ids
-        ]
-        params_batch = [
-            {
-                "longitude": longitude,
-                "latitude": latitude,
-                "distance": radius,
-                "central_date_time": date,
-                "time_delta": time_window,
-                "connected_basin_ids": connected_ids,
-                **({"missions": missions} if missions is not None else {}),
-            }
-            for latitude, longitude, date, connected_ids in zip(
-                latitudes, longitudes, dates, connected_basin_ids, strict=True
-            )
-        ]
-        return query_spec, params_batch, basin_ids
 
     def geographic_nearest_neighbors(
         self,
@@ -303,8 +263,15 @@ class AlongTrack(BaseReadQuery):
         chunk_size: int = 16,
     ) -> Generator[tuple[int, Dataset[along_track_fields] | None], None, None]:
         """Stream indexed nearest-neighbor results as workers finish."""
-        query_spec, params_batch, basin_ids = self._build_nearest_neighbor_batch(
-            fields, latitudes, longitudes, dates, time_window, missions
+        query_spec, params_batch, basin_ids = self._build_basin_query_batch(
+            latitudes=latitudes,
+            longitudes=longitudes,
+            dates=dates,
+            time_window=time_window,
+            missions=missions,
+            sql_with_missions=self._along_track_nearest_neighbor_query,
+            sql_without_missions=self._along_track_nearest_neighbor_without_mission_query,
+            mandatory_fields=["distance"],
         )
         return self.execute_batch_read_query_stream(
             query_spec=query_spec,
@@ -314,24 +281,24 @@ class AlongTrack(BaseReadQuery):
             dataset_name="along_track",
         )
 
-    def _build_nearest_neighbor_batch(
+    def _build_basin_query_batch(
         self,
-        fields: list[along_track_fields],
+        *,
         latitudes: list[float],
         longitudes: list[float],
         dates: list[datetime],
         time_window: timedelta,
         missions: list[Mission] | None,
+        sql_with_missions: str,
+        sql_without_missions: str,
+        mandatory_fields: list[along_track_fields] | None = None,
+        extra_params: dict[str, Any] | None = None,
     ) -> tuple[QuerySpec[along_track_fields], list[dict[str, Any]], list[int]]:
-        sql_file = (
-            self._along_track_nearest_neighbor_without_mission_query
-            if missions is None
-            else self._along_track_nearest_neighbor_query
-        )
+        sql_file = sql_without_missions if missions is None else sql_with_missions
         query_spec: QuerySpec[along_track_fields] = QuerySpec(
             sql_template=self.load_sql_file(sql_file),
             schema=along_track_schema,
-            mandatory_fields=["distance"],
+            mandatory_fields=mandatory_fields or [],
         )
         basin_ids = [
             self.basin_mask_lookup.lookup(latitude, longitude)
@@ -340,17 +307,20 @@ class AlongTrack(BaseReadQuery):
         connected_basin_ids = [
             self.basin_connections.connection_map[basin_id] for basin_id in basin_ids
         ]
-        params_batch = [
-            {
+        params_batch = []
+        for latitude, longitude, date, connected_ids in zip(
+            latitudes, longitudes, dates, connected_basin_ids, strict=True
+        ):
+            params = {
                 "longitude": longitude,
                 "latitude": latitude,
                 "central_date_time": date,
                 "time_delta": time_window,
                 "connected_basin_ids": connected_ids,
-                **({"missions": missions} if missions is not None else {}),
             }
-            for latitude, longitude, date, connected_ids in zip(
-                latitudes, longitudes, dates, connected_basin_ids, strict=True
-            )
-        ]
+            if missions is not None:
+                params["missions"] = missions
+            if extra_params:
+                params.update(extra_params)
+            params_batch.append(params)
         return query_spec, params_batch, basin_ids
