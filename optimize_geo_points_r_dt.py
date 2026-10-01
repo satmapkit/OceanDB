@@ -197,7 +197,10 @@ def main():
         for fields in itertools.permutations(trial_index_fields, length)
         if fields[0] != "date_time"
         if "date_time" not in fields
-        or fields.index("along_track_point") < fields.index("date_time")
+        or (
+            "along_track_point" in fields
+            and fields.index("along_track_point") < fields.index("date_time")
+        )
     ]
     trial_indexes.append([])
 
