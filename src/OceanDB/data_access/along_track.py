@@ -45,11 +45,18 @@ class AlongTrack(BaseReadQuery):
     _along_track_nearest_neighbor_query = (
         "queries/along_track/geographic_nearest_neighbor.sql"
     )
+    _along_track_nearest_neighbor_max_radius_query = (
+        "queries/along_track/geographic_nearest_neighbor_max_radius.sql"
+    )
     _along_track_spatiotemporal_query = (
         "queries/along_track/geographic_points_in_spatialtemporal_window.sql"
     )
     _along_track_nearest_neighbor_without_mission_query = (
         "queries/along_track/geographic_nearest_neighbor_without_mission.sql"
+    )
+    _along_track_nearest_neighbor_without_mission_max_radius_query = (
+        "queries/along_track/"
+        "geographic_nearest_neighbor_without_mission_max_radius.sql"
     )
     _along_track_spatiotemporal_without_mission_query = (
         "queries/along_track/"
@@ -200,6 +207,7 @@ class AlongTrack(BaseReadQuery):
         date: datetime,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
+        max_radius: float | None = 500_000,
     ) -> Dataset[along_track_fields] | None:
         """
         Query along-track points within spatial + temporal windows.
@@ -215,6 +223,7 @@ class AlongTrack(BaseReadQuery):
                 dates=[date],
                 time_window=time_window,
                 missions=missions,
+                max_radius=max_radius,
             )
         )
 
@@ -226,6 +235,7 @@ class AlongTrack(BaseReadQuery):
         dates: list[datetime],
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
+        max_radius: float | None = 500_000,
         *,
         n_jobs: int = 1,
         chunk_size: int = 16,
@@ -244,6 +254,7 @@ class AlongTrack(BaseReadQuery):
             dates=dates,
             time_window=time_window,
             missions=missions,
+            max_radius=max_radius,
             n_jobs=n_jobs,
             chunk_size=chunk_size,
         ):
@@ -258,10 +269,21 @@ class AlongTrack(BaseReadQuery):
         dates: list[datetime],
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
+        max_radius: float | None = 500_000,
         *,
         n_jobs: int = 4,
         chunk_size: int = 16,
     ) -> Generator[tuple[int, Dataset[along_track_fields] | None], None, None]:
+        if max_radius is None:
+            sql_with_missions = self._along_track_nearest_neighbor_query
+            sql_without_missions = (
+                self._along_track_nearest_neighbor_without_mission_query
+            )
+        else:
+            sql_with_missions = self._along_track_nearest_neighbor_max_radius_query
+            sql_without_missions = (
+                self._along_track_nearest_neighbor_without_mission_max_radius_query
+            )
         """Stream indexed nearest-neighbor results as workers finish."""
         query_spec, params_batch, basin_ids = self._build_basin_query_batch(
             latitudes=latitudes,
@@ -269,9 +291,10 @@ class AlongTrack(BaseReadQuery):
             dates=dates,
             time_window=time_window,
             missions=missions,
-            sql_with_missions=self._along_track_nearest_neighbor_query,
-            sql_without_missions=self._along_track_nearest_neighbor_without_mission_query,
+            sql_with_missions=sql_with_missions,
+            sql_without_missions=sql_without_missions,
             mandatory_fields=["distance"],
+            extra_params={"max_radius": max_radius},
         )
         return self.execute_batch_read_query_stream(
             query_spec=query_spec,
