@@ -63,14 +63,6 @@ def db_with_tables(db_with_db):
 
 
 @pytest.fixture
-def db_with_indices(db_with_tables):
-    db = db_with_tables
-    db.create_indices()
-    db.create_eddy_indices()
-    return db
-
-
-@pytest.fixture
 def db_with_basin_data(db_with_tables):
     db = db_with_tables
     oceandb_etl = BasinsETL(config=db.config)
@@ -126,4 +118,12 @@ def db_with_eddy_and_alongtrack_data(db_with_all_eddy_data: EddyETL) -> AlongTra
             Path(f"{alongtrack_directory}/required_underscores_j2_2013010{i}.nc"),
             batch_size=10,
         )
+    return db
+
+
+@pytest.fixture
+def db_with_indices(db_with_eddy_and_alongtrack_data):
+    db = OceanDBInit(db_with_eddy_and_alongtrack_data.config)
+    db.create_indices()
+    db.create_eddy_indices()
     return db

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import time
+from abc import ABC
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Iterable, Iterator, Mapping
@@ -29,8 +31,17 @@ class QueryCapture:
     rendered: str
 
 
+class BaseQueryScenario(ABC):
+    def run(self, *, config: Config, observer: QueryObserver) -> None:
+        raise NotImplementedError()
+
+    @property
+    def name(self) -> str:
+        raise NotImplementedError()
+
+
 @dataclass(frozen=True)
-class QueryScenario:
+class QueryScenario(BaseQueryScenario):
     query_class: type[BaseReadQuery]
     method_name: str
     kwargs: dict[str, Any]
@@ -48,6 +59,16 @@ class QueryScenario:
         return f"{self.query_class.__name__}.{self.method_name}"
 
 
+class BatchQueryScenario(QueryScenario):
+    def run(self, *, config: Config, observer: QueryObserver) -> None:
+        query = self.query_class(config=config)
+        query.start_debug(observer)
+        try:
+            list(getattr(query, self.method_name)(**self.kwargs))
+        finally:
+            query.stop_debug()
+
+
 @dataclass(frozen=True)
 class QueryAnalysisRow:
     scenario_name: str
@@ -58,14 +79,27 @@ class QueryAnalysisRow:
     explain_result_dict: list[Any]
     explain_result_str: str
     total_cost: float | None
-    total_time: float | None
+    """
+    Total cost of the first query in the scenario, as listed by explain/analyze
+    """
+
+    single_query_sql_time: float | None
+    """
+    Time for the SQL to run of the first query in the scenario, as listed by explain/analyze.
+    If the scenario is a batch scenario, will only compute this value for the first item in the batch
+    """
+
+    total_time: float
+    """
+    Total time for the query to run, including both SQL and python.
+    """
 
 
 class QueryAnalysisRunner(ManagedIndexOceanDB):
     def __init__(
         self,
         config: Config | None = None,
-        scenarios: list[QueryScenario] | None = None,
+        scenarios: list[BaseQueryScenario] | None = None,
         managed_indices: ManagedIndices | None = None,
     ):
         super().__init__(config=config, managed_indices=managed_indices)
@@ -73,7 +107,7 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
             scenarios if scenarios is not None else self.default_scenarios()
         )
 
-    def default_scenarios(self) -> list[QueryScenario]:
+    def default_scenarios(self) -> list[BaseQueryScenario]:
         all_along_track_fields = list(along_track_schema.keys())
         all_eddy_fields = list(eddy_columns_schema.keys())
         return [
@@ -122,10 +156,10 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
 
     def analyze_statement(
         self,
-        scenario: QueryScenario,
+        scenario: BaseQueryScenario,
     ) -> QueryAnalysisRow:
 
-        captured_all = self._capture_statement_sql(scenario)
+        captured_all, total_time = self._capture_statement_sql(scenario)
 
         tables = set()
         explain_output: list[dict[str, Any]] = []
@@ -143,7 +177,8 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
             explain_result_dict=explain_output,
             explain_result_str=yaml.safe_dump(explain_output),
             total_cost=self.extract_total_cost(explain_output),
-            total_time=self.extract_total_time(explain_output),
+            single_query_sql_time=self.extract_total_time(explain_output),
+            total_time=total_time,
         )
 
     def explain_analyze_sql(self, capture: QueryCapture) -> list[dict[str, Any]]:
@@ -220,7 +255,9 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
             if isinstance(child, dict):
                 yield from self._iter_plan_nodes(child)
 
-    def _capture_statement_sql(self, scenario: QueryScenario) -> list[QueryCapture]:
+    def _capture_statement_sql(
+        self, scenario: BaseQueryScenario
+    ) -> tuple[list[QueryCapture], float]:
 
         outputs: list[QueryCapture] = []
 
@@ -229,6 +266,8 @@ class QueryAnalysisRunner(ManagedIndexOceanDB):
         ) -> None:
             outputs.append(QueryCapture(query, params, rendered))
 
+        start_time = time.time()
         scenario.run(config=self.config, observer=observer)
+        end_time = time.time()
 
-        return outputs
+        return outputs, end_time - start_time
