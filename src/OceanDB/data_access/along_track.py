@@ -3,7 +3,7 @@ from functools import cached_property
 from typing import Any, Generator, Literal
 
 from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
-from OceanDB.data_access.query_plan import plan_by_basin
+from OceanDB.data_access.query_plan import BasinPlanner, QueryPlanner
 from OceanDB.ocean_data.basins import BasinConnections, BasinMask
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas.along_track_schema import (along_track_fields,
@@ -85,6 +85,7 @@ class AlongTrack(BaseReadQuery):
         radius: float = 500_000.0,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
+        planner: QueryPlanner = BasinPlanner(1, 16),
     ) -> Dataset[along_track_fields] | None:
         """
         Query along-track points within spatial + temporal windows.
@@ -130,6 +131,7 @@ class AlongTrack(BaseReadQuery):
                 radius=radius,
                 time_window=time_window,
                 missions=missions,
+                planner=planner,
             )
         )
 
@@ -142,9 +144,7 @@ class AlongTrack(BaseReadQuery):
         radius: float = 500_000.0,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
-        *,
-        n_jobs: int = 1,
-        chunk_size: int = 16,
+        planner: QueryPlanner = BasinPlanner(1, 16),
     ) -> Generator[Dataset[along_track_fields] | None, None, None]:
         """
         Query along-track points for multiple spatial + temporal windows.
@@ -161,8 +161,7 @@ class AlongTrack(BaseReadQuery):
             radius=radius,
             time_window=time_window,
             missions=missions,
-            n_jobs=n_jobs,
-            chunk_size=chunk_size,
+            planner=planner,
         ):
             results[index] = result
         yield from results
@@ -176,9 +175,7 @@ class AlongTrack(BaseReadQuery):
         radius: float = 500_000.0,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
-        *,
-        n_jobs: int = 4,
-        chunk_size: int = 16,
+        planner: QueryPlanner = BasinPlanner(4, 16),
     ) -> Generator[tuple[int, Dataset[along_track_fields] | None], None, None]:
         """Stream indexed spatial-temporal query results as workers finish."""
         query_spec, params_batch, basin_ids = self._build_basin_query_batch(
@@ -195,7 +192,7 @@ class AlongTrack(BaseReadQuery):
             query_spec=query_spec,
             fields=fields,
             params_batch=params_batch,
-            plan=plan_by_basin(basin_ids, n_jobs=n_jobs, chunk_size=chunk_size),
+            plan=planner.plan(params_batch=params_batch, basin_ids=basin_ids),
             dataset_name="along_track",
         )
 
@@ -208,6 +205,7 @@ class AlongTrack(BaseReadQuery):
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
         max_radius: float | None = 500_000,
+        planner: QueryPlanner = BasinPlanner(1, 16),
     ) -> Dataset[along_track_fields] | None:
         """
         Query along-track points within spatial + temporal windows.
@@ -224,6 +222,7 @@ class AlongTrack(BaseReadQuery):
                 time_window=time_window,
                 missions=missions,
                 max_radius=max_radius,
+                planner=planner,
             )
         )
 
@@ -236,9 +235,7 @@ class AlongTrack(BaseReadQuery):
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
         max_radius: float | None = 500_000,
-        *,
-        n_jobs: int = 1,
-        chunk_size: int = 16,
+        planner: QueryPlanner = BasinPlanner(1, 16),
     ) -> Generator[Dataset[along_track_fields] | None, None, None]:
         """
         Query nearest neighbors for multiple points using a prepared batch query.
@@ -255,8 +252,7 @@ class AlongTrack(BaseReadQuery):
             time_window=time_window,
             missions=missions,
             max_radius=max_radius,
-            n_jobs=n_jobs,
-            chunk_size=chunk_size,
+            planner=planner,
         ):
             results[index] = result
         yield from results
@@ -270,9 +266,7 @@ class AlongTrack(BaseReadQuery):
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
         max_radius: float | None = 500_000,
-        *,
-        n_jobs: int = 4,
-        chunk_size: int = 16,
+        planner: QueryPlanner = BasinPlanner(4, 16),
     ) -> Generator[tuple[int, Dataset[along_track_fields] | None], None, None]:
         if max_radius is None:
             sql_with_missions = self._along_track_nearest_neighbor_query
@@ -300,7 +294,7 @@ class AlongTrack(BaseReadQuery):
             query_spec=query_spec,
             fields=fields,
             params_batch=params_batch,
-            plan=plan_by_basin(basin_ids, n_jobs=n_jobs, chunk_size=chunk_size),
+            plan=planner.plan(params_batch=params_batch, basin_ids=basin_ids),
             dataset_name="along_track",
         )
 

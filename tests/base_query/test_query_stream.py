@@ -3,7 +3,7 @@ import random
 import pytest
 
 from OceanDB.data_access.base_query import BaseReadQuery, QueryPlan
-from OceanDB.data_access.query_plan import plan_by_basin
+from OceanDB.data_access.query_plan import BasinPlanner, LatitudePlanner
 from OceanDB.query_spec import QuerySpec
 
 
@@ -117,7 +117,9 @@ def test_execute_batch_read_query_stream_emits_indexed_results(monkeypatch):
 def test_plan_by_basin_groups_by_lookup_basin_and_assigns_every_index():
     basin_ids = [1, 2, 1, 1, 3, 2, 1]
 
-    plan = plan_by_basin(basin_ids, n_jobs=2, chunk_size=2)
+    plan = BasinPlanner(2, 2).plan(
+        params_batch=[{} for _ in basin_ids], basin_ids=basin_ids
+    )
     plan.validate(len(basin_ids))
 
     chunk_indices = {}
@@ -137,4 +139,28 @@ def test_plan_by_basin_groups_by_lookup_basin_and_assigns_every_index():
 def test_plan_by_basin_rejects_invalid_limits():
     for n_jobs, chunk_size in [(0, 1), (1, 0)]:
         with pytest.raises(ValueError):
-            plan_by_basin([1], n_jobs=n_jobs, chunk_size=chunk_size)
+            BasinPlanner(n_jobs, chunk_size).plan(params_batch=[{}], basin_ids=[1])
+
+
+def test_plan_by_latitude_groups_sorted_points_and_balances_jobs():
+    latitudes = [40.0, -20.0, 10.0, -20.0, 0.0, 30.0, 20.0]
+    plan = LatitudePlanner(2, 2).plan(
+        params_batch=[{"latitude": latitude} for latitude in latitudes], basin_ids=[]
+    )
+    plan.validate(len(latitudes))
+
+    assert len(plan.jobs) == 4
+    assert plan.job_chunks() == [[[1, 3], [6, 5]], [[4, 2], [0]]]
+    assert set(plan.jobs.values()) == {0, 1}
+
+
+def test_plan_by_latitude_empty_and_invalid_limits():
+    plan = LatitudePlanner(2, 2).plan(params_batch=[], basin_ids=[])
+    plan.validate(0)
+    assert plan.chunks == plan.jobs == {}
+
+    for n_jobs, chunk_size in [(0, 1), (1, 0)]:
+        with pytest.raises(ValueError):
+            LatitudePlanner(n_jobs, chunk_size).plan(
+                params_batch=[{"latitude": 1.0}], basin_ids=[]
+            )
