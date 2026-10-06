@@ -4,10 +4,12 @@ from OceanDB.data_access.base_query import QueryPlan
 
 
 def plan_by_basin(basin_ids: list[int], *, n_jobs: int, chunk_size: int) -> QueryPlan:
-    """Group indices by lookup basin, chunk them, and balance jobs by size.
+    """
+    Group query points by lookup basin, chunk them, and balance jobs by size.
+    There will be at least as many chunks as queried basins.
 
-    Basin identity here is the lookup basin for each point, not its connected
-    basin set. Every input index is assigned to exactly one chunk.
+    basin_ids here are the lookup basins for each point, not the connected
+    basin set.
     """
     if n_jobs < 1:
         raise ValueError("n_jobs must be at least 1")
