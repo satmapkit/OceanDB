@@ -1,13 +1,16 @@
 from datetime import datetime
+from inspect import signature
 
 from OceanDB.data_access.along_track import AlongTrack
+from OceanDB.data_access.query_plan import BasinPlanner, LatitudePlanner
 from OceanDB.schemas.along_track_schema import along_track_schema
 from tests.database.fixtures import *
 
 pytestmark = pytest.mark.unit
 
 
-def test_geographic_nearest_neighbors_stream(config, monkeypatch):
+@pytest.mark.parametrize("planner_type", [BasinPlanner, LatitudePlanner])
+def test_geographic_nearest_neighbors_stream(config, monkeypatch, planner_type):
     atdb = AlongTrack(config=config)
     latitudes = [71.0, 26.0, 22.0]
     longitudes = [-142.0, -45.0, 64.0]
@@ -44,8 +47,7 @@ def test_geographic_nearest_neighbors_stream(config, monkeypatch):
             latitudes=latitudes,
             longitudes=longitudes,
             dates=dates,
-            n_jobs=2,
-            chunk_size=2,
+            planner=planner_type(2, 2),
         )
     )
     assert (0, [("data 1", [14])]) in result
@@ -53,7 +55,8 @@ def test_geographic_nearest_neighbors_stream(config, monkeypatch):
     assert (2, [("data 3", [13])]) in result
 
 
-def test_geographic_r_dt_stream(config, monkeypatch):
+@pytest.mark.parametrize("planner_type", [BasinPlanner, LatitudePlanner])
+def test_geographic_r_dt_stream(config, monkeypatch, planner_type):
     atdb = AlongTrack(config=config)
     latitudes = [71.0, 26.0, 22.0]
     longitudes = [-142.0, -45.0, 64.0]
@@ -90,8 +93,7 @@ def test_geographic_r_dt_stream(config, monkeypatch):
             latitudes=latitudes,
             longitudes=longitudes,
             dates=dates,
-            n_jobs=2,
-            chunk_size=2,
+            planner=planner_type(2, 2),
         )
     )
     assert (0, [("data 1", [14])]) in result
@@ -101,6 +103,7 @@ def test_geographic_r_dt_stream(config, monkeypatch):
 
 def test_ordered_batch_wrapper_reorders_stream_results(monkeypatch):
     query = AlongTrack.__new__(AlongTrack)
+    planner = BasinPlanner(3, 1)
     first, last = object(), object()
     captured = {}
 
@@ -116,11 +119,26 @@ def test_ordered_batch_wrapper_reorders_stream_results(monkeypatch):
             latitudes=[1.0, 2.0, 3.0],
             longitudes=[4.0, 5.0, 6.0],
             dates=[datetime(2020, 1, 1)] * 3,
-            n_jobs=3,
-            chunk_size=1,
+            planner=planner,
         )
     )
 
     assert results == [first, None, last]
-    assert captured["n_jobs"] == 3
-    assert captured["chunk_size"] == 1
+    assert captured["planner"] is planner
+
+
+@pytest.mark.parametrize(
+    "method_name,n_jobs",
+    [
+        ("geographic_point_in_r_dt", 1),
+        ("geographic_point_in_r_dt_batch", 1),
+        ("geographic_point_in_r_dt_stream", 4),
+        ("geographic_nearest_neighbors", 1),
+        ("geographic_nearest_neighbors_batch", 1),
+        ("geographic_nearest_neighbors_stream", 4),
+    ],
+)
+def test_default_planner_preserves_execution_settings(method_name, n_jobs):
+    planner = signature(getattr(AlongTrack, method_name)).parameters["planner"].default
+    assert isinstance(planner, BasinPlanner)
+    assert (planner.n_jobs, planner.chunk_size) == (n_jobs, 16)
