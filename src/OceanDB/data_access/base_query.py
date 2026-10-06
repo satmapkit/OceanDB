@@ -264,10 +264,8 @@ class BaseReadQuery(OceanDB):
         results: Queue[_QueryResult | _WorkerFinished] = Queue()
 
         def run_job(job: QueryJob) -> None:
-            print("running job", job)
             try:
                 for chunk in job:
-                    print("running chunk", chunk, "of job", job)
                     chunk_params = [params[index] for index in chunk]
                     chunk_results = self.execute_batch_read_query(
                         query_spec=query_spec,
@@ -275,7 +273,6 @@ class BaseReadQuery(OceanDB):
                         params_batch=chunk_params,
                         dataset_name=dataset_name,
                     )
-                    print("done with chunk", chunk, "now putting results in")
                     for index, result in zip(chunk, chunk_results, strict=True):
                         results.put(_QueryResult(index, result))
             except Exception as error:
@@ -292,7 +289,6 @@ class BaseReadQuery(OceanDB):
                 result = results.get()
                 if isinstance(result, _WorkerFinished):
                     finished += 1
-                    print("worker finished! Now at", finished, "out of", len(plan))
                     if result.error is not None:
                         raise result.error
                 else:
