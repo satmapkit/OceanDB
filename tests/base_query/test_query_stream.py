@@ -1,4 +1,5 @@
 import random
+from threading import Event
 
 import pytest
 
@@ -14,14 +15,14 @@ def test_plan_good():
         n_jobs = random.randint(1, 20)
         plan = QueryPlan(
             {i: i % n_chunks for i in range(n_indices)},
-            {c: c % n_jobs for c in range(n_chunks)},
+            n_jobs,
         )
 
         plan.validate(n_indices)
-        jobs = plan.job_chunks()
-        for i, job in enumerate(jobs):
-            chunk_0 = job[0]
-            assert chunk_0 == [x for x in range(n_indices) if x % n_chunks == i]
+        assert plan.chunk_indices() == [
+            [x for x in range(n_indices) if x % n_chunks == i] for i in range(n_chunks)
+        ]
+        assert len(plan) == min(n_jobs, n_chunks)
 
         with pytest.raises(ValueError):
             plan.validate(n_indices - 1)
@@ -35,34 +36,14 @@ def test_plan_bad_missing_index():
     n_indices = 5
     for missing_index in range(n_indices):
         chunks = {i: 0 for i in range(n_indices) if i != missing_index}
-        jobs = {0: 0}
-        plan = QueryPlan(chunks, jobs)
+        plan = QueryPlan(chunks, 1)
         with pytest.raises(ValueError):
             plan.validate(n_indices)
 
 
-def test_plan_bad_missing_chunk():
-    n_chunks = 5
-    for missing_chunk in range(n_chunks):
-        chunks = {i: i for i in range(n_chunks)}  # 1 index per chunk
-        jobs = {
-            i: 0 for i in range(n_chunks) if i != missing_chunk
-        }  # 1 job for all chunks
-        plan = QueryPlan(chunks, jobs)
-        with pytest.raises(ValueError):
-            plan.validate(n_chunks)
-
-
-def test_plan_bad_extra_chunk():
-    n_indices = 2
-    chunks = {i: i for i in range(n_indices)}  # 1 index per chunk
-
-    jobs = {i: 0 for i in range(n_indices)}  # 1 job for all chunks
-    jobs[n_indices + 1] = 0  # and an extra chunk
-
-    plan = QueryPlan(chunks, jobs)
-    with pytest.raises(ValueError):
-        plan.validate(n_indices)
+def test_plan_rejects_invalid_worker_count():
+    with pytest.raises(ValueError, match="n_jobs"):
+        QueryPlan({0: 0}, 0).validate(1)
 
 
 def test_execute_batch_read_query_stream_emits_indexed_results(monkeypatch):
@@ -89,11 +70,7 @@ def test_execute_batch_read_query_stream_emits_indexed_results(monkeypatch):
             3: 1,
             4: 2,
         },
-        {
-            0: 0,
-            2: 0,
-            1: 1,
-        },
+        2,
     )
 
     print("about to read stream")
@@ -114,6 +91,44 @@ def test_execute_batch_read_query_stream_emits_indexed_results(monkeypatch):
     ]
 
 
+def test_empty_plan_yields_no_results(monkeypatch):
+    query = BaseReadQuery.__new__(BaseReadQuery)
+    monkeypatch.setattr(
+        query,
+        "execute_batch_read_query",
+        lambda **kwargs: pytest.fail("unexpected query"),
+    )
+    assert (
+        list(
+            query.execute_batch_read_query_stream(
+                query_spec=QuerySpec("", {}),
+                fields=[],
+                params_batch=[],
+                plan=QueryPlan({}, 2),
+            )
+        )
+        == []
+    )
+
+
+def test_worker_error_propagates(monkeypatch):
+    query = BaseReadQuery.__new__(BaseReadQuery)
+
+    def fail(**kwargs):
+        raise RuntimeError("query failed")
+
+    monkeypatch.setattr(query, "execute_batch_read_query", fail)
+    with pytest.raises(RuntimeError, match="query failed"):
+        list(
+            query.execute_batch_read_query_stream(
+                query_spec=QuerySpec("", {}),
+                fields=[],
+                params_batch=[{"value": 0}],
+                plan=QueryPlan({0: 0}, 1),
+            )
+        )
+
+
 def test_plan_by_basin_groups_by_lookup_basin_and_assigns_every_index():
     basin_ids = [1, 2, 1, 1, 3, 2, 1]
 
@@ -132,8 +147,7 @@ def test_plan_by_basin_groups_by_lookup_basin_and_assigns_every_index():
         assert len(indices) <= 2
         assert len({basin_ids[index] for index in indices}) == 1
 
-    # The greedy assignment should distribute this workload across both jobs.
-    assert set(plan.jobs.values()) == {0, 1}
+    assert len(plan) == 2
 
 
 def test_plan_by_basin_rejects_invalid_limits():
@@ -142,22 +156,22 @@ def test_plan_by_basin_rejects_invalid_limits():
             BasinPlanner(n_jobs, chunk_size).plan(params_batch=[{}], basin_ids=[1])
 
 
-def test_plan_by_latitude_groups_sorted_points_and_balances_jobs():
+def test_plan_by_latitude_groups_sorted_points():
     latitudes = [40.0, -20.0, 10.0, -20.0, 0.0, 30.0, 20.0]
     plan = LatitudePlanner(2, 2).plan(
         params_batch=[{"latitude": latitude} for latitude in latitudes], basin_ids=[]
     )
     plan.validate(len(latitudes))
 
-    assert len(plan.jobs) == 4
-    assert plan.job_chunks() == [[[1, 3], [6, 5]], [[4, 2], [0]]]
-    assert set(plan.jobs.values()) == {0, 1}
+    assert plan.chunk_indices() == [[1, 3], [4, 2], [6, 5], [0]]
+    assert len(plan) == 2
 
 
 def test_plan_by_latitude_empty_and_invalid_limits():
     plan = LatitudePlanner(2, 2).plan(params_batch=[], basin_ids=[])
     plan.validate(0)
-    assert plan.chunks == plan.jobs == {}
+    assert plan.chunks == {}
+    assert len(plan) == 0
 
     for n_jobs, chunk_size in [(0, 1), (1, 0)]:
         with pytest.raises(ValueError):

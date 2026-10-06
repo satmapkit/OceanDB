@@ -1,4 +1,4 @@
-"""Helpers for distributing read-query indices across worker jobs."""
+"""Helpers for grouping read-query indices into worker chunks."""
 
 from abc import ABC, abstractmethod
 from typing import Any
@@ -26,7 +26,7 @@ class BasinPlanner(QueryPlanner):
 
     def plan_by_basin(self, basin_ids: list[int]) -> QueryPlan:
         """
-        Group query points by lookup basin, chunk them, and balance jobs by size.
+        Group query points by lookup basin and chunk them.
         There will be at least as many chunks as queried basins.
 
         basin_ids here are the lookup basins for each point, not the connected
@@ -54,20 +54,7 @@ class BasinPlanner(QueryPlanner):
             for index in indices
         }
 
-        # Place larger chunks first on the currently least-loaded job.
-        jobs: dict[int, int] = {}
-        job_sizes = [0] * self.n_jobs
-        for chunk, indices in sorted(
-            chunk_indices.items(), key=lambda item: (-len(item[1]), item[0])
-        ):
-            job = min(
-                range(self.n_jobs),
-                key=lambda candidate: (job_sizes[candidate], candidate),
-            )
-            jobs[chunk] = job
-            job_sizes[job] += len(indices)
-
-        return QueryPlan(chunks, jobs)
+        return QueryPlan(chunks, self.n_jobs)
 
 
 class LatitudePlanner(QueryPlanner):
@@ -93,15 +80,4 @@ class LatitudePlanner(QueryPlanner):
             for index in sorted_indices[start : start + self.chunk_size]
         }
 
-        jobs: dict[int, int] = {}
-        job_sizes = [0] * self.n_jobs
-        for start in range(0, len(sorted_indices), self.chunk_size):
-            chunk = start // self.chunk_size
-            job = min(
-                range(self.n_jobs),
-                key=lambda candidate: (job_sizes[candidate], candidate),
-            )
-            jobs[chunk] = job
-            job_sizes[job] += min(self.chunk_size, len(sorted_indices) - start)
-
-        return QueryPlan(chunks, jobs)
+        return QueryPlan(chunks, self.n_jobs)
