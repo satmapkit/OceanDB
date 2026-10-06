@@ -1,9 +1,9 @@
-import itertools
 import json
 import random
 import time
 from dataclasses import asdict
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, get_args
 
 import numpy as np
@@ -22,6 +22,8 @@ from OceanDB.schemas.along_track_schema import along_track_schema
 from OceanDB.data_access.query_plan import BasinPlanner, LatitudePlanner
 
 TIMEOUT_SECONDS = 900 * 10
+REPEATS = 5
+REPEATED_OUTPUT = Path("index_benchmark_repeated.json")
 
 
 def json_default(value: object) -> object:
@@ -111,11 +113,34 @@ def batch_scenario_grid(
     )
 
 
-def main():
+def scenario_labels(scenarios: list[BatchQueryScenario]) -> list[dict[str, Any]]:
+    return [
+        {
+            "method": scenario.method_name,
+            "planner": type(scenario.kwargs["planner"]).__name__,
+            "n_jobs": scenario.kwargs["planner"].n_jobs,
+            "chunk_size": scenario.kwargs["planner"].chunk_size,
+        }
+        for scenario in scenarios
+    ]
+
+
+def save_trial(output: Path, results: dict, trial: dict) -> None:
+    results["trials"].append(trial)
+    temporary = output.with_name(output.name + ".tmp")
+    temporary.write_text(
+        json.dumps(results, default=json_default, indent=2, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(output)
+
+
+def main(repeats: int = REPEATS, json_output: Path = REPEATED_OUTPUT):
+    if repeats < 1:
+        raise ValueError("repeats must be positive")
     # =======================================
     # setup output
     # =======================================
-    json_output = "index_benchmark.json"
     central_date = datetime(2022, 10, 15)
     time_window = timedelta(days=10)
     data_start = central_date - time_window
@@ -234,6 +259,18 @@ def main():
         IndexNode(database_name=index_definitons_short_name(basic_indexes + trial), trial_indexes=trial)
         for i, trial in enumerate(trial_indexes)
     ]
+    definitions = [
+        {"database_name": node.database_name,
+         "trial_indexes": [asdict(index) for index in node.trial_indexes]}
+        for node in nodes
+    ]
+    labels = scenario_labels(scenarios)
+    if json_output.exists():
+        results = json.loads(json_output.read_text(encoding="utf-8"))
+        if results["scenarios"] != labels or results["indexes"] != definitions:
+            raise ValueError(f"Benchmark configuration differs from {json_output}")
+    else:
+        results = {"scenarios": labels, "indexes": definitions, "trials": []}
     test_dbs = [
         setup_index_performance_test(
             source_db=ocean_db_init,
@@ -249,34 +286,29 @@ def main():
     # =======================================
     print("searching")
 
-    for node, (test_db, index_sizes) in zip(nodes, test_dbs):
-        if node.database_name in ["m_b_a_d"]:
-            continue
-        print("running trial for db", node.database_name, node.pretty_name())
-        t1 = time.time()
-        node.index_sizes = index_sizes
-        try:
-            performance = run_index_performance_test_with_timeout(
-                test_db,
-                scenarios,
-                timeout_seconds=TIMEOUT_SECONDS,
-            )
-            node.performance = performance
-            node.error = sum(x.total_time for x in performance)
-        except Exception:
-            node.error = None
-
-        # save output
-        print("done in", time.time() - t1, "seconds.")
-        print("saving to", json_output)
-        with open(json_output, "w", encoding="utf-8") as output_file:
-            json.dump(
-                [asdict(node) for node in nodes],
-                output_file,
-                default=json_default,
-                indent=2,
-                allow_nan=False,
-            )
+    for run in range(1, repeats + 1):
+        for node, (test_db, index_sizes) in zip(nodes, test_dbs):
+            if any(t["run"] == run and t["database_name"] == node.database_name
+                   for t in results["trials"]):
+                continue
+            print("running pass", run, "for db", node.database_name, node.pretty_name())
+            t1 = time.time()
+            try:
+                performance = run_index_performance_test_with_timeout(
+                    test_db, scenarios, timeout_seconds=TIMEOUT_SECONDS,
+                )
+                if len(performance) != len(labels):
+                    raise ValueError("Incomplete scenario results")
+                trial = {"run": run, "database_name": node.database_name,
+                         "index_sizes": index_sizes,
+                         "performance": [asdict(row) for row in performance],
+                         "error": None}
+            except Exception as exc:
+                trial = {"run": run, "database_name": node.database_name,
+                         "index_sizes": index_sizes, "performance": None,
+                         "error": str(exc)}
+            save_trial(json_output, results, trial)
+            print("done in", time.time() - t1, "seconds; saved to", json_output)
 
 
 if __name__ == "__main__":
