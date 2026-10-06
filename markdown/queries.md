@@ -146,6 +146,7 @@ Parameters:
 - `radius`: radius in meters, default `500_000.0`
 - `time_window`: half-width of the time window, default `timedelta(days=10)`
 - `missions`: optional mission filter, defaults to all supported missions
+- `planner`: query planner, defaults to `BasinPlanner(1, 16)`
 
 Example:
 
@@ -186,8 +187,7 @@ Parameters:
 - `radius`
 - `time_window`
 - `missions`
-- `n_jobs` (defaults to `1`, preserving sequential execution)
-- `chunk_size` (maximum query points in one chunk)
+- `planner` (defaults to `BasinPlanner(1, 16)`, preserving sequential execution)
 
 Example:
 
@@ -218,6 +218,7 @@ Notes:
 - Each yielded value is a `Dataset` or `None`.
 - Input list lengths must match. Mismatched lengths raise `ValueError`.
 - The batch implementation is tested against the single-query behavior.
+- `geographic_point_in_r_dt_stream(...)` defaults to `BasinPlanner(4, 16)` and yields indexed results as workers finish.
 
 See [tests/along_track/test_spatiotemporal_queries.py](/Users/mddarr/delat/azath/ocean/OceanDB/tests/along_track/test_spatiotemporal_queries.py).
 
@@ -232,6 +233,7 @@ Parameters:
 - `date`
 - `time_window`
 - `missions`
+- `planner` (defaults to `BasinPlanner(1, 16)`)
 
 Example:
 
@@ -272,8 +274,7 @@ Parameters:
 - `dates`
 - `time_window`
 - `missions`
-- `n_jobs` (defaults to `1`, preserving sequential execution)
-- `chunk_size` (maximum query points in one chunk)
+- `planner` (defaults to `BasinPlanner(1, 16)`, preserving sequential execution)
 
 Example:
 
@@ -303,6 +304,7 @@ Notes:
 - Yields one nearest-neighbor result per input point.
 - Each yielded value is a `Dataset` or `None`.
 - As with the other batch query, input lengths must match.
+- `geographic_nearest_neighbors_stream(...)` defaults to `BasinPlanner(4, 16)` and yields indexed results as workers finish.
 
 The query surface is implemented in [src/OceanDB/data_access/along_track.py](/Users/mddarr/delat/azath/ocean/OceanDB/src/OceanDB/data_access/along_track.py).
 
