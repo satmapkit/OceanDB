@@ -259,6 +259,11 @@ class BaseReadQuery(OceanDB):
                         chunk = chunks.get_nowait()
                     except Empty:
                         break
+
+                    m = len(plan.chunk_indices())
+                    n = chunks.qsize()
+                    print(f"starting chunk {m-n} of {m}")
+
                     chunk_params = [params[index] for index in chunk]
                     chunk_results = self.execute_batch_read_query(
                         query_spec=query_spec,
@@ -268,6 +273,8 @@ class BaseReadQuery(OceanDB):
                     )
                     for index, result in zip(chunk, chunk_results, strict=True):
                         results.put(_QueryResult(index, result))
+
+                    print(f"finished chunk {m-n} of {m}")
             except Exception as error:
                 results.put(_WorkerFinished(error))
             else:
