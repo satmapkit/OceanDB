@@ -29,6 +29,15 @@ def index_definition(kind: str, fields: tuple[str, ...]) -> IndexDefinition:
     """
     return IndexDefinition(name=name, table="along_track", create_sql=create_sql)
 
+def index_definitons_short_name(indexes: list[IndexDefinition]) -> str:
+    prefixes = ["experiment_", "static_"]
+    def remove_prefix(s: str) -> str:
+        for p in prefixes:
+            if s.startswith(p):
+                return s[len(p):]
+        return p
+    return "_".join(remove_prefix(x.name) for x in indexes)
+
 
 def ocean_db_init_for_test_db(
     source_db: OceanDBInit,

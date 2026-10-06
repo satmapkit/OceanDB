@@ -12,14 +12,15 @@ from OceanDB.data_access.along_track import AlongTrack, Mission
 from OceanDB.etl import AlongTrackETL
 from OceanDB.index_experiment import (IndexNode, index_definition,
                                       run_index_performance_test_with_timeout,
-                                      setup_index_performance_test)
+                                      setup_index_performance_test,
+                                      index_definitons_short_name)
 from OceanDB.managed_indices import ManagedIndices
 from OceanDB.ocean_data.basins import BasinMask
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.query_analysis import BaseQueryScenario, BatchQueryScenario
 from OceanDB.schemas.along_track_schema import along_track_schema
 
-TIMEOUT_SECONDS = 900
+TIMEOUT_SECONDS = 900 * 10
 
 
 def json_default(value: object) -> object:
@@ -125,158 +126,158 @@ def main():
     # create scenarios
     # =======================================
     scenarios: list[BaseQueryScenario] = [
-        batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=None,
-            scenario_kwargs={"radius": 50_000, "n_jobs": 4},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_nearest_neighbors_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=None,
-            scenario_kwargs={"max_radius": None, "n_jobs": 4},
-        ),
+        # batch_scenario_grid(
+        #     method_name="geographic_point_in_r_dt_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=None,
+        #     scenario_kwargs={"radius": 50_000, "n_jobs": 8, "chunk_size": 1000},
+        # ),
         batch_scenario_grid(
             method_name="geographic_nearest_neighbors_batch",
             time_window=time_window,
             central_date=central_date,
             resolution=1,
             missions=None,
-            scenario_kwargs={"max_radius": 500_000, "n_jobs": 4},
+            scenario_kwargs={"max_radius": None, "n_jobs": 1, "chunk_size": 1000},
         ),
-        batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"radius": 50_000, "n_jobs": 4},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_nearest_neighbors_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"max_radius": None, "n_jobs": 4},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_nearest_neighbors_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"max_radius": 500_000, "n_jobs": 4},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=["s6a", "j3n"],
-            scenario_kwargs={"radius": 50_000, "n_jobs": 4},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_nearest_neighbors_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=["s6a", "j3n"],
-            scenario_kwargs={"max_radius": None, "n_jobs": 4},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_nearest_neighbors_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=["s6a", "j3n"],
-            scenario_kwargs={"max_radius": 500_000, "n_jobs": 4},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"radius": 50_000, "n_jobs": 1, "chunk_size": 1e20},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_nearest_neighbors_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"max_radius": 500_000, "n_jobs": 1, "chunk_size": 1e20},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"radius": 50_000, "n_jobs": 4, "chunk_size": 1e20},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_nearest_neighbors_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"max_radius": 500_000, "n_jobs": 4, "chunk_size": 1e20},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"radius": 50_000, "n_jobs": 4, "chunk_size": 128},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_nearest_neighbors_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"max_radius": 500_000, "n_jobs": 4, "chunk_size": 128},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"radius": 50_000, "n_jobs": 1, "chunk_size": 16},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"radius": 50_000, "n_jobs": 1, "chunk_size": 16},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"radius": 50_000, "n_jobs": 1, "chunk_size": 1e20},
-        ),
-        batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=1,
-            missions=all_missions,
-            scenario_kwargs={"radius": 50_000, "n_jobs": 1, "chunk_size": 1e20},
-        ),
+        # batch_scenario_grid(
+        #     method_name="geographic_nearest_neighbors_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=None,
+        #     scenario_kwargs={"max_radius": 500_000, "n_jobs": 4},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_point_in_r_dt_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"radius": 50_000, "n_jobs": 4},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_nearest_neighbors_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"max_radius": None, "n_jobs": 4},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_nearest_neighbors_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"max_radius": 500_000, "n_jobs": 4},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_point_in_r_dt_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=["s6a", "j3n"],
+        #     scenario_kwargs={"radius": 50_000, "n_jobs": 4},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_nearest_neighbors_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=["s6a", "j3n"],
+        #     scenario_kwargs={"max_radius": None, "n_jobs": 4},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_nearest_neighbors_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=["s6a", "j3n"],
+        #     scenario_kwargs={"max_radius": 500_000, "n_jobs": 4},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_point_in_r_dt_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"radius": 50_000, "n_jobs": 1, "chunk_size": 1e20},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_nearest_neighbors_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"max_radius": 500_000, "n_jobs": 1, "chunk_size": 1e20},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_point_in_r_dt_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"radius": 50_000, "n_jobs": 4, "chunk_size": 1e20},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_nearest_neighbors_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"max_radius": 500_000, "n_jobs": 4, "chunk_size": 1e20},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_point_in_r_dt_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"radius": 50_000, "n_jobs": 4, "chunk_size": 128},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_nearest_neighbors_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"max_radius": 500_000, "n_jobs": 4, "chunk_size": 128},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_point_in_r_dt_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"radius": 50_000, "n_jobs": 1, "chunk_size": 16},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_point_in_r_dt_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"radius": 50_000, "n_jobs": 1, "chunk_size": 16},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_point_in_r_dt_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"radius": 50_000, "n_jobs": 1, "chunk_size": 1e20},
+        # ),
+        # batch_scenario_grid(
+        #     method_name="geographic_point_in_r_dt_batch",
+        #     time_window=time_window,
+        #     central_date=central_date,
+        #     resolution=1,
+        #     missions=all_missions,
+        #     scenario_kwargs={"radius": 50_000, "n_jobs": 1, "chunk_size": 1e20},
+        # ),
     ]
 
     # =======================================
@@ -300,18 +301,22 @@ def main():
         "date_time",
         "mission",
     )
+    # trial_indexes = [
+    #     [index_definition("experiment", fields)]
+    #     for length in (2, 3, 4)
+    #     for fields in itertools.permutations(trial_index_fields, length)
+    #     if fields[0] != "date_time"
+    #     if "date_time" not in fields
+    #     or (
+    #         "along_track_point" in fields
+    #         and fields.index("along_track_point") < fields.index("date_time")
+    #     )
+    # ]
     trial_indexes = [
-        [index_definition("experiment", fields)]
-        for length in (2, 3, 4)
-        for fields in itertools.permutations(trial_index_fields, length)
-        if fields[0] != "date_time"
-        if "date_time" not in fields
-        or (
-            "along_track_point" in fields
-            and fields.index("along_track_point") < fields.index("date_time")
-        )
-    ]
-    trial_indexes.append([])
+            [index_definition("experiment", ("basin_id", "along_track_point"))],
+            # [index_definition("experiment", ("basin_id", "mission", "along_track_point"))],
+            ]
+    trial_indexes.insert(0, [])
 
     all_indexes = tuple(basic_indexes) + tuple(
         index for trial in trial_indexes for index in trial
@@ -350,7 +355,7 @@ def main():
     print("building indexes for each test")
     t1 = time.time()
     nodes = [
-        IndexNode(database_name=f"trial_{i}", trial_indexes=trial)
+        IndexNode(database_name=index_definitons_short_name(basic_indexes + trial), trial_indexes=trial)
         for i, trial in enumerate(trial_indexes)
     ]
     test_dbs = [
@@ -369,6 +374,8 @@ def main():
     print("searching")
 
     for node, (test_db, index_sizes) in zip(nodes, test_dbs):
+        if node.database_name in ["m_b_a_d"]:
+            continue
         print("running trial for db", node.database_name, node.pretty_name())
         t1 = time.time()
         node.index_sizes = index_sizes
