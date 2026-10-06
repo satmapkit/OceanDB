@@ -153,32 +153,41 @@ def main(repeats: int = REPEATS, json_output: Path = REPEATED_OUTPUT):
     # =======================================
     planners = [
             LatitudePlanner(n_jobs, chunk_size)
-            for n_jobs in [1, 2, 4, 8, 16]
-            for chunk_size in [16, 2**16]
+            for n_jobs in [8]
+            for chunk_size in [256]
     ] + [
             BasinPlanner(n_jobs, chunk_size)
-            for n_jobs in [1, 2, 4, 8, 16]
-            for chunk_size in [16, 2**16]
+            for n_jobs in [8]
+            for chunk_size in [256]
             ]
+    resolution = 1
     scenarios = [
         batch_scenario_grid(
-            method_name="geographic_nearest_neighbors_batch",
+            method_name="geographic_point_in_r_dt_batch",
             time_window=time_window,
             central_date=central_date,
-            resolution=1,
+            resolution=resolution,
             missions=all_missions,
-            scenario_kwargs={"max_radius": None, "planner": planner},
+            scenario_kwargs={"radius": 50_000, "planner": planner},
         ) for planner in planners
     ] + [
         batch_scenario_grid(
             method_name="geographic_point_in_r_dt_batch",
             time_window=time_window,
             central_date=central_date,
-            resolution=1,
-            missions=all_missions,
+            resolution=resolution,
+            missions=None,
             scenario_kwargs={"radius": 50_000, "planner": planner},
-        )
-        for planner in planners
+        ) for planner in planners
+    ] + [
+        batch_scenario_grid(
+            method_name="geographic_nearest_neighbors_batch",
+            time_window=time_window,
+            central_date=central_date,
+            resolution=resolution,
+            missions=all_missions,
+            scenario_kwargs={"max_radius": None, "planner": planner},
+        ) for planner in planners
     ]
 
     # =======================================
@@ -295,7 +304,7 @@ def main(repeats: int = REPEATS, json_output: Path = REPEATED_OUTPUT):
             t1 = time.time()
             try:
                 performance = run_index_performance_test_with_timeout(
-                    test_db, scenarios, timeout_seconds=TIMEOUT_SECONDS,
+                    test_db, list(scenarios), timeout_seconds=TIMEOUT_SECONDS,
                 )
                 if len(performance) != len(labels):
                     raise ValueError("Incomplete scenario results")
@@ -312,4 +321,4 @@ def main(repeats: int = REPEATS, json_output: Path = REPEATED_OUTPUT):
 
 
 if __name__ == "__main__":
-    main()
+    main(repeats=5)
