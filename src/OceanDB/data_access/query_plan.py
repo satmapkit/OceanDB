@@ -44,3 +44,35 @@ def plan_by_basin(basin_ids: list[int], *, n_jobs: int, chunk_size: int) -> Quer
         job_sizes[job] += len(indices)
 
     return QueryPlan(chunks, jobs)
+
+
+def plan_by_latitude(
+    latitudes: list[float], *, n_jobs: int, chunk_size: int
+) -> QueryPlan:
+    """
+    Group query points by latitude into
+    ceil(# points / chunk_size) chunks.
+    """
+    if n_jobs < 1:
+        raise ValueError("n_jobs must be at least 1")
+    if chunk_size < 1:
+        raise ValueError("chunk_size must be at least 1")
+
+    sorted_indices = sorted(range(len(latitudes)), key=lambda index: latitudes[index])
+    chunks = {
+        index: start // chunk_size
+        for start in range(0, len(sorted_indices), chunk_size)
+        for index in sorted_indices[start : start + chunk_size]
+    }
+
+    jobs: dict[int, int] = {}
+    job_sizes = [0] * n_jobs
+    for start in range(0, len(sorted_indices), chunk_size):
+        chunk = start // chunk_size
+        job = min(
+            range(n_jobs), key=lambda candidate: (job_sizes[candidate], candidate)
+        )
+        jobs[chunk] = job
+        job_sizes[job] += min(chunk_size, len(sorted_indices) - start)
+
+    return QueryPlan(chunks, jobs)

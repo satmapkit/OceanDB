@@ -3,7 +3,7 @@ import random
 import pytest
 
 from OceanDB.data_access.base_query import BaseReadQuery, QueryPlan
-from OceanDB.data_access.query_plan import plan_by_basin
+from OceanDB.data_access.query_plan import plan_by_basin, plan_by_latitude
 from OceanDB.query_spec import QuerySpec
 
 
@@ -138,3 +138,23 @@ def test_plan_by_basin_rejects_invalid_limits():
     for n_jobs, chunk_size in [(0, 1), (1, 0)]:
         with pytest.raises(ValueError):
             plan_by_basin([1], n_jobs=n_jobs, chunk_size=chunk_size)
+
+
+def test_plan_by_latitude_groups_sorted_points_and_balances_jobs():
+    latitudes = [40.0, -20.0, 10.0, -20.0, 0.0, 30.0, 20.0]
+    plan = plan_by_latitude(latitudes, n_jobs=2, chunk_size=2)
+    plan.validate(len(latitudes))
+
+    assert len(plan.jobs) == 4
+    assert plan.job_chunks() == [[[1, 3], [6, 5]], [[4, 2], [0]]]
+    assert set(plan.jobs.values()) == {0, 1}
+
+
+def test_plan_by_latitude_empty_and_invalid_limits():
+    plan = plan_by_latitude([], n_jobs=2, chunk_size=2)
+    plan.validate(0)
+    assert plan.chunks == plan.jobs == {}
+
+    for n_jobs, chunk_size in [(0, 1), (1, 0)]:
+        with pytest.raises(ValueError):
+            plan_by_latitude([1.0], n_jobs=n_jobs, chunk_size=chunk_size)
