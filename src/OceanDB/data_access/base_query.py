@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from queue import Queue
+from queue import Empty, Queue
 from typing import Any, Callable, Generator, Iterable, Mapping
 
 import numpy as np
@@ -17,44 +17,30 @@ from OceanDB.query_spec import QuerySpec, render_query
 QueryObserver = Callable[[sql.Composed, Mapping[str, Any], str], None]
 
 
-QueryJob = list[list[int]]
-
-
 @dataclass(frozen=True)
 class QueryPlan:
-    """Assignment of every input query to exactly one worker chunk."""
+    """Assignment of every input query to a chunk shared by the workers."""
 
     chunks: dict[int, int]  # index -> chunk
-    jobs: dict[int, int]  # chunk -> job
+    n_jobs: int
 
     def validate(self, n_queries: int) -> None:
+        if self.n_jobs < 1:
+            raise ValueError("Invalid query plan: n_jobs must be at least 1")
         if not set(self.chunks.keys()) == set(range(n_queries)):
             raise ValueError(
                 "Invalid query plan: all indices must be allocated to a chunk"
             )
-        if not set(self.chunks.values()) == set(self.jobs.keys()):
-            raise ValueError(
-                "Invalid query plan: all chunks must be allocated to a job"
-            )
 
     def __len__(self) -> int:
-        """Number of jobs in this plan"""
-        return len(set(self.jobs.values()))
+        """Number of workers needed for this plan."""
+        return min(self.n_jobs, len(set(self.chunks.values())))
 
-    def job_chunks(self) -> list[QueryJob]:
+    def chunk_indices(self) -> list[list[int]]:
         chunks: dict[int, list[int]] = {}
         for index, chunk in self.chunks.items():
-            if chunk not in chunks:
-                chunks[chunk] = []
-            chunks[chunk].append(index)
-
-        jobs: dict[int, list[list[int]]] = {}
-        for chunk, job in self.jobs.items():
-            if job not in jobs:
-                jobs[job] = []
-            jobs[job].append(chunks[chunk])
-
-        return list(jobs.values())
+            chunks.setdefault(chunk, []).append(index)
+        return list(chunks.values())
 
 
 @dataclass(frozen=True)
@@ -253,7 +239,7 @@ class BaseReadQuery(OceanDB):
     ) -> Generator[tuple[int, Dataset[K] | None], None, None]:
         """Execute a planned batch concurrently and yield indexed results.
 
-        A worker processes its chunks sequentially, executing one batch query
+        Workers pull chunks from a shared queue, executing one batch query
         per chunk. Results are placed on an internal thread-safe queue and
         yielded in completion order; the index preserves their input identity.
         """
@@ -261,13 +247,18 @@ class BaseReadQuery(OceanDB):
         plan.validate(len(params))
 
         selected_fields = tuple(fields)
+        chunks: Queue[list[int]] = Queue()
+        for chunk in plan.chunk_indices():
+            chunks.put(chunk)
         results: Queue[_QueryResult | _WorkerFinished] = Queue()
 
-        def run_job(job: QueryJob) -> None:
-            print("running job", job)
+        def run_worker() -> None:
             try:
-                for chunk in job:
-                    print("running chunk", chunk, "of job", job)
+                while True:
+                    try:
+                        chunk = chunks.get_nowait()
+                    except Empty:
+                        break
                     chunk_params = [params[index] for index in chunk]
                     chunk_results = self.execute_batch_read_query(
                         query_spec=query_spec,
@@ -275,7 +266,6 @@ class BaseReadQuery(OceanDB):
                         params_batch=chunk_params,
                         dataset_name=dataset_name,
                     )
-                    print("done with chunk", chunk, "now putting results in")
                     for index, result in zip(chunk, chunk_results, strict=True):
                         results.put(_QueryResult(index, result))
             except Exception as error:
@@ -283,16 +273,18 @@ class BaseReadQuery(OceanDB):
             else:
                 results.put(_WorkerFinished())
 
-        with ThreadPoolExecutor(max_workers=len(plan.jobs)) as executor:
-            for job in plan.job_chunks():
-                executor.submit(run_job, job)
+        if not len(plan):
+            return
+
+        with ThreadPoolExecutor(max_workers=len(plan)) as executor:
+            for _ in range(len(plan)):
+                executor.submit(run_worker)
 
             finished = 0
             while finished < len(plan):
                 result = results.get()
                 if isinstance(result, _WorkerFinished):
                     finished += 1
-                    print("worker finished! Now at", finished, "out of", len(plan))
                     if result.error is not None:
                         raise result.error
                 else:
