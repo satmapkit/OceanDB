@@ -114,16 +114,24 @@ def batch_scenario_grid(
 
 
 def scenario_labels(scenarios: list[BatchQueryScenario]) -> list[dict[str, Any]]:
-    return [
-        {
-            "method": scenario.method_name,
-            "planner": type(scenario.kwargs["planner"]).__name__,
-            "n_jobs": scenario.kwargs["planner"].n_jobs,
-            "chunk_size": scenario.kwargs["planner"].chunk_size,
-            "other_kwargs": {key: value for key,value in scenario.kwargs.items() if key not in ["planner"]}
+    labels = []
+    excluded = {"planner", "fields", "latitudes", "longitudes", "dates"}
+    for scenario in scenarios:
+        planner = scenario.kwargs["planner"]
+        other_kwargs = {
+            key: value.total_seconds() if isinstance(value, timedelta) else value
+            for key, value in scenario.kwargs.items()
+            if key not in excluded
         }
-        for scenario in scenarios
-    ]
+        labels.append({
+            "method": scenario.method_name,
+            "planner": type(planner).__name__,
+            "n_jobs": planner.n_jobs,
+            "chunk_size": planner.chunk_size,
+            "point_count": len(scenario.kwargs["latitudes"]),
+            "other_kwargs": other_kwargs,
+        })
+    return labels
 
 
 def save_scenario_result(output: Path, results: dict, result: dict) -> None:
