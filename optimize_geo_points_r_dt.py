@@ -120,6 +120,7 @@ def scenario_labels(scenarios: list[BatchQueryScenario]) -> list[dict[str, Any]]
             "planner": type(scenario.kwargs["planner"]).__name__,
             "n_jobs": scenario.kwargs["planner"].n_jobs,
             "chunk_size": scenario.kwargs["planner"].chunk_size,
+            "other_kwargs": {key: value for key,value in scenario.kwargs.items() if key not in ["planner"]}
         }
         for scenario in scenarios
     ]
@@ -151,43 +152,42 @@ def main(repeats: int = REPEATS, json_output: Path = REPEATED_OUTPUT):
     # =======================================
     # create scenarios
     # =======================================
-    planners = [
+    job_chunks = [
+            (1, 16),
+            (1, 1e6),
+            (2, 16),
+            (2, 256),
+            (8, 16),
+            (8, 256),
+            (16, 16),
+            (16, 256),
+            ]
+    missions_scenarios = [None, all_missions, ["s6a", "j3n"]]
+    method_scenarios = [
+            ("geographic_point_in_r_dt_batch", {"radius": 50_000}),
+            ("geographic_nearest_neighbors_batch", {"max_radius": None}),
+            ("geographic_nearest_neighbors_batch", {"max_radius": 50_000}),
+    ]
+    planner_scenarios = [
             LatitudePlanner(n_jobs, chunk_size)
-            for n_jobs in [8]
-            for chunk_size in [256]
+            for n_jobs, chunk_size in job_chunks
     ] + [
             BasinPlanner(n_jobs, chunk_size)
-            for n_jobs in [8]
-            for chunk_size in [256]
+            for n_jobs, chunk_size in job_chunks
             ]
+
+
     resolution = 1
+    scenario_params = [(planner, missions, methods) for planner in planner_scenarios for missions in missions_scenarios for methods in method_scenarios]
     scenarios = [
         batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
+            method_name=method,
             time_window=time_window,
             central_date=central_date,
             resolution=resolution,
-            missions=all_missions,
-            scenario_kwargs={"radius": 50_000, "planner": planner},
-        ) for planner in planners
-    ] + [
-        batch_scenario_grid(
-            method_name="geographic_point_in_r_dt_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=resolution,
-            missions=None,
-            scenario_kwargs={"radius": 50_000, "planner": planner},
-        ) for planner in planners
-    ] + [
-        batch_scenario_grid(
-            method_name="geographic_nearest_neighbors_batch",
-            time_window=time_window,
-            central_date=central_date,
-            resolution=resolution,
-            missions=all_missions,
-            scenario_kwargs={"max_radius": None, "planner": planner},
-        ) for planner in planners
+            missions=missions,
+            scenario_kwargs={**kwargs, "planner": planner},
+        ) for planner, missions, (method, kwargs) in scenario_params
     ]
 
     # =======================================
