@@ -7,6 +7,7 @@ from statistics import mean, stdev
 from typing import Any
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 
 def get_detailed_query_name(performance: dict[str, Any]) -> str:
@@ -87,33 +88,49 @@ def extract_average_stats(results: dict[str, Any]) -> list[AvgStats]:
 
 
 def plot(results: dict, output: Path) -> None:
-    indexes = [index["database_name"] for index in results["indexes"]
-               if len(index["trial_indexes"]) == 1
-               and index["trial_indexes"][0]["name"] == "experiment_ba"]
-    if len(indexes) != 1:
-        raise ValueError("Expected exactly one basin+point index")
-    stats = {s.scenario_index: s for s in extract_average_stats(results)
-             if s.index_name == indexes[0]}
-    if len(stats) != len(results["scenarios"]):
-        raise ValueError("No completed basin+point trials for every scenario")
+    indexes = [index["database_name"] for index in results["indexes"]]
+    if len(indexes) != 2:
+        raise ValueError("Expected baseline and basin+point indexes")
+    stats = {(s.index_name, s.scenario_index): s for s in extract_average_stats(results)}
+
+    for stat in stats.values():
+        print(stat)
+
+    if any((index, i) not in stats for index in indexes
+           for i in range(len(results["scenarios"]))):
+        raise ValueError("No completed trials for every index and scenario")
     methods = list(dict.fromkeys(s["method"] for s in results["scenarios"]))
-    fig, axes = plt.subplots(len(methods), 1, figsize=(16, 5 * len(methods)),
+    planners = list(dict.fromkeys(s["planner"] for s in results["scenarios"]))
+    colors = {planner: plt.get_cmap("tab10")(i) for i, planner in enumerate(planners)}
+    hatches = dict(zip(indexes, ["", "xx"], strict=True))
+    legend = ([Patch(facecolor=colors[planner], label=planner) for planner in planners]
+              + [Patch(facecolor="white", edgecolor="black", hatch=hatches[index],
+                       label=index) for index in indexes])
+    fig, axes = plt.subplots(len(methods), 1, figsize=(18, 5 * len(methods)),
                              layout="constrained", squeeze=False)
     for ax, method in zip(axes[:, 0], methods, strict=True):
         positions = [i for i, scenario in enumerate(results["scenarios"])
                      if scenario["method"] == method]
-        labels = [f'{stats[i].planner} '
-                  f'{stats[i].query_name} '
-                  f'jobs={results["scenarios"][i]["n_jobs"]} '
-                  f'chunk={results["scenarios"][i]["chunk_size"]}'
-                  for i in positions]
-        ax.bar(range(len(positions)), [stats[i].mean_total_time for i in positions],
-               yerr=[stats[i].std_total_time for i in positions], capsize=3)
-        ax.set_xticks(range(len(positions)), labels, rotation=60, ha="right")
+        labels = []
+        for i in positions:
+            scenario = results["scenarios"][i]
+            case = stats[indexes[0], i]
+            labels.append("\n".join((case.query_name.replace(" (", "\n("), case.planner,
+                                     f'jobs={scenario["n_jobs"]}  chunk={scenario["chunk_size"]}')))
+        width = 0.26
+        for index_offset, index in enumerate(indexes):
+            bars = [stats[index, i] for i in positions]
+            ax.bar([j + (index_offset - 0.5) * width for j in range(len(positions))],
+                   [s.mean_total_time for s in bars],
+                   yerr=[s.std_total_time for s in bars], width=width, capsize=3,
+                   color=[colors[s.planner] for s in bars], edgecolor="black",
+                   hatch=hatches[index])
+        ax.set_xticks(range(len(positions)), labels, fontsize=8)
         ax.set_ylabel("Total time (seconds)")
         ax.set_title(method)
         ax.grid(axis="y", alpha=0.3)
-    fig.suptitle("Basin + point index: mean ± sample standard deviation per scenario")
+        ax.legend(handles=legend, ncol=2)
+    fig.suptitle("Baseline vs basin + point index: mean ± sample standard deviation")
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=180)
     plt.show()
