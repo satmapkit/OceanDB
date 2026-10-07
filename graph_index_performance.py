@@ -44,12 +44,20 @@ def index_key(node: dict) -> tuple[tuple[str, str, str], ...]:
     )
 
 
-def scenario_times(node: dict) -> list[float] | None:
+def scenario_times(node: dict) -> dict[int, float] | None:
     performance = node.get("performance")
     if not performance:
         return None
-    times = [float(result["total_time"]) for result in performance]
-    if not all(math.isfinite(time) and time > 0 for time in times):
+    if isinstance(performance, dict):
+        times = {int(index): float(seconds) for index, seconds in performance.items()}
+    else:
+        times = {
+            index: float(result["total_time"])
+            for index, result in enumerate(performance)
+            if result is not None
+        }
+    if not times or not all(math.isfinite(seconds) and seconds > 0
+                            for seconds in times.values()):
         return None
     return times
 
@@ -62,13 +70,13 @@ def completed_nodes(nodes: list[dict]) -> tuple[list[dict], dict]:
     baseline = baselines[0]
     baseline_times = scenario_times(baseline)
     if baseline_times is None or total_index_size(baseline) is None:
-        raise ValueError("Baseline does not contain complete performance and size data")
+        raise ValueError("Baseline does not contain performance and size data")
 
     complete = [
         node
         for node in nodes
         if (times := scenario_times(node)) is not None
-        and len(times) == len(baseline_times)
+        and set(times) & set(baseline_times)
         and total_index_size(node) is not None
     ]
     return complete, baseline
@@ -80,10 +88,8 @@ def relative_row(node: dict, baseline: dict) -> dict:
     if baseline_times is None or times is None:
         raise ValueError("Incomplete node cannot be summarized")
 
-    ratios = [
-        time / baseline_time
-        for time, baseline_time in zip(times, baseline_times, strict=True)
-    ]
+    common_scenarios = sorted(set(times) & set(baseline_times))
+    ratios = [times[i] / baseline_times[i] for i in common_scenarios]
     saved = [100 * (1 - ratio) for ratio in ratios]
     size = total_index_size(node)
     baseline_size = total_index_size(baseline)
@@ -110,14 +116,44 @@ def relative_row(node: dict, baseline: dict) -> dict:
             -sum(math.log(ratio) for ratio in ratios) / len(ratios)
         ),
         "worst_time_saved_percent": min(saved),
-        "total_seconds": sum(times),
+        "total_seconds": sum(times.values()),
+        "scenario_count": len(common_scenarios),
     }
+
+
+def nodes_from_scenario_results(document: dict) -> list[dict] | None:
+    if "results" not in document:
+        return None
+    indexes = {index["database_name"]: index for index in document["indexes"]}
+    measurements: dict[str, dict[int, list[float]]] = {}
+    sizes: dict[str, dict] = {}
+    for result in document["results"]:
+        database_name = result["database_name"]
+        sizes[database_name] = result["index_sizes"]
+        if result["status"] != "completed" or result["performance"] is None:
+            continue
+        measurements.setdefault(database_name, {}).setdefault(
+            result["scenario_index"], []
+        ).append(float(result["performance"]["total_time"]))
+    return [
+        {
+            "trial_indexes": indexes[database_name]["trial_indexes"],
+            "index_sizes": sizes[database_name],
+            "performance": {
+                scenario_index: sum(times) / len(times)
+                for scenario_index, times in by_scenario.items()
+            },
+        }
+        for database_name, by_scenario in measurements.items()
+    ]
 
 
 def combine_results(result_files: tuple[Path, ...]) -> list[dict]:
     rows_by_index: dict[tuple[tuple[str, str, str], ...], dict] = {}
     for result_file in result_files:
-        nodes = json.loads(result_file.read_text(encoding="utf-8"))
+        document = json.loads(result_file.read_text(encoding="utf-8"))
+        scenario_nodes = nodes_from_scenario_results(document)
+        nodes = document if scenario_nodes is None else scenario_nodes
         complete, baseline = completed_nodes(nodes)
         for node in complete:
             # Later files replace prior measurements of the same index definition.
@@ -169,7 +205,7 @@ def write_relative_scenario_improvement(rows: list[dict], output_file: Path) -> 
             f"{row['mean_time_saved_percent']:+.1f}%",
             f"{row['geometric_mean_speedup']:.3f}x",
             f"{row['worst_time_saved_percent']:+.1f}%",
-            f"{row['total_seconds']:.1f}",
+            f"{row['total_seconds']:.1f} ({row['scenario_count']} scenarios)",
         )
         for rank, row in enumerate(rows, 1)
     ]

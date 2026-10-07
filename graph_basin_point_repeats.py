@@ -67,6 +67,29 @@ def extract_scenarios(results: dict[str, Any], trial: dict[str, Any]) -> list[Sc
 
 def extract_average_stats(results: dict[str, Any]) -> list[AvgStats]:
     stats: dict[tuple[str, int], AvgStats] = {}
+    if "results" in results:
+        records = (
+            (item["database_name"], item["scenario_index"], item["performance"])
+            for item in results["results"]
+            if item["status"] == "completed" and item["performance"] is not None
+        )
+        for index_name, scenario_index, performance in records:
+            scenario = results["scenarios"][scenario_index]
+            case = stats.setdefault(
+                (index_name, scenario_index),
+                AvgStats(
+                    query_name=get_detailed_query_name(performance),
+                    index_name=index_name,
+                    planner=scenario["planner"],
+                    scenario_index=scenario_index,
+                    total_times=[],
+                    single_query_times=[],
+                ),
+            )
+            case.total_times.append(performance["total_time"])
+            case.single_query_times.append(performance["single_query_sql_time"])
+        return list(stats.values())
+
     for trial in results["trials"]:
         index_name = trial["database_name"]
         if trial["performance"] is None:
@@ -96,9 +119,12 @@ def plot(results: dict, output: Path) -> None:
     for stat in stats.values():
         print(stat)
 
-    if any((index, i) not in stats for index in indexes
-           for i in range(len(results["scenarios"]))):
-        raise ValueError("No completed trials for every index and scenario")
+    scenario_indices = [
+        i for i in range(len(results["scenarios"]))
+        if all((index, i) in stats for index in indexes)
+    ]
+    if not scenario_indices:
+        raise ValueError("No scenarios have completed results for every index")
     methods = list(dict.fromkeys(s["method"] for s in results["scenarios"]))
     planners = list(dict.fromkeys(s["planner"] for s in results["scenarios"]))
     colors = {planner: plt.get_cmap("tab10")(i) for i, planner in enumerate(planners)}
@@ -109,8 +135,8 @@ def plot(results: dict, output: Path) -> None:
     fig, axes = plt.subplots(len(methods), 1, figsize=(18, 5 * len(methods)),
                              layout="constrained", squeeze=False)
     for ax, method in zip(axes[:, 0], methods, strict=True):
-        positions = [i for i, scenario in enumerate(results["scenarios"])
-                     if scenario["method"] == method]
+        positions = [i for i in scenario_indices
+                     if results["scenarios"][i]["method"] == method]
         labels = []
         for i in positions:
             scenario = results["scenarios"][i]

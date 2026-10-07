@@ -126,8 +126,8 @@ def scenario_labels(scenarios: list[BatchQueryScenario]) -> list[dict[str, Any]]
     ]
 
 
-def save_trial(output: Path, results: dict, trial: dict) -> None:
-    results["trials"].append(trial)
+def save_scenario_result(output: Path, results: dict, result: dict) -> None:
+    results["results"].append(result)
     temporary = output.with_name(output.name + ".tmp")
     temporary.write_text(
         json.dumps(results, default=json_default, indent=2, allow_nan=False) + "\n",
@@ -276,10 +276,12 @@ def main(repeats: int = REPEATS, json_output: Path = REPEATED_OUTPUT):
     labels = scenario_labels(scenarios)
     if json_output.exists():
         results = json.loads(json_output.read_text(encoding="utf-8"))
-        if results["scenarios"] != labels or results["indexes"] != definitions:
+        if (results.get("scenarios") != labels
+                or results.get("indexes") != definitions
+                or "results" not in results):
             raise ValueError(f"Benchmark configuration differs from {json_output}")
     else:
-        results = {"scenarios": labels, "indexes": definitions, "trials": []}
+        results = {"scenarios": labels, "indexes": definitions, "results": []}
     test_dbs = [
         setup_index_performance_test(
             source_db=ocean_db_init,
@@ -297,27 +299,41 @@ def main(repeats: int = REPEATS, json_output: Path = REPEATED_OUTPUT):
 
     for run in range(1, repeats + 1):
         for node, (test_db, index_sizes) in zip(nodes, test_dbs):
-            if any(t["run"] == run and t["database_name"] == node.database_name
-                   for t in results["trials"]):
-                continue
-            print("running pass", run, "for db", node.database_name, node.pretty_name())
-            t1 = time.time()
-            try:
-                performance = run_index_performance_test_with_timeout(
-                    test_db, list(scenarios), timeout_seconds=TIMEOUT_SECONDS,
-                )
-                if len(performance) != len(labels):
-                    raise ValueError("Incomplete scenario results")
-                trial = {"run": run, "database_name": node.database_name,
-                         "index_sizes": index_sizes,
-                         "performance": [asdict(row) for row in performance],
-                         "error": None}
-            except Exception as exc:
-                trial = {"run": run, "database_name": node.database_name,
-                         "index_sizes": index_sizes, "performance": None,
-                         "error": str(exc)}
-            save_trial(json_output, results, trial)
-            print("done in", time.time() - t1, "seconds; saved to", json_output)
+            for scenario_index, scenario in enumerate(scenarios):
+                if any(
+                    item["run"] == run
+                    and item["database_name"] == node.database_name
+                    and item["scenario_index"] == scenario_index
+                    for item in results["results"]
+                ):
+                    continue
+                print("running pass", run, "for db", node.database_name,
+                      node.pretty_name(), "scenario", scenario_index)
+                t1 = time.time()
+                result = {
+                    "run": run,
+                    "database_name": node.database_name,
+                    "index_sizes": index_sizes,
+                    "scenario_index": scenario_index,
+                    "status": "completed",
+                    "performance": None,
+                    "error": None,
+                }
+                try:
+                    performance = run_index_performance_test_with_timeout(
+                        test_db, [scenario], timeout_seconds=TIMEOUT_SECONDS,
+                    )
+                    if len(performance) != 1:
+                        raise ValueError("Expected one scenario result")
+                    result["performance"] = asdict(performance[0])
+                except TimeoutError as exc:
+                    result["status"] = "timed_out"
+                    result["error"] = str(exc)
+                except Exception as exc:
+                    result["status"] = "failed"
+                    result["error"] = str(exc)
+                save_scenario_result(json_output, results, result)
+                print("done in", time.time() - t1, "seconds; saved to", json_output)
 
 
 if __name__ == "__main__":
