@@ -116,7 +116,7 @@ def relative_row(node: dict, baseline: dict) -> dict:
             -sum(math.log(ratio) for ratio in ratios) / len(ratios)
         ),
         "worst_time_saved_percent": min(saved),
-        "total_seconds": sum(times.values()),
+        "total_seconds": sum(times[i] for i in common_scenarios),
         "scenario_count": len(common_scenarios),
     }
 
