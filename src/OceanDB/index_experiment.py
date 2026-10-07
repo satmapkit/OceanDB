@@ -159,24 +159,10 @@ def setup_index_performance_test(
     return test_db, index_sizes
 
 
-def run_index_performance_test(
-    ocean_db_init: OceanDBInit,
-    scenarios: list[BaseQueryScenario],
-) -> list[QueryAnalysisRow]:
-    """Run query performance scenarios against a prepared test database."""
-    ocean_db_init.vacuum_analyze("along_track")
-    runner = QueryAnalysisRunner(
-        config=ocean_db_init.config,
-        scenarios=scenarios,
-        managed_indices=ocean_db_init.managed_indices,
-    )
-    return runner.analyze_queries()
-
-
-def _run_index_performance_test_worker(
+def _run_query_scenario_worker(
     config,
     indexes: tuple[IndexDefinition, ...],
-    scenarios: list[BaseQueryScenario],
+    scenario: BaseQueryScenario,
     connection,
     application_name: str,
 ) -> None:
@@ -186,7 +172,15 @@ def _run_index_performance_test_worker(
             config=config,
             managed_indices=ManagedIndices(indexes),
         )
-        connection.send(("completed", run_index_performance_test(test_db, scenarios)))
+        runner = QueryAnalysisRunner(
+            config=test_db.config,
+            scenarios=[scenario],
+            managed_indices=test_db.managed_indices,
+        )
+        rows = runner.analyze_queries()
+        if len(rows) != 1:
+            raise RuntimeError("Expected exactly one scenario analysis result")
+        connection.send(("completed", rows[0]))
     except BaseException:
         connection.send(("failed", traceback.format_exc()))
     finally:
@@ -244,25 +238,25 @@ def _cleanup_index_performance_sessions(config, application_name: str) -> None:
         ) from exc
 
 
-def run_index_performance_test_with_timeout(
+def run_scenario_with_timeout(
     ocean_db_init: OceanDBInit,
-    scenarios: list[BaseQueryScenario],
+    scenario: BaseQueryScenario,
     timeout_seconds: float,
-) -> list[QueryAnalysisRow]:
-    """Run all scenarios in a worker that can be stopped at one deadline."""
+) -> QueryAnalysisRow:
+    """Run one query-analysis scenario in a worker with its own deadline."""
 
     if timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be positive")
 
     context = multiprocessing.get_context("spawn")
     parent, child = context.Pipe(duplex=False)
-    application_name = f"index_performance_{uuid.uuid4().hex}"
+    application_name = f"query_scenario_{uuid.uuid4().hex}"
     worker = context.Process(
-        target=_run_index_performance_test_worker,
+        target=_run_query_scenario_worker,
         args=(
             ocean_db_init.config,
             ocean_db_init.managed_indices.index_definitions,
-            scenarios,
+            scenario,
             child,
             application_name,
         ),
@@ -277,7 +271,7 @@ def run_index_performance_test_with_timeout(
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError(
-                    f"Index performance test exceeded {timeout_seconds:g} seconds"
+                    f"Query scenario exceeded {timeout_seconds:g} seconds"
                 )
             if parent.poll(min(remaining, 0.2)):
                 break
@@ -295,6 +289,20 @@ def run_index_performance_test_with_timeout(
             ocean_db_init.config,
             application_name,
         )
+
+
+def run_index_performance_test_with_timeout(
+    ocean_db_init: OceanDBInit,
+    scenarios: list[BaseQueryScenario],
+    timeout_seconds: float,
+) -> list[QueryAnalysisRow]:
+    """Run scenarios sequentially, giving each scenario its own deadline."""
+
+    ocean_db_init.vacuum_analyze("along_track")
+    return [
+        run_scenario_with_timeout(ocean_db_init, scenario, timeout_seconds)
+        for scenario in scenarios
+    ]
 
 
 @dataclass

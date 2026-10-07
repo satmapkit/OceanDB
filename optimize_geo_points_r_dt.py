@@ -11,7 +11,7 @@ import numpy as np
 from OceanDB.data_access.along_track import AlongTrack, Mission
 from OceanDB.etl import AlongTrackETL
 from OceanDB.index_experiment import (IndexNode, index_definition,
-                                      run_index_performance_test_with_timeout,
+                                      run_scenario_with_timeout,
                                       setup_index_performance_test,
                                       index_definitons_short_name)
 from OceanDB.managed_indices import ManagedIndices
@@ -299,13 +299,21 @@ def main(repeats: int = REPEATS, json_output: Path = REPEATED_OUTPUT):
 
     for run in range(1, repeats + 1):
         for node, (test_db, index_sizes) in zip(nodes, test_dbs):
-            for scenario_index, scenario in enumerate(scenarios):
-                if any(
+            pending_scenario_indices = {
+                scenario_index
+                for scenario_index in range(len(scenarios))
+                if not any(
                     item["run"] == run
                     and item["database_name"] == node.database_name
                     and item["scenario_index"] == scenario_index
                     for item in results["results"]
-                ):
+                )
+            }
+            if not pending_scenario_indices:
+                continue
+            test_db.vacuum_analyze("along_track")
+            for scenario_index, scenario in enumerate(scenarios):
+                if scenario_index not in pending_scenario_indices:
                     continue
                 print("running pass", run, "for db", node.database_name,
                       node.pretty_name(), "scenario", scenario_index)
@@ -320,12 +328,10 @@ def main(repeats: int = REPEATS, json_output: Path = REPEATED_OUTPUT):
                     "error": None,
                 }
                 try:
-                    performance = run_index_performance_test_with_timeout(
-                        test_db, [scenario], timeout_seconds=TIMEOUT_SECONDS,
+                    performance = run_scenario_with_timeout(
+                        test_db, scenario, timeout_seconds=TIMEOUT_SECONDS,
                     )
-                    if len(performance) != 1:
-                        raise ValueError("Expected one scenario result")
-                    result["performance"] = asdict(performance[0])
+                    result["performance"] = asdict(performance)
                 except TimeoutError as exc:
                     result["status"] = "timed_out"
                     result["error"] = str(exc)
