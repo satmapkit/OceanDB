@@ -7,77 +7,66 @@ from OceanDB.data_access.base_query import QueryPlan
 
 
 class QueryPlanner(ABC):
-    n_jobs: int
-    chunk_size: int
-
-    def __init__(self, n_jobs: int, chunk_size: int):
-        self.n_jobs = n_jobs
-        self.chunk_size = chunk_size
-
     @abstractmethod
     def plan(
         self, *, params_batch: list[dict[str, Any]], basin_ids: list[int]
     ) -> QueryPlan: ...
 
 
+class SingleThreadPlanner(QueryPlanner):
+    def plan(self, *, params_batch, basin_ids):
+        return QueryPlan({i: 0 for i in range(len(params_batch))}, 1)
+
+
 class BasinPlanner(QueryPlanner):
+    n_jobs: int
+
+    def __init__(self, n_jobs: int):
+        if n_jobs < 1:
+            raise ValueError("n_jobs must be at least 1")
+        self.n_jobs = n_jobs
+
     def plan(self, *, params_batch, basin_ids):
         return self.plan_by_basin(basin_ids)
 
     def plan_by_basin(self, basin_ids: list[int]) -> QueryPlan:
         """
-        Group query points by lookup basin and chunk them.
-        There will be at least as many chunks as queried basins.
-
-        basin_ids here are the lookup basins for each point, not the connected
-        basin set.
+        Chunk query points by the basin each query point is in.
+        There will be as many chunks as queried basins.
         """
-        if self.n_jobs < 1:
-            raise ValueError("n_jobs must be at least 1")
-        if self.chunk_size < 1:
-            raise ValueError("chunk_size must be at least 1")
 
-        basin_indices: dict[int, list[int]] = {}
-        for index, basin in enumerate(basin_ids):
-            basin_indices.setdefault(basin, []).append(index)
-
-        # Keep chunks basin-homogeneous, splitting large basins as needed.
-        chunk_indices: dict[int, list[int]] = {}
-        for indices in basin_indices.values():
-            for start in range(0, len(indices), self.chunk_size):
-                chunk = len(chunk_indices)
-                chunk_indices[chunk] = indices[start : start + self.chunk_size]
-
-        chunks = {
-            index: chunk
-            for chunk, indices in chunk_indices.items()
-            for index in indices
-        }
-
+        chunks = {i: basin_id for i, basin_id in enumerate(basin_ids)}
         return QueryPlan(chunks, self.n_jobs)
 
 
 class LatitudePlanner(QueryPlanner):
+    n_chunks: int
+    n_jobs: int
+
+    def __init__(self, n_jobs: int, n_chunks: int):
+        if n_jobs < 1:
+            raise ValueError("n_jobs must be at least 1")
+        if n_chunks < 1:
+            raise ValueError("n_chunks must be at least 1")
+
+        self.n_jobs = n_jobs
+        self.n_chunks = n_chunks
+
     def plan(self, *, params_batch, basin_ids):
         return self.plan_by_latitude([params["latitude"] for params in params_batch])
 
     def plan_by_latitude(self, latitudes: list[float]) -> QueryPlan:
         """
-        Group query points by latitude into
-        ceil(# points / chunk_size) chunks.
+        Chunk query points by latitude
         """
-        if self.n_jobs < 1:
-            raise ValueError("n_jobs must be at least 1")
-        if self.chunk_size < 1:
-            raise ValueError("chunk_size must be at least 1")
 
-        sorted_indices = sorted(
-            range(len(latitudes)), key=lambda index: latitudes[index]
-        )
+        min_lat = min(latitudes)
+        max_lat = max(latitudes)
+        chunk_size = (max_lat - min_lat) / self.n_chunks + 1
+
         chunks = {
-            index: start // self.chunk_size
-            for start in range(0, len(sorted_indices), self.chunk_size)
-            for index in sorted_indices[start : start + self.chunk_size]
+            i: int((latitude - min_lat) / chunk_size)
+            for i, latitude in enumerate(latitudes)
         }
 
         return QueryPlan(chunks, self.n_jobs)
