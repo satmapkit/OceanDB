@@ -21,7 +21,7 @@ from OceanDB.query_analysis import BaseQueryScenario, BatchQueryScenario
 from OceanDB.schemas.along_track_schema import along_track_schema
 from OceanDB.data_access.query_plan import BasinPlanner, LatitudePlanner
 
-TIMEOUT_SECONDS = 900 * 10
+TIMEOUT_SECONDS = 90
 REPEATS = 5
 REPEATED_OUTPUT = Path("index_benchmark_repeated.json")
 
@@ -161,20 +161,12 @@ def main(repeats: int = REPEATS, json_output: Path = REPEATED_OUTPUT):
     # create scenarios
     # =======================================
     job_chunks = [
-            (1, 16),
-            (1, 1e6),
-            (2, 16),
-            (2, 256),
-            (8, 16),
-            (8, 256),
-            (16, 16),
             (16, 256),
             ]
     missions_scenarios = [None, all_missions, ["s6a", "j3n"]]
     method_scenarios = [
             ("geographic_point_in_r_dt_batch", {"radius": 50_000}),
             ("geographic_nearest_neighbors_batch", {"max_radius": None}),
-            ("geographic_nearest_neighbors_batch", {"max_radius": 50_000}),
     ]
     planner_scenarios = [
             LatitudePlanner(n_jobs, chunk_size)
