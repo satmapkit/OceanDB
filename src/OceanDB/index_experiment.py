@@ -1,10 +1,14 @@
+import json
 import multiprocessing
 import os
+import re
+import tempfile
 import time
 import traceback
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import psycopg
 from psycopg import sql
@@ -12,8 +16,11 @@ from psycopg import sql
 from OceanDB.managed_index_oceandb import DatabaseIndex
 from OceanDB.managed_indices import IndexDefinition, ManagedIndices
 from OceanDB.OceanDB_Initializer import OceanDBInit
-from OceanDB.query_analysis import (BaseQueryScenario, QueryAnalysisRow,
-                                    QueryAnalysisRunner)
+from OceanDB.query_analysis import (
+    BaseQueryScenario,
+    QueryAnalysisRow,
+    QueryAnalysisRunner,
+)
 
 
 def fields_short_name(fields: tuple[str, ...]) -> str:
@@ -52,6 +59,26 @@ def _index_db_to_key(index: DatabaseIndex) -> tuple[str, str]:
     return (index.table_name, index.index_name)
 
 
+def index_signature(statement: str) -> str | None:
+    """Conservatively compare index keys, order, opclasses, options and predicates.
+
+    Ignore only the index/table name and PostgreSQL's formatting of identifiers
+    and the buffering storage option. Unknown syntax fails closed.
+    """
+    match = re.fullmatch(
+        r"\s*CREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+        r"\S+\s+ON\s+(?:ONLY\s+)?\S+\s+USING\s+(.*?);?\s*",
+        statement,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return None
+    tail = re.sub(r'"([a-z_][a-z_0-9]*)"', r"\1", match[2]).strip().rstrip(";")
+    tail = re.sub(r"\bbuffering\s*=\s*'auto'", "buffering=auto", tail)
+    tail = re.sub(r"\s*([(),=])\s*", r"\1", " ".join(tail.split()))
+    return ("unique " if match[1] else "") + tail
+
+
 def index_database_is_reusable(
     source_indexes: Sequence[DatabaseIndex],
     desired_indexes: Sequence[IndexDefinition],
@@ -71,12 +98,28 @@ def index_database_is_reusable(
     )
 
     desired_keys = {_index_def_to_key(index) for index in desired_indexes}
-    desired_names = {definition.name for definition in desired_indexes}
+    desired_by_name = {definition.name: definition for definition in desired_indexes}
+    desired_names = set(desired_by_name)
     desired_indexes_match = all(
         (database_index := database_by_key.get(key)) is not None
         and database_index.is_valid
         and database_index.is_ready
-        for key in desired_keys
+        and database_index.schema_name == "public"
+        and index_signature(database_index.index_definition) is not None
+        and index_signature(database_index.index_definition)
+        == index_signature(definition.create_sql)
+        for definition in desired_indexes
+        for key in [_index_def_to_key(definition)]
+    )
+
+    children_match = all(
+        index.is_valid
+        and index.is_ready
+        and index.schema_name == "public"
+        and index_signature(index.index_definition)
+        == index_signature(desired_by_name[index.parent_index_name].create_sql)
+        for index in actual_indexes
+        if index.parent_index_name in desired_names
     )
 
     allowed_keys = source_by_key.keys() | desired_keys
@@ -85,7 +128,12 @@ def index_database_is_reusable(
         for key, index in database_by_key.items()
     )
 
-    return source_indexes_match and desired_indexes_match and not has_unexpected_indexes
+    return (
+        source_indexes_match
+        and desired_indexes_match
+        and children_match
+        and not has_unexpected_indexes
+    )
 
 
 def setup_index_performance_test(
@@ -109,8 +157,10 @@ def setup_index_performance_test(
             print("already exists with the desired indexes")
             needs_create = False
         else:
-            print("existing database has unexpected or missing indexes; recreating")
-            test_db.drop_database()
+            raise RuntimeError(
+                f"Existing database '{test_database}' has unexpected or missing indexes; "
+                "refusing to drop it. Use a new trial database name."
+            )
 
     if needs_create:
         with source_db.cursor(
@@ -164,22 +214,55 @@ def run_index_performance_test(
     return runner.analyze_queries()
 
 
+class BenchmarkFailure(RuntimeError):
+    """A failed query phase, with any fully completed scenarios retained."""
+
+    def __init__(self, message, performance=(), wall_seconds=None):
+        super().__init__(message)
+        self.performance = list(performance)
+        self.wall_seconds = wall_seconds
+
+
+class BenchmarkTimeout(BenchmarkFailure, TimeoutError):
+    pass
+
+
+class BenchmarkCleanupError(BenchmarkFailure):
+    """Fatal: another configuration must not start until cleanup succeeds."""
+
+
 def _run_index_performance_test_worker(
     config,
-    indexes: tuple[IndexDefinition, ...],
-    scenarios: list[BaseQueryScenario],
+    indexes,
+    scenarios,
     connection,
-    application_name: str,
+    application_name,
+    directory,
 ) -> None:
     os.environ["PGAPPNAME"] = application_name
     try:
-        test_db = OceanDBInit(
+        runner = QueryAnalysisRunner(
             config=config,
+            scenarios=scenarios,
             managed_indices=ManagedIndices(indexes),
         )
-        connection.send(("completed", run_index_performance_test(test_db, scenarios)))
+        connection.send(("ready", None))
+        if connection.recv() != "go":
+            return
+        for number, scenario in enumerate(scenarios):
+            connection.send(("scenario_started", number))
+            row = runner.analyze_statement(scenario)
+            payload = {"row": asdict(row), "finished": time.monotonic()}
+            temporary = Path(directory) / f"{number:03d}.tmp"
+            temporary.write_text(json.dumps(payload, default=sorted, allow_nan=False))
+            temporary.replace(temporary.with_suffix(".json"))
+            # Keep pipe messages small: EXPLAIN results can be arbitrarily large.
+            connection.send(("scenario_completed", number))
+        connection.send(("completed", time.monotonic()))
     except BaseException:
-        connection.send(("failed", traceback.format_exc()))
+        # A file avoids a large traceback blocking the deadline supervisor.
+        (Path(directory) / "failure.txt").write_text(traceback.format_exc())
+        connection.send(("failed", None))
     finally:
         connection.close()
 
@@ -191,6 +274,8 @@ def _stop_index_performance_worker(worker: multiprocessing.Process) -> None:
     if worker.is_alive():
         worker.kill()
     worker.join(timeout=2)
+    if worker.is_alive():
+        raise BenchmarkCleanupError("Benchmark worker survived termination")
 
 
 def _cleanup_index_performance_sessions(config, application_name: str) -> None:
@@ -230,7 +315,7 @@ def _cleanup_index_performance_sessions(config, application_name: str) -> None:
                     )
                 time.sleep(0.05)
     except Exception as exc:
-        raise RuntimeError(
+        raise BenchmarkCleanupError(
             f"Could not clean up PostgreSQL sessions for {application_name}"
         ) from exc
 
@@ -239,53 +324,122 @@ def run_index_performance_test_with_timeout(
     ocean_db_init: OceanDBInit,
     scenarios: list[BaseQueryScenario],
     timeout_seconds: float,
+    *,
+    on_event=None,
+    application_name: str | None = None,
+    maintenance: bool = True,
 ) -> list[QueryAnalysisRow]:
-    """Run all scenarios in a worker that can be stopped at one deadline."""
+    """Time the complete query phase, including EXPLAIN, at one wall deadline.
 
-    if timeout_seconds <= 0:
-        raise ValueError("timeout_seconds must be positive")
-
+    Maintenance and worker initialization are outside the deadline. Events deliver
+    completed rows for checkpoints. Failures carry partial results; cleanup errors
+    are fatal and must not be treated as ordinary failed trials by a caller.
+    """
+    if not 0 < timeout_seconds < float("inf"):
+        raise ValueError("timeout_seconds must be finite and positive")
+    if not scenarios:
+        raise ValueError("At least one scenario is required")
+    event = on_event or (lambda *args, **kwargs: None)
+    if maintenance:
+        event("maintenance_started")
+        ocean_db_init.vacuum_analyze("along_track")
+        event("maintenance_completed")
+    application_name = application_name or f"index_performance_{uuid.uuid4().hex}"
+    if len(application_name.encode()) > 63:
+        raise ValueError("application_name exceeds PostgreSQL's 63-byte limit")
     context = multiprocessing.get_context("spawn")
-    parent, child = context.Pipe(duplex=False)
-    application_name = f"index_performance_{uuid.uuid4().hex}"
-    worker = context.Process(
-        target=_run_index_performance_test_worker,
-        args=(
-            ocean_db_init.config,
-            ocean_db_init.managed_indices.index_definitions,
-            scenarios,
-            child,
-            application_name,
-        ),
-        daemon=True,
-    )
-    worker.start()
-    child.close()
-
-    deadline = time.monotonic() + timeout_seconds
-    try:
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError(
-                    f"Index performance test exceeded {timeout_seconds:g} seconds"
-                )
-            if parent.poll(min(remaining, 0.2)):
-                break
-            if not worker.is_alive():
-                raise RuntimeError("Index performance worker exited without a result")
-
-        status, result = parent.recv()
-        if status == "failed":
-            raise RuntimeError(result)
-        return result
-    finally:
-        _stop_index_performance_worker(worker)
-        parent.close()
-        _cleanup_index_performance_sessions(
-            ocean_db_init.config,
-            application_name,
+    parent, child = context.Pipe()
+    performance = []
+    started = deadline = None
+    status, reason = "failed", "Worker exited without a result"
+    with tempfile.TemporaryDirectory(prefix="oceandb-benchmark-") as directory:
+        worker = context.Process(
+            target=_run_index_performance_test_worker,
+            args=(
+                ocean_db_init.config,
+                ocean_db_init.managed_indices.index_definitions,
+                scenarios,
+                child,
+                application_name,
+                directory,
+            ),
+            daemon=True,
         )
+
+        def collect():
+            for number in range(len(performance), len(scenarios)):
+                path = Path(directory) / f"{number:03d}.json"
+                if not path.exists():
+                    break
+                payload = json.loads(path.read_text())
+                if deadline is None or payload["finished"] > deadline:
+                    break
+                row = payload["row"]
+                for key in ("tables", "candidate_indices", "used_indices"):
+                    row[key] = set(row[key])
+                performance.append(QueryAnalysisRow(**row))
+                event("scenario_completed", number=number, result=performance[-1])
+
+        worker.start()
+        child.close()
+        startup_deadline = time.monotonic() + 60
+        try:
+            event("worker_started", pid=worker.pid, application_name=application_name)
+            while True:
+                remaining = (deadline or startup_deadline) - time.monotonic()
+                if remaining <= 0:
+                    status = "timed_out" if started is not None else "failed"
+                    reason = (
+                        f"Query phase exceeded {timeout_seconds:g} seconds"
+                        if started is not None
+                        else "Worker startup exceeded 60 seconds"
+                    )
+                    break
+                if parent.poll(min(remaining, 0.1)):
+                    try:
+                        kind, value = parent.recv()
+                    except EOFError:
+                        break
+                    if kind == "ready":
+                        started = time.monotonic()
+                        deadline = started + timeout_seconds
+                        parent.send("go")
+                        event("query_phase_started", timeout_seconds=timeout_seconds)
+                    elif kind == "completed":
+                        status = "completed" if value <= deadline else "timed_out"
+                        reason = f"Query phase exceeded {timeout_seconds:g} seconds"
+                        break
+                    elif kind == "failed":
+                        reason = (Path(directory) / "failure.txt").read_text()
+                        break
+                    elif kind == "scenario_completed":
+                        collect()
+                    elif kind == "scenario_started":
+                        event(kind, number=value)
+                elif not worker.is_alive():
+                    break
+        finally:
+            wall = time.monotonic() - started if started is not None else None
+            try:
+                _stop_index_performance_worker(worker)
+            finally:
+                parent.close()
+                try:
+                    collect()
+                finally:
+                    try:
+                        _cleanup_index_performance_sessions(
+                            ocean_db_init.config, application_name
+                        )
+                    except BenchmarkCleanupError as exc:
+                        exc.performance = performance
+                        exc.wall_seconds = wall
+                        raise
+            event("query_phase_finished", wall_seconds=wall)
+        if status == "completed" and len(performance) == len(scenarios):
+            return performance
+        failure = BenchmarkTimeout if status == "timed_out" else BenchmarkFailure
+        raise failure(reason, performance, wall)
 
 
 @dataclass

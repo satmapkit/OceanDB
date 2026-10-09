@@ -1,31 +1,17 @@
 import itertools
-import json
 import random
-import time
-from dataclasses import asdict
 from datetime import datetime, timedelta
 from typing import Any
 
 import numpy as np
 
 from OceanDB.data_access.along_track import AlongTrack, Mission
-from OceanDB.etl import AlongTrackETL
-from OceanDB.index_experiment import (IndexNode, index_definition,
-                                      run_index_performance_test_with_timeout,
-                                      setup_index_performance_test)
-from OceanDB.managed_indices import ManagedIndices
+from OceanDB.index_experiment import index_definition
 from OceanDB.ocean_data.basins import BasinMask
-from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.query_analysis import BaseQueryScenario, BatchQueryScenario
 from OceanDB.schemas.along_track_schema import along_track_schema
 
 TIMEOUT_SECONDS = 900
-
-
-def json_default(value: object) -> object:
-    if isinstance(value, set):
-        return sorted(value)
-    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def random_datetimes(
@@ -76,7 +62,7 @@ def batch_scenario_grid(
     central_date: datetime,
     resolution: float = 1.0,
     missions: list[Mission] | None = None,
-    scenario_kwargs: dict[str, Any] = {},
+    scenario_kwargs: dict[str, Any] | None = None,
 ) -> BatchQueryScenario:
 
     latitudes = np.arange(-60, 60, resolution)
@@ -97,7 +83,7 @@ def batch_scenario_grid(
         "longitudes": lons,
         "dates": [central_date for _ in range(lons.size)],
         "time_window": time_window,
-        **scenario_kwargs,
+        **(scenario_kwargs or {}),
     }
     if missions is not None:
         kwargs["missions"] = missions
@@ -109,19 +95,9 @@ def batch_scenario_grid(
     )
 
 
-def main():
-    # =======================================
-    # setup output
-    # =======================================
-    json_output = "index_benchmark.json"
+def build_scenarios() -> list[BaseQueryScenario]:
     central_date = datetime(2022, 10, 15)
     time_window = timedelta(days=10)
-    data_start = central_date - time_window
-    data_end = central_date + time_window
-
-    # =======================================
-    # create scenarios
-    # =======================================
     scenarios: list[BaseQueryScenario] = [
         batch_scenario_grid(
             method_name="geographic_point_in_r_dt_batch",
@@ -170,122 +146,41 @@ def main():
         ),
     ]
 
-    # =======================================
-    # define indexes
-    # =======================================
+    return scenarios
 
-    # static indexes always added
-    basic_indexes = [
-        index_definition("static", fields)
-        for fields in (
-            ("mission",),
-            ("basin_id",),
-            ("along_track_point",),
-            ("date_time",),
-        )
+
+def basic_indexes():
+    return [
+        index_definition("static", (field,))
+        for field in ("mission", "basin_id", "along_track_point", "date_time")
     ]
 
-    trial_index_fields = (
-        "along_track_point",
-        "basin_id",
-        "date_time",
-        "mission",
-    )
-    trial_indexes = [
-        [index_definition("experiment", fields)]
-        for length in (2, 3, 4)
-        for fields in itertools.permutations(trial_index_fields, length)
-        if fields[0] != "date_time"
-        if "date_time" not in fields
-        or (
-            "along_track_point" in fields
-            and fields.index("along_track_point") < fields.index("date_time")
-        )
-    ]
-    trial_indexes.append([])
 
-    all_indexes = tuple(basic_indexes) + tuple(
-        index for trial in trial_indexes for index in trial
-    )
-
-    # =======================================
-    # init oceandb
-    # =======================================
-
-    ocean_db_init = OceanDBInit(managed_indices=ManagedIndices(all_indexes))
-
-    # if you want to reset database, run:
-    # ocean_db_init.drop_database()
-
-    print("preparing database")
-    t1 = time.time()
-    if ocean_db_init.database_exists():
-        print("database already exists. Assuming prepped")
-    else:
-        ocean_db_init.initialize_database(
-            partition_start="2022-9-01",
-            partition_end="2022-11-01",
-        )
-        print("ingesting")
-        AlongTrackETL(config=ocean_db_init.config).ingest(
-            missions=["all"],
-            start_date=data_start,
-            end_date=data_end,
-            workers=4,
-        )
-    print("done in", time.time() - t1, "seconds")
-
-    # =======================================
-    # build indexes for each test
-    # =======================================
-    print("building indexes for each test")
-    t1 = time.time()
-    nodes = [
-        IndexNode(database_name=f"trial_{i}", trial_indexes=trial)
-        for i, trial in enumerate(trial_indexes)
-    ]
-    test_dbs = [
-        setup_index_performance_test(
-            source_db=ocean_db_init,
-            indexes=[*basic_indexes, *node.trial_indexes],
-            test_database=node.database_name,
-        )
-        for node in nodes
-    ]
-    print("finished building all indexes in", time.time() - t1, "seconds")
-
-    # =======================================
-    # search
-    # =======================================
-    print("searching")
-
-    for node, (test_db, index_sizes) in zip(nodes, test_dbs):
-        print("running trial for db", node.database_name, node.pretty_name())
-        t1 = time.time()
-        node.index_sizes = index_sizes
-        try:
-            performance = run_index_performance_test_with_timeout(
-                test_db,
-                scenarios,
-                timeout_seconds=TIMEOUT_SECONDS,
-            )
-            node.performance = performance
-            node.error = sum(x.total_time for x in performance)
-        except Exception:
-            node.error = None
-
-        # save output
-        print("done in", time.time() - t1, "seconds.")
-        print("saving to", json_output)
-        with open(json_output, "w", encoding="utf-8") as output_file:
-            json.dump(
-                [asdict(node) for node in nodes],
-                output_file,
-                default=json_default,
-                indent=2,
-                allow_nan=False,
-            )
+def candidate_specs():
+    """Keep upstream's 7 pairs, 12 triplets, 12 quadruplets and final baseline."""
+    included, excluded = [], []
+    columns = ("along_track_point", "basin_id", "date_time", "mission")
+    for length in (2, 3, 4):
+        for fields in itertools.permutations(columns, length):
+            reason = None
+            if fields[0] == "date_time":
+                reason = "date_time leads"
+            elif "date_time" in fields and "along_track_point" not in fields:
+                reason = "date_time without along_track_point"
+            elif "date_time" in fields and fields.index("date_time") < fields.index(
+                "along_track_point"
+            ):
+                reason = "date_time precedes along_track_point"
+            item = {"fields": list(fields)}
+            if reason:
+                excluded.append({**item, "reason": reason})
+            else:
+                included.append({**item, "id": "".join(field[0] for field in fields)})
+    included.append({"id": "baseline", "fields": []})
+    return included, excluded
 
 
 if __name__ == "__main__":
+    from benchmark_runtime import main
+
     main()
