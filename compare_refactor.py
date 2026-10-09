@@ -35,9 +35,11 @@ from OceanDB.index_experiment import (
     index_definition,
 )
 from OceanDB.managed_indices import IndexDefinition, ManagedIndices
-from OceanDB.ocean_data.basins import BasinConnections
+from OceanDB.ocean_data.basins import BasinConnections, BasinMask
 from OceanDB.OceanDB_Initializer import OceanDBInit
+from OceanDB.schemas.along_track_schema import sla_filtered
 from optimize_geo_points_r_dt import batch_scenario_grid
+from refactor_comparison_worker import canonical_rows
 
 ROOT = Path(__file__).resolve().parent
 WORKER = ROOT / "refactor_comparison_worker.py"
@@ -232,17 +234,49 @@ def supervise(job, config, directory, event, timeout=TIMEOUT, worker_path=WORKER
     return result
 
 
-def match_outputs(first, second):
-    with np.load(first) as a, np.load(second) as b:
+def nearest_selection_matches(rows, candidates):
+    """Require all closer rows and permit only genuine ties at the third distance."""
+    if len(rows) != min(3, len(candidates)):
+        return False
+    if not candidates:
+        return True
+    distances = np.asarray([r[4] for r in candidates], dtype=float)
+    cutoff = distances[-1]
+    values = np.asarray([r[:4] for r in candidates], dtype=float)
+    values[:, 2] = sla_filtered.apply_scaling(values[:, 2])
+
+    def counts(array):
+        return Counter(row.tobytes() for row in canonical_rows(array.T))
+
+    chosen, allowed = counts(rows), counts(values)
+    required = counts(values[distances < cutoff])
+    return not (chosen - allowed) and not (required - chosen)
+
+
+def match_outputs(first, second, *, nearest_reference=None):
+    # Materialize once: repeated reads of an NPZ member repeatedly decompress it.
+    with np.load(first) as left, np.load(second) as right:
+        a = {key: left[key] for key in left.files}
+        b = {key: right[key] for key in right.files}
         if a["counts"].shape != b["counts"].shape:
             return {"matched": False, "reason": "location count differs"}
         mismatches = np.flatnonzero(
             (a["counts"] != b["counts"]) | (a["hashes"] != b["hashes"])
         )
-        samples = []
-        for i in mismatches[:10]:
+        samples, rejected, accepted = [], [], []
+        for i in mismatches:
             left = a["rows"][a["offsets"][i] : a["offsets"][i + 1]]
             right = b["rows"][b["offsets"][i] : b["offsets"][i + 1]]
+            if nearest_reference is not None:
+                candidates = nearest_reference(int(i))
+                if nearest_selection_matches(
+                    left, candidates
+                ) and nearest_selection_matches(right, candidates):
+                    accepted.append(int(i))
+                    continue
+            rejected.append(int(i))
+            if len(samples) >= 10:
+                continue
             samples.append(
                 {
                     "location_index": int(i),
@@ -259,16 +293,78 @@ def match_outputs(first, second):
                 }
             )
         return {
-            "matched": not len(mismatches),
+            "matched": not rejected,
             "points": len(a["counts"]),
             "old_rows": int(a["counts"].sum()),
             "new_rows": int(b["counts"].sum()),
-            "mismatched_locations": len(mismatches),
+            "exact_mismatched_locations": len(mismatches),
+            "verified_boundary_ties": len(accepted),
+            "mismatched_locations": len(rejected),
             "examples": samples,
         }
 
 
-def prepare(old_root, directory):
+def validate_outputs(directory, target, recorder):
+    def paths(query):
+        return [
+            directory / "jobs" / f"warmup_{query}_{v}" / "validation.npz"
+            for v in ("old", "new")
+        ]
+
+    validation = {"radius": match_outputs(*paths("radius"))}
+    inputs = common.read_json(directory / "inputs.json")
+    mask = BasinMask()
+    statement = target.load_sql_file(
+        "queries/benchmark/nearest_boundary_validation.sql"
+    )
+    proofs = []
+    started = time.monotonic()
+    # This independent reference check is outside every reported API batch timer.
+    with psycopg.connect(
+        target.config.postgres_dsn,
+        options="-c default_transaction_read_only=on -c statement_timeout=30000",
+        application_name="comparison_tie_validation",
+    ) as connection:
+
+        def reference(i):
+            if time.monotonic() - started > TIMEOUT:
+                raise RuntimeError(
+                    "Nearest-neighbor reference validation exceeded its deadline"
+                )
+            lat, lon = inputs["latitudes"][i], inputs["longitudes"][i]
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "central_date_time": datetime.fromisoformat(inputs["central_date"]),
+                "time_delta": timedelta(days=10),
+                "connected_basin_ids": inputs["basin_map"][
+                    str(int(mask.lookup(lat, lon)))
+                ],
+            }
+            rows = connection.execute(statement, params).fetchall()
+            proofs.append(
+                {
+                    "location_index": i,
+                    "parameters": params,
+                    "candidates": [
+                        [float(v) if v is not None else None for v in row]
+                        for row in rows
+                    ],
+                }
+            )
+            if len(proofs) % 500 == 0:
+                recorder.event("nearest_ties_checked", locations=len(proofs))
+            return rows
+
+        validation["nn"] = match_outputs(*paths("nn"), nearest_reference=reference)
+    common.atomic_json(
+        directory / "nearest-tie-proofs.json", {"sql": statement, "checks": proofs}
+    )
+    common.atomic_json(directory / "validation.json", validation)
+    return validation
+
+
+def prepare(old_root, directory, reuse_from=None):
     old_root, directory = Path(old_root).resolve(), Path(directory).resolve()
     config = Config()
     if config.postgres_host not in {"localhost", "127.0.0.1", "::1"}:
@@ -384,6 +480,8 @@ def prepare(old_root, directory):
     }
     common.atomic_json(directory / "grid.json", inputs)
     manifest["grid_sha256"] = common.digest(common.read_json(directory / "grid.json"))
+    if reuse_from is not None:
+        configure_reuse(Path(reuse_from).resolve(), directory, manifest)
     common.atomic_json(directory / "manifest.json", manifest)
     state = {
         "status": "prepared",
@@ -407,6 +505,62 @@ def prepare(old_root, directory):
         database_names=manifest["databases"],
     )
     return directory
+
+
+def configure_reuse(previous, directory, manifest):
+    """Pin the prior preparation, while starting a fresh validation/timing schedule."""
+    prior = common.read_json(previous / "manifest.json")
+    state = common.read_json(previous / "results.json")
+    if state["status"] not in {"failed", "completed", "completed_with_failures"}:
+        raise RuntimeError("The previous run is not terminal")
+    if state["manifest_sha256"] != common.digest(prior):
+        raise RuntimeError("Previous manifest changed")
+    for key in (
+        "connection",
+        "environment",
+        "old_root",
+        "new_root",
+        "old_commit",
+        "files",
+        "indexes",
+        "workload",
+        "grid_sha256",
+        "legacy_missions",
+    ):
+        if prior[key] != manifest[key]:
+            raise RuntimeError(f"Cannot reuse preparation: {key} differs")
+    # Only validation/restart tooling may change; query, ingestion and schema code must match.
+    allowed = {
+        "new/compare_refactor.py",
+        "new/src/OceanDB/sql/queries/benchmark/nearest_boundary_validation.sql",
+    }
+    for name in set(prior["code_hashes"]) | set(manifest["code_hashes"]):
+        if name not in allowed and prior["code_hashes"].get(name) != manifest[
+            "code_hashes"
+        ].get(name):
+            raise RuntimeError(f"Cannot reuse preparation after code change: {name}")
+    saved = directory / "reused-preparation"
+    saved.mkdir()
+    for name in (
+        "manifest.json",
+        "source-database.json",
+        "old-database.json",
+        "new-database.json",
+        "inputs.json",
+        "ingestion.json",
+    ):
+        shutil.copyfile(previous / name, saved / name)
+    manifest["databases"] = prior["databases"]
+    manifest["database_owner_run_id"] = prior.get(
+        "database_owner_run_id", prior["run_id"]
+    )
+    manifest["reuse_preparation"] = {
+        "previous_directory": str(previous),
+        "manifest_sha256": common.digest(prior),
+        "files": {
+            p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in saved.iterdir()
+        },
+    }
 
 
 def database(config, name, version=None):
@@ -522,6 +676,90 @@ def clone(source, config, manifest, version, facts, recorder):
     return target
 
 
+def reuse_databases(config, manifest, recorder):
+    saved = recorder.directory / "reused-preparation"
+    for name, expected in manifest["reuse_preparation"]["files"].items():
+        if hashlib.sha256((saved / name).read_bytes()).hexdigest() != expected:
+            raise RuntimeError("Saved preparation changed")
+    names = list(manifest["databases"].values())
+    with psycopg.connect(config.postgres_dsn_admin) as connection:
+        owners = dict(
+            connection.execute(
+                "SELECT datname, shobj_description(oid, 'pg_database') FROM pg_database WHERE datname=ANY(%s)",
+                (names,),
+            ).fetchall()
+        )
+        if any(
+            owners.get(name)
+            != "OceanDB comparison " + manifest["database_owner_run_id"]
+            for name in names
+        ):
+            raise RuntimeError("Reused database is missing or belongs to another run")
+        if connection.execute(
+            "SELECT pid FROM pg_stat_activity WHERE datname=ANY(%s) AND backend_type='client backend'",
+            (names,),
+        ).fetchall():
+            raise RuntimeError("Reused databases still have client sessions")
+    recorder.event("preparation_reuse_started", databases=manifest["databases"])
+    source = database(config, manifest["databases"]["source"])
+    facts = common.source_facts(source)
+    previous = common.read_json(saved / "source-database.json")
+    for key in (
+        "dataset",
+        "indexes",
+        "version",
+        "extensions",
+        "planner_settings",
+        "data_directory",
+    ):
+        if facts[key] != previous[key]:
+            raise RuntimeError(f"Source preparation changed: {key}")
+    common.atomic_json(recorder.directory / "source-database.json", facts)
+    inputs = common.read_json(saved / "inputs.json")
+    if {k: v for k, v in inputs.items() if k != "basin_map"} != common.read_json(
+        recorder.directory / "grid.json"
+    ):
+        raise RuntimeError("Reused inputs differ from the grid")
+    mapping = {
+        str(int(k)): list(map(int, v))
+        for k, v in BasinConnections(config=source.config).connection_map.items()
+    }
+    if inputs["basin_map"] != mapping:
+        raise RuntimeError("Basin connectivity changed")
+    common.atomic_json(recorder.directory / "inputs.json", inputs)
+    targets = {}
+    for version in ("old", "new"):
+        target = database(config, manifest["databases"][version], version)
+        if common.dataset_facts(target) != facts["dataset"]:
+            raise RuntimeError(f"{version} observations changed")
+        if not index_database_is_reusable(
+            source.inventory_indexes(), definitions(version), target.inventory_indexes()
+        ):
+            raise RuntimeError(f"{version} indexes changed")
+        target.vacuum_analyze("along_track")
+        snapshot = common.statistics(target)
+        if common.digest(snapshot["settings"]) != common.digest(
+            facts["planner_settings"]
+        ):
+            raise RuntimeError("Planner settings differ")
+        if not {"mission", "basin_id", "along_track_point", "date_time"}.issubset(
+            r[0] for r in snapshot["columns"] if r[1]
+        ):
+            raise RuntimeError("Inherited parent statistics are missing")
+        snapshot["index_sizes"] = {
+            d.name: sum(
+                target.get_index_size(i.index_name)
+                for i in target.inventory_indexes()
+                if i.index_name == d.name or i.parent_index_name == d.name
+            )
+            for d in definitions(version)
+        }
+        common.atomic_json(recorder.directory / f"{version}-database.json", snapshot)
+        recorder.event("database_revalidated", version=version, database=target.db_name)
+        targets[version] = target
+    return targets
+
+
 def summary_rows(state):
     rows = []
     for query in ("radius", "nn"):
@@ -602,6 +840,14 @@ def report(directory, manifest, state):
         "Each worker has a 900-second wall cap; failed/timed-out passes have no successful timing and are not retried. Warm-up failures stop the comparison. "
         "Warm-cache results; caches and thermals are not experimentally reset. Old radius/NN methods already use executemany."
     )
+    if state.get("validation"):
+        description += (
+            f" Radius validation: {state['validation']['radius']['mismatched_locations']} unmatched locations. "
+            f"NN validation: {state['validation']['nn'].get('verified_boundary_ties', 0)} locations accepted after "
+            "independent PostgreSQL verification of exact third-neighbor ties; "
+            f"{state['validation']['nn']['mismatched_locations']} unmatched locations. "
+            "The timed queries keep their original distance-only ordering."
+        )
     lines = [
         "# Pre-refactor versus current OceanDB",
         "",
@@ -683,11 +929,14 @@ def run(directory):
                     or path.stat().st_mtime_ns != item["mtime_ns"]
                 ):
                     raise RuntimeError("Raw input files changed")
-            source, facts = create_source(config, manifest, recorder)
-            databases = {
-                version: clone(source, config, manifest, version, facts, recorder)
-                for version in ("old", "new")
-            }
+            if manifest.get("reuse_preparation"):
+                databases = reuse_databases(config, manifest, recorder)
+            else:
+                source, facts = create_source(config, manifest, recorder)
+                databases = {
+                    version: clone(source, config, manifest, version, facts, recorder)
+                    for version in ("old", "new")
+                }
             state["status"] = "validating"
             recorder.save()
             failed_cases = set()
@@ -702,18 +951,8 @@ def run(directory):
                 if manifest["code_hashes"] != code_hashes(Path(manifest["old_root"])):
                     raise RuntimeError("Code changed during the comparison")
                 if not job["validation"] and state["status"] == "validating":
-                    validation = {}
-                    for query in ("radius", "nn"):
-                        validation[query] = match_outputs(
-                            directory
-                            / "jobs"
-                            / f"warmup_{query}_old"
-                            / "validation.npz",
-                            directory
-                            / "jobs"
-                            / f"warmup_{query}_new"
-                            / "validation.npz",
-                        )
+                    recorder.event("correctness_check_started")
+                    validation = validate_outputs(directory, databases["new"], recorder)
                     state["validation"] = validation
                     common.atomic_json(directory / "validation.json", validation)
                     if not all(v["matched"] for v in validation.values()):
@@ -809,10 +1048,13 @@ if __name__ == "__main__":
     group.add_argument("--prepare", type=Path)
     group.add_argument("--run", type=Path)
     parser.add_argument("--old-root", type=Path)
+    parser.add_argument("--reuse-databases-from", type=Path)
     args = parser.parse_args()
     if args.prepare:
         if not args.old_root:
             parser.error("--prepare requires --old-root")
-        print(prepare(args.old_root, args.prepare))
+        print(prepare(args.old_root, args.prepare, args.reuse_databases_from))
     else:
+        if args.reuse_databases_from:
+            parser.error("--reuse-databases-from requires --prepare")
         run(args.run)

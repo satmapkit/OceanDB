@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import tempfile
@@ -77,6 +78,118 @@ class ComparisonUnitTests(unittest.TestCase):
         self.assertIsNone(row["old_median"])
         state["validation"]["nn"]["matched"] = False
         self.assertIsNone(comparison.summary_rows(state)[1]["speedup"])
+
+    def test_nearest_boundary_ties_require_real_rows_and_all_closer_neighbors(self):
+        candidates = [
+            (0, 0, 10, 0, 1),
+            (1, 0, 20, 0, 2),
+            (2, 0, 30, 0, 3),
+            (2, 0, 40, 86400, 3),
+        ]
+        old = np.array([[0, 0, 0.01, 0], [1, 0, 0.02, 0], [2, 0, 0.03, 0]])
+        new = old.copy()
+        new[-1] = [2, 0, 0.04, 86400]
+        self.assertTrue(comparison.nearest_selection_matches(old, candidates))
+        self.assertTrue(comparison.nearest_selection_matches(new, candidates))
+        wrong = new.copy()
+        wrong[-1, 2] = 0.041  # Same coordinates are insufficient: SLA must be real.
+        self.assertFalse(comparison.nearest_selection_matches(wrong, candidates))
+        wrong = new.copy()
+        wrong[-1, 3] += 1  # Likewise for the observation date.
+        self.assertFalse(comparison.nearest_selection_matches(wrong, candidates))
+        wrong = np.array([old[0], old[2], new[2]])  # Omits a strictly closer row.
+        self.assertFalse(comparison.nearest_selection_matches(wrong, candidates))
+        self.assertFalse(comparison.nearest_selection_matches(old[:2], candidates))
+        self.assertFalse(
+            comparison.nearest_selection_matches(np.array([old[0]] * 3), candidates)
+        )
+
+        def save(path, rows):
+            rows = canonical_rows(rows.T)
+            np.savez(
+                path,
+                rows=rows,
+                counts=[3],
+                offsets=[0, 3],
+                hashes=[hashlib.sha256(rows.tobytes()).hexdigest()],
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            first, second = [Path(directory) / name for name in ("old.npz", "new.npz")]
+            save(first, old)
+            save(second, new)
+            self.assertFalse(comparison.match_outputs(first, second)["matched"])
+            result = comparison.match_outputs(
+                first, second, nearest_reference=lambda _: candidates
+            )
+            self.assertTrue(result["matched"])
+            self.assertEqual(result["verified_boundary_ties"], 1)
+            self.assertEqual(result["exact_mismatched_locations"], 1)
+            save(second, wrong)
+            self.assertFalse(
+                comparison.match_outputs(
+                    first, second, nearest_reference=lambda _: candidates
+                )["matched"]
+            )
+
+    def test_reuse_pins_preparation_and_rejects_changed_query_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            previous, output = Path(directory) / "previous", Path(directory) / "output"
+            previous.mkdir()
+            output.mkdir()
+            prior = {
+                key: "same"
+                for key in (
+                    "connection",
+                    "environment",
+                    "old_root",
+                    "new_root",
+                    "old_commit",
+                    "files",
+                    "indexes",
+                    "workload",
+                    "grid_sha256",
+                    "legacy_missions",
+                )
+            }
+            prior.update(
+                run_id="original",
+                databases={"old": "db_old", "new": "db_new", "source": "db_source"},
+                code_hashes={
+                    "new/compare_refactor.py": "before",
+                    "new/src/query.py": "unchanged",
+                },
+            )
+            common.atomic_json(previous / "manifest.json", prior)
+            common.atomic_json(
+                previous / "results.json",
+                {"status": "failed", "manifest_sha256": common.digest(prior)},
+            )
+            for name in (
+                "source-database.json",
+                "old-database.json",
+                "new-database.json",
+                "inputs.json",
+                "ingestion.json",
+            ):
+                common.atomic_json(previous / name, {})
+            current = {
+                **prior,
+                "code_hashes": {
+                    **prior["code_hashes"],
+                    "new/compare_refactor.py": "after",
+                    "new/src/query.py": "changed",
+                },
+            }
+            with self.assertRaisesRegex(RuntimeError, "code change"):
+                comparison.configure_reuse(previous, output, current)
+            current["code_hashes"]["new/src/query.py"] = "unchanged"
+            comparison.configure_reuse(previous, output, current)
+            self.assertEqual(current["database_owner_run_id"], "original")
+            self.assertEqual(
+                current["reuse_preparation"]["manifest_sha256"], common.digest(prior)
+            )
+            self.assertEqual(len(current["reuse_preparation"]["files"]), 6)
 
 
 @unittest.skipUnless(
@@ -267,6 +380,39 @@ class ComparisonDatabaseTests(unittest.TestCase):
             thread.join(timeout=5)
             unrelated.close()
         self.assertFalse(errors)
+
+    def test_postgres_reference_includes_all_exact_third_neighbor_ties(self):
+        from datetime import datetime, timedelta
+
+        target = self.databases["new"]
+        with psycopg.connect(target.config.postgres_dsn) as connection:
+            # Roll back this extra repeated-coordinate observation after checking the oracle.
+            try:
+                connection.execute(
+                    "INSERT INTO along_track (file_name, mission, latitude, longitude, date_time, sla_filtered, basin_id) VALUES ('dt_global_j3n_test','j3n',-30.02,-30,'2022-10-07',33,%s)",
+                    (self.basin,),
+                )
+                rows = connection.execute(
+                    target.load_sql_file(
+                        "queries/benchmark/nearest_boundary_validation.sql"
+                    ),
+                    {
+                        "latitude": -30.0,
+                        "longitude": -30.0,
+                        "central_date_time": datetime(2022, 10, 15),
+                        "time_delta": timedelta(days=10),
+                        "connected_basin_ids": [self.basin],
+                    },
+                ).fetchall()
+                self.assertEqual(len(rows), 4)
+                self.assertEqual(rows[2][4], rows[3][4])
+                self.assertLess(rows[1][4], rows[2][4])
+                for chosen in (rows[:3], [rows[0], rows[1], rows[3]]):
+                    values = np.asarray([r[:4] for r in chosen], dtype=float)
+                    values[:, 2] *= 0.001
+                    self.assertTrue(comparison.nearest_selection_matches(values, rows))
+            finally:
+                connection.rollback()
 
     def test_cleanup_failure_is_fatal(self):
         fake = self.directory / "exit_worker.py"

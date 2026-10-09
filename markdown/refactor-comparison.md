@@ -36,8 +36,15 @@ The first full pass of each query/version is both validation and warm-up. Return
 rows are normalized only after timing, including legacy NaN sentinels versus current
 `None` for empty results. Each location's rows are sorted and compared by count and
 SHA-256. Full canonical validation rows, offsets, counts and hashes are saved in NPZ
-files. Any discrepancy stops the run before measured passes; NN boundary ties are
-also treated as discrepancies requiring inspection, never silently accepted.
+files. Radius results must match exactly. For every NN discrepancy, an independent,
+untimed PostgreSQL query uses `FETCH FIRST 3 ROWS WITH TIES`. Each implementation must
+return three eligible observations (or all observations when fewer exist), include
+every strictly closer observation, and select any remaining observations only from
+the exact distance ties at the third-neighbor cutoff. Full field values and duplicate
+counts are verified against the reference rows; matching coordinates alone is insufficient.
+The reference SQL, parameters and candidate observations are saved in
+`nearest-tie-proofs.json`. Unverified discrepancies stop the run before measured passes.
+Neither implementation's timed SQL is changed or given a secondary sort key.
 
 Five measured passes follow, alternating old/new order and query order. The main
 metric is wall time from native API invocation through fetching, construction and
@@ -102,6 +109,24 @@ lock prevents concurrent coordinators. This single-run harness does not automati
 resume a partially ingested source or rerun failed passes: inspect the recorded error
 and start a new prepared run after resolving it. A hard process kill may require
 manual worker cleanup; no new run should overlap an old worker.
+
+After an explicit restart, a new run can reuse the already built databases:
+
+```bash
+python compare_refactor.py --prepare notes/refactor-comparison-RESTART \
+  --old-root ../OceanDB-pre-refactor \
+  --reuse-databases-from notes/refactor-comparison-PREVIOUS
+python compare_refactor.py --run notes/refactor-comparison-RESTART
+```
+
+This preserves the previous run and ZIP, pins copies of its preparation records,
+and creates a fresh schedule of four warm-ups and twenty measured passes. Only the
+comparison coordinator and untimed tie-reference SQL may differ from the previous
+code snapshot. Database ownership, absence of existing client sessions, dataset
+fingerprints, actual index inventories, server settings, basin map and workload are
+verified again. Both clones receive `VACUUM ANALYZE` outside timing. No observations
+are reingested, and no indexes are rebuilt. The new report records its current code
+snapshot and provenance from the previous preparation.
 
 Focused tests use disposable UUID-named databases and do not use the configured source:
 
