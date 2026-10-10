@@ -24,7 +24,13 @@ these Sentinel-6 files). Its native query still uses `s6a`, as extracted by its 
 These are input configuration values; using the query token for file discovery would
 silently omit those 31 files. The supplied labels are recorded in the run manifest.
 
-Each version keeps its native basin map, as requested. The same 31,966 locations,
+The current database's corrected `basin_connections` rows are copied into the old
+database's `basin_connection` table before warm-ups. Its original schema and query
+code are retained. Both ordered row sets and a checksum are saved in
+`basin-connection-update.json`. No extra connections are invented: the old helper
+still omits basins absent from the table, whereas the new helper searches those
+basins themselves. Those remaining filter differences are reported separately.
+The same 31,966 locations,
 50-km radius, nearest-three limit without a distance cap, all-missions filter and
 October 15 ±10-day interval are used. Old receives a 20-day argument because its API
 halves that value; new receives 10 days. Each API consumes longitude, latitude, SLA
@@ -49,12 +55,24 @@ documented locations. No claim of identical work at every location is made.
 
 Each query worker retains the 900-second deadline and scoped PostgreSQL cleanup.
 Failed or timed-out cases are not retried. Each run has a new output directory and
-new old/current trial databases. Earlier databases and result archives are preserved.
+new old/current trial databases by default. With `--reuse-databases`, a terminal
+native run's verified preparation is reused, after checking ownership, idle clients,
+code, index inventories and full observation checksums. This starts a completely
+fresh schedule; previous timings are never mixed into the new results. Both databases
+receive `VACUUM ANALYZE` before warm-ups. Earlier result archives are preserved.
 
 ```bash
 python compare_native_workflow.py --prepare notes/native-comparison-RUN \
   --previous notes/pre-refactor-bma-comparison-PREVIOUS
 python compare_native_workflow.py --run notes/native-comparison-RUN
+```
+
+To restart with the corrected connections and already built native databases:
+
+```bash
+python compare_native_workflow.py --prepare notes/native-comparison-NEW \
+  --previous notes/native-comparison-STOPPED --reuse-databases
+python compare_native_workflow.py --run notes/native-comparison-NEW
 ```
 
 `progress.log` records phases and pass completions. `legacy-setup.log` records native

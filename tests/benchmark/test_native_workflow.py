@@ -7,7 +7,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
 import psycopg
@@ -191,6 +191,25 @@ class NativeDatabaseTests(unittest.TestCase):
                         "basin_map"
                     ]
                 )
+                # Exercise the cross-version table update against real legacy DDL.
+                # The current reader supplies ordered logical rows; no self-links
+                # or new columns/indexes may be added to the historical schema.
+                current = MagicMock(db_name="current_fixture")
+                current.cursor.return_value.__enter__.return_value.fetchall.return_value = [
+                    (1, 2),
+                    (2, 1),
+                ]
+                audit = native.copy_corrected_basins(target, current)
+                self.assertEqual(audit["after"], [(1, 2), (2, 1)])
+                self.assertEqual(audit["source_sha256"], audit["target_sha256"])
+                self.assertEqual(native.verify_legacy_indexes(target), inventory)
+                with target.cursor() as cur:
+                    cur.execute(
+                        "SELECT basin_id, connected_id FROM basin_connection ORDER BY pid"
+                    )
+                    self.assertEqual(cur.fetchall(), [(1, 2), (2, 1)])
+                    cur.execute("SELECT count(*) FROM along_track")
+                    self.assertEqual(cur.fetchone()[0], count)
             finally:
                 with psycopg.connect(
                     config.postgres_dsn_admin, autocommit=True

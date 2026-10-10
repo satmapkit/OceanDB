@@ -66,7 +66,8 @@ resume rules, disk requirements, detached execution, and analysis commands.
 For the original pre-refactor workflow versus current radius and nearest-neighbor
 queries with BMA, see [the native workflow guide](markdown/native-workflow-comparison.md).
 `compare_native_workflow.py` invokes the old schema, ingestion and eight-index builder
-unchanged, keeps each version's native basin map, reports output differences, and runs
+unchanged, copies the corrected current basin connections into the old database,
+reports any remaining native map-loading differences, and runs
 five alternating timed passes with a final timing table and ZIP.
 
 The earlier [matched-index experiment](markdown/refactor-comparison.md) gave both

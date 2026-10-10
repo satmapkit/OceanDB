@@ -81,16 +81,23 @@ def legacy_index_sql(old_root):
     return statements
 
 
-def prepare(previous, directory):
+def prepare(previous, directory, *, reuse_databases=False):
     previous, directory = previous.resolve(), directory.resolve()
     prior = common.read_json(previous / "manifest.json")
     prior_state = common.read_json(previous / "results.json")
-    if prior_state["status"] != "completed" or prior_state[
+    allowed_statuses = (
+        {"failed", "completed", "completed_with_failures"}
+        if reuse_databases
+        else {"completed"}
+    )
+    if prior_state["status"] not in allowed_statuses or prior_state[
         "manifest_sha256"
     ] != common.digest(prior):
         raise RuntimeError(
-            "Expected the completed previous comparison as source provenance"
+            "Expected a terminal previous comparison with an unchanged manifest"
         )
+    if reuse_databases and prior.get("comparison") != "native_workflows":
+        raise RuntimeError("Only native workflow databases can be reused here")
     config, old_root = Config(), Path(prior["old_root"])
     if (
         common.connection_identity(config) != prior["connection"]
@@ -108,10 +115,11 @@ def prepare(previous, directory):
         if name.startswith("old/") or name.startswith("new/src/"):
             if hashes.get(name) != value:
                 raise RuntimeError(f"Production code/data changed: {name}")
-    if shutil.disk_usage(prior["data_directory"]).free < 40 * common.GIB:
-        raise RuntimeError(
-            "Need 40 GiB of free disk for the native legacy database and current clone"
-        )
+    if (
+        shutil.disk_usage(prior["data_directory"]).free
+        < (20 if reuse_databases else 40) * common.GIB
+    ):
+        raise RuntimeError("Insufficient disk reserve for comparison preparation")
     directory.mkdir(parents=True, exist_ok=False)
     run_id = (
         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ").lower()
@@ -133,14 +141,16 @@ def prepare(previous, directory):
             "old": f"native_{run_id}_old",
             "new": f"native_{run_id}_new",
         },
-        "source_owner_run_id": prior.get("database_owner_run_id", prior["run_id"]),
+        "source_owner_run_id": prior.get(
+            "source_owner_run_id", prior.get("database_owner_run_id", prior["run_id"])
+        ),
         "source_provenance": {
             "directory": str(previous),
             "manifest_sha256": common.digest(prior),
         },
         "old_native_index_sql": legacy_index_sql(old_root),
         "legacy_ingest_mission_labels": discovery_missions(prior["files"]),
-        "basin_policy": "Keep each version's native map and report differences",
+        "basin_policy": "Copy current basin_connections rows into legacy basin_connection; retain native map-loading code and report remaining differences",
         "longitude_validation": "Wrap to [-180,180) and round to 1e-10 degrees outside timing",
     }
     for key in ("reuse_preparation", "database_owner_run_id"):
@@ -149,6 +159,30 @@ def prepare(previous, directory):
         "old": "Unmodified create_along_track_indices(); see old_native_index_sql",
         "new": prior["indexes"]["new"],
     }
+    if reuse_databases:
+        saved = directory / "reused-preparation"
+        saved.mkdir()
+        for name in (
+            "manifest.json",
+            "source-database.json",
+            "old-database.json",
+            "new-database.json",
+            "native-observation-audit.json",
+            "legacy-setup.json",
+        ):
+            shutil.copyfile(previous / name, saved / name)
+        manifest["databases"] = prior["databases"]
+        manifest["database_owner_run_id"] = prior.get(
+            "database_owner_run_id", prior["run_id"]
+        )
+        manifest["reuse_preparation"] = {
+            "previous_directory": str(previous),
+            "files": {
+                p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in saved.iterdir()
+            },
+        }
+        shutil.copyfile(saved / "legacy-setup.json", directory / "legacy-setup.json")
     for name in ("grid.json", "source-database.json"):
         shutil.copyfile(previous / name, directory / ("previous-" + name))
     common.atomic_json(
@@ -218,6 +252,8 @@ def observed_data(target):
 
 
 def prepare_databases(config, manifest, recorder):
+    if manifest.get("reuse_preparation"):
+        return reuse_native_databases(config, manifest, recorder)
     directory = recorder.directory
     source = matched.database(config, manifest["databases"]["source"])
     with psycopg.connect(config.postgres_dsn_admin) as connection:
@@ -295,8 +331,77 @@ def prepare_databases(config, manifest, recorder):
     common.atomic_json(directory / "old-database.json", snapshot)
     recorder.event("legacy_setup_completed", rows=matched.EXPECTED_ROWS, indexes=8)
     new = matched.clone(source, config, manifest, "new", facts, recorder)
+    return prepare_corrected_basins(old, new, manifest, recorder)
+
+
+def copy_corrected_basins(old, new):
+    """Copy only connectivity data, transactionally, preserving the legacy schema."""
+    with new.cursor() as cur:
+        cur.execute("SELECT basin_id, connected_id FROM basin_connections ORDER BY pid")
+        rows = cur.fetchall()
+    if not rows:
+        raise RuntimeError("Current basin connection table is empty")
+    with old.cursor(commit=True) as cur:
+        cur.execute("SELECT basin_id, connected_id FROM basin_connection ORDER BY pid")
+        before = cur.fetchall()
+        cur.execute("TRUNCATE basin_connection RESTART IDENTITY")
+        cur.executemany(
+            "INSERT INTO basin_connection (basin_id, connected_id) VALUES (%s, %s)",
+            rows,
+        )
+        cur.execute("SELECT basin_id, connected_id FROM basin_connection ORDER BY pid")
+        after = cur.fetchall()
+        if after != rows:
+            raise RuntimeError("Corrected basin copy differs from its source")
+    return {
+        "copied_at": common.now(),
+        "source_database": new.db_name,
+        "source_table": "basin_connections",
+        "target_database": old.db_name,
+        "target_table": "basin_connection",
+        "before": before,
+        "after": after,
+        "source_sha256": common.digest(rows),
+        "target_sha256": common.digest(after),
+        "schema_and_query_code_changed": False,
+    }
+
+
+def prepare_corrected_basins(old, new, manifest, recorder):
+    directory = recorder.directory
+    audit = copy_corrected_basins(old, new)
+    common.atomic_json(directory / "basin-connection-update.json", audit)
+    old.vacuum_analyze("basin_connection")
+    verify_legacy_indexes(old)
+    # Read the map through the original helper in an isolated interpreter. No map
+    # override or extra self-links are added to the old implementation.
+    script = """import json, sys
+from refactor_comparison_worker import make_client
+job=json.loads(sys.argv[1])
+client,module=make_client(job, {'basin_map': {}})
+print(json.dumps({'module': module, 'basin_map': client.basin_connection_map}))
+"""
+    result = subprocess.check_output(
+        [
+            sys.executable,
+            "-B",
+            "-c",
+            script,
+            json.dumps(
+                {
+                    "version": "old",
+                    "native_workflow": True,
+                    "code_root": manifest["old_root"],
+                }
+            ),
+        ],
+        env=matched.pg_environment(old.config, "native_basin_preparation"),
+        text=True,
+    )
+    legacy = json.loads(result)
+    common.atomic_json(directory / "corrected-legacy-map.json", legacy)
     maps = {
-        "old": common.read_json(directory / "legacy-setup.json")["basin_map"],
+        "old": legacy["basin_map"],
         "new": {
             str(int(k)): list(map(int, v))
             for k, v in BasinConnections(config=new.config).connection_map.items()
@@ -327,6 +432,83 @@ def prepare_databases(config, manifest, recorder):
     common.atomic_json(directory / "basin-map-differences.json", differences)
     recorder.event("native_maps_compared", different_locations=len(differences))
     return {"old": old, "new": new}
+
+
+def reuse_native_databases(config, manifest, recorder):
+    saved = recorder.directory / "reused-preparation"
+    for name, expected in manifest["reuse_preparation"]["files"].items():
+        if hashlib.sha256((saved / name).read_bytes()).hexdigest() != expected:
+            raise RuntimeError("Saved native preparation changed")
+    names = manifest["databases"]
+    owner = manifest["database_owner_run_id"]
+    expected_owners = {
+        names["source"]: "OceanDB comparison " + manifest["source_owner_run_id"],
+        names["old"]: "OceanDB native comparison " + owner,
+        names["new"]: "OceanDB comparison " + owner,
+    }
+    with psycopg.connect(config.postgres_dsn_admin) as connection:
+        owners = dict(
+            connection.execute(
+                "SELECT datname, shobj_description(oid, 'pg_database') FROM pg_database WHERE datname=ANY(%s)",
+                (list(names.values()),),
+            ).fetchall()
+        )
+        if owners != expected_owners:
+            raise RuntimeError("Native database ownership changed")
+        if connection.execute(
+            "SELECT pid FROM pg_stat_activity WHERE datname=ANY(%s) AND backend_type='client backend'",
+            (list(names.values()),),
+        ).fetchall():
+            raise RuntimeError("Native databases still have client sessions")
+    recorder.event("native_preparation_reuse_started", databases=names)
+    source = matched.database(config, names["source"])
+    facts = common.source_facts(source)
+    prior = common.read_json(saved / "source-database.json")
+    for key in (
+        "dataset",
+        "indexes",
+        "version",
+        "extensions",
+        "planner_settings",
+        "data_directory",
+    ):
+        if facts[key] != prior[key]:
+            raise RuntimeError(f"Source preparation changed: {key}")
+    common.atomic_json(recorder.directory / "source-database.json", facts)
+    targets = {v: matched.database(config, names[v]) for v in ("old", "new")}
+    verify_legacy_indexes(targets["old"])
+    values = {}
+    for version, target in targets.items():
+        snapshot = common.read_json(saved / f"{version}-database.json")
+        if common.digest(target.inventory_indexes()) != common.digest(
+            snapshot["indexes"]
+        ):
+            raise RuntimeError(f"Reused {version} index inventory changed")
+        values[version] = observed_data(target)
+    original_audit = common.read_json(saved / "native-observation-audit.json")
+    if (
+        not original_audit["matched"]
+        or values["old"] != values["new"]
+        or values["old"] != original_audit["old"]
+    ):
+        raise RuntimeError("Reused native observations differ")
+    common.atomic_json(
+        recorder.directory / "native-observation-audit.json",
+        {**values, "matched": True},
+    )
+    for version, target in targets.items():
+        target.vacuum_analyze("along_track")
+        snapshot = common.statistics(target)
+        if common.digest(snapshot["settings"]) != common.digest(
+            facts["planner_settings"]
+        ):
+            raise RuntimeError("Reused planner settings differ")
+        snapshot["index_sizes"] = common.read_json(saved / f"{version}-database.json")[
+            "index_sizes"
+        ]
+        common.atomic_json(recorder.directory / f"{version}-database.json", snapshot)
+    recorder.event("native_preparation_reused", rows=matched.EXPECTED_ROWS)
+    return prepare_corrected_basins(targets["old"], targets["new"], manifest, recorder)
 
 
 def native_nearest_matches(rows, candidates):
@@ -501,12 +683,13 @@ def report(directory, manifest, state):
     common.atomic_json(directory / "summary.json", rows)
     description = (
         f"Status: {state['status']}. Native pre-refactor code {manifest['old_commit'][:12]} versus current code {manifest['new_commit'][:12]}. "
-        "Old: native schema, tuple ingestion, basin map, eight-index builder and VACUUM ANALYZE; no BMA was added. "
+        "Old: native schema, tuple ingestion, eight-index builder and VACUUM ANALYZE; no BMA was added. "
         "Current: native schema and basin map, BMA plus four singleton GiST indexes. Same 209 source files and 31,966 locations, "
         "October 15, 2022 ±10 days, all missions. Radius 50 km; nearest three without a radius cap. "
         "Medians of five warm-cache API batch passes include fetching and result processing; one warm-up each is excluded. "
         "Version order alternates. Each worker has a 900-second deadline. "
-        "Native basin maps differ: the ratios compare native workflows, whose results are not identical at all locations. "
+        "The corrected current basin-connection rows are copied into the old database. Native map-loading code is retained, "
+        "including differences in handling basins absent from the connection table. Any resulting output differences are reported separately. "
         "Longitude representation is normalized only for untimed validation, to 1e-10 degrees. "
         "See validation.json and basin-map-differences.json for differences; exact distance ties are independently verified. "
         "These results replace the earlier matched-index experiment as the requested workflow comparison."
@@ -733,10 +916,17 @@ if __name__ == "__main__":
     group.add_argument("--prepare", type=Path)
     group.add_argument("--run", type=Path)
     parser.add_argument("--previous", type=Path)
+    parser.add_argument(
+        "--reuse-databases",
+        action="store_true",
+        help="Reuse verified native preparation but start all warm-ups and timings afresh",
+    )
     args = parser.parse_args()
     if args.prepare:
         if not args.previous:
             parser.error("--prepare requires --previous")
-        print(prepare(args.previous, args.prepare))
+        print(
+            prepare(args.previous, args.prepare, reuse_databases=args.reuse_databases)
+        )
     else:
         run(args.run)
