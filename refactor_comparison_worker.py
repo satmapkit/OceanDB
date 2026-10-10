@@ -24,12 +24,16 @@ def emit(event, **values):
     print(json.dumps({"event": event, **values}), flush=True)
 
 
-def canonical_rows(values):
+def canonical_rows(values, *, normalize_longitude=False):
     if values is None or (
         len(values[0]) == 1 and np.isnan(values[0][0]) and np.isnan(values[1][0])
     ):
         return np.empty((0, 4), dtype="<f8")
     rows = np.column_stack(values).astype("<f8")
+    if normalize_longitude:
+        # The native legacy importer wraps longitude; current ingestion keeps 0–360.
+        # Compare geographic coordinates at 1e-10 degrees, outside query timing.
+        rows[:, 0] = np.round((rows[:, 0] + 180) % 360 - 180, 10)
     rows[rows == 0] = 0.0  # normalize negative zero
     rows[np.isnan(rows)] = np.nan
     if len(rows):
@@ -69,7 +73,10 @@ def make_client(job, inputs):
             client = AlongTrack(
                 db_name=os.environ["PGDATABASE"], port=int(os.environ["PGPORT"])
             )
-        client.basin_connection_map = mapping
+        if job.get("native_workflow"):
+            client.basin_connection_map
+        else:
+            client.basin_connection_map = mapping
         client.basin_mask_data  # prime both implementations' identical mask outside timing
     else:
         from OceanDB.config import Config
@@ -84,7 +91,10 @@ def make_client(job, inputs):
                 postgres_database=os.environ["PGDATABASE"],
             )
         )
-        client.basin_connections.connection_map = mapping
+        if job.get("native_workflow"):
+            client.basin_connections.connection_map
+        else:
+            client.basin_connections.connection_map = mapping
         client.basin_mask_lookup.data
     module = sys.modules[AlongTrack.__module__]
     actual = Path(module.__file__).resolve()
@@ -153,7 +163,7 @@ def diagnostics(client, job, inputs):
     params = {
         "latitude": latitude,
         "longitude": longitude,
-        "connected_basin_ids": inputs["basin_map"][str(basin)],
+        "connected_basin_ids": inputs["basin_map"].get(str(basin)),
     }
     if old:
         filename = (
@@ -207,7 +217,12 @@ def worker(job_path):
             "module": module,
         }
         if job["validation"]:
-            arrays = [canonical_rows(values) for values in results]
+            arrays = [
+                canonical_rows(
+                    values, normalize_longitude=job.get("native_workflow", False)
+                )
+                for values in results
+            ]
             counts = np.asarray([len(a) for a in arrays], dtype=np.int64)
             hashes = np.asarray(
                 [hashlib.sha256(a.tobytes()).hexdigest() for a in arrays], dtype="S64"

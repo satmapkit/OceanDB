@@ -1,5 +1,9 @@
 # Pre-refactor versus current query timing
 
+**Scope correction:** this script is a matched-index code comparison. It does not
+reproduce the original workflow's indexes or schema. For the requested native old
+workflow versus current BMA comparison, use [native-workflow-comparison.md](native-workflow-comparison.md).
+
 `compare_refactor.py` runs a focused comparison of the legacy and current batched
 radius and nearest-neighbor APIs. It does not change either implementation or use
 the general index-sweep report merger: this comparison deliberately changes the

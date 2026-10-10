@@ -63,7 +63,11 @@ A missing source database requires the explicit `--ingest-source` option during 
 See [the benchmark guide](markdown/index-benchmark.md) for the 32 configurations, workload,
 resume rules, disk requirements, detached execution, and analysis commands.
 
-For a focused pre-refactor/current comparison of radius and nearest-neighbor queries
-with equivalent BMA indexes, see [the comparison guide](markdown/refactor-comparison.md).
-`compare_refactor.py` prepares two matched database copies, verifies the full grid's
-results, runs five alternating timed passes, and generates a final timing table and ZIP.
+For the original pre-refactor workflow versus current radius and nearest-neighbor
+queries with BMA, see [the native workflow guide](markdown/native-workflow-comparison.md).
+`compare_native_workflow.py` invokes the old schema, ingestion and eight-index builder
+unchanged, keeps each version's native basin map, reports output differences, and runs
+five alternating timed passes with a final timing table and ZIP.
+
+The earlier [matched-index experiment](markdown/refactor-comparison.md) gave both
+versions BMA and common basin filters; it does not reproduce the original workflow.
