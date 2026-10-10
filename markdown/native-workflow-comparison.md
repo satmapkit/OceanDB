@@ -19,6 +19,10 @@ database, with BMA and the four singleton GiST indexes. Both sides use the same 
 October 2022 files and 9,519,966 observations. Native setup uses temporary symlinks to
 limit legacy file discovery to that dataset, leaving original files untouched. Local
 credentials are supplied in memory. The legacy checkout itself is not edited.
+The native importer's mission argument uses the full filename label (`s6a_lr` for
+these Sentinel-6 files). Its native query still uses `s6a`, as extracted by its SQL.
+These are input configuration values; using the query token for file discovery would
+silently omit those 31 files. The supplied labels are recorded in the run manifest.
 
 Each version keeps its native basin map, as requested. The same 31,966 locations,
 50-km radius, nearest-three limit without a distance cap, all-missions filter and

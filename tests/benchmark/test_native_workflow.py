@@ -15,6 +15,7 @@ from psycopg import sql
 
 import compare_native_workflow as native
 import compare_refactor as matched
+from legacy_workflow_setup import discovery_missions
 from OceanDB.config import Config
 from refactor_comparison_worker import canonical_rows
 
@@ -22,6 +23,20 @@ OLD_ROOT = native.ROOT.parent / "OceanDB-pre-refactor"
 
 
 class NativeWorkflowTests(unittest.TestCase):
+    def test_native_discovery_uses_full_filename_mission_tags(self):
+        files = [
+            {"name": f"dt_global_{mission}_phy_l3_1hz_20221001_20240205.nc"}
+            for mission in ("h2b", "s6a_lr")
+        ]
+        labels = discovery_missions(files)
+        self.assertEqual(labels, ["h2b", "s6a_lr"])
+        self.assertTrue(
+            all(
+                any("_" + label + "_phy_l3" in item["name"] for label in labels)
+                for item in files
+            )
+        )
+
     def test_native_builder_has_eight_original_indexes_including_adbm(self):
         definitions = native.legacy_index_sql(OLD_ROOT)
         self.assertEqual(len(definitions), 8)

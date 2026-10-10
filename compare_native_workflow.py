@@ -25,6 +25,7 @@ from psycopg import sql
 
 import benchmark_runtime as common
 import compare_refactor as matched
+from legacy_workflow_setup import discovery_missions
 from OceanDB.config import Config
 from OceanDB.index_experiment import index_signature
 from OceanDB.ocean_data.basins import BasinConnections, BasinMask
@@ -138,6 +139,7 @@ def prepare(previous, directory):
             "manifest_sha256": common.digest(prior),
         },
         "old_native_index_sql": legacy_index_sql(old_root),
+        "legacy_ingest_mission_labels": discovery_missions(prior["files"]),
         "basin_policy": "Keep each version's native map and report differences",
         "longitude_validation": "Wrap to [-180,180) and round to 1e-10 degrees outside timing",
     }

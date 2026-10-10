@@ -4,10 +4,22 @@ import builtins
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+
+
+def discovery_missions(files):
+    """Use the native importer's filename labels, distinct from SQL mission tokens."""
+    labels = set()
+    for item in files:
+        match = re.fullmatch(r"dt_global_(.+)_phy_l3_.+\.nc", item["name"])
+        if not match:
+            raise ValueError(f"Unsupported raw filename: {item['name']}")
+        labels.add(match[1])
+    return sorted(labels)
 
 
 def run(directory):
@@ -53,7 +65,12 @@ def run(directory):
         client.insert_basin_from_csv()
         client.create_basin_connection_table()
         client.insert_basin_connection_from_csv()
-        client.insert_along_track_data_from_netcdf_with_tuples(client.missions)
+        labels = discovery_missions(manifest["files"])
+        if any(label.split("_")[0] not in client.missions for label in labels):
+            raise RuntimeError(
+                "The native query's all-missions filter would exclude an input mission"
+            )
+        client.insert_along_track_data_from_netcdf_with_tuples(labels)
         client.create_along_track_indices()  # Includes the original VACUUM ANALYZE.
         result = {"module": str(expected), "basin_map": client.basin_connection_map}
         (directory / "legacy-setup.json").write_text(
