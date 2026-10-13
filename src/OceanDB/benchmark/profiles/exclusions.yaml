@@ -1,0 +1,26 @@
+# Policy only: no measured timings. Bind to a verified source inventory hash.
+exclusions:
+  - configurations: [am, ma]
+    workflow: isolated_boundary
+    dates: ['2022-11-01']
+    scenarios: [radius_all]
+    reason: Historical native batch timeout; other cases remain eligible
+    evidence: exhaustive-512-10day-20261012T230521Z
+  - configurations: [bm, mb, md, mdb]
+    workflow: isolated_boundary
+    dates: ['2022-11-01']
+    scenarios: [radius_all, radius_filtered]
+    reason: Historical native batch timeout; other cases remain eligible
+    evidence: exhaustive-512-10day-20261012T230521Z
+  - configurations: [mdb]
+    workflow: isolated_interior
+    dates: ['2022-10-15']
+    scenarios: [radius_all, radius_filtered]
+    reason: Historical native batch timeout; other cases remain eligible
+    evidence: exhaustive-512-10day-20261012T230521Z
+  - configurations: [bma, mba]
+    workflow: daily_sequence
+    dates: ['2022-10-26','2022-10-27','2022-10-28','2022-10-29','2022-10-30','2022-10-31','2022-11-01','2022-11-02','2022-11-03','2022-11-04','2022-11-05','2022-11-06']
+    scenarios: [nn_all, nn_filtered]
+    reason: Historical interrupted traversal; omit the entire episode
+    evidence: methodology-continuation-512-10day-20261013T162345Z

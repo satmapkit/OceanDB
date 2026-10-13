@@ -1,0 +1,34 @@
+name: Portable benchmark smoke
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native PostgreSQL 18 and PostGIS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-18 postgresql-18-postgis-3 postgresql-contrib-18
+          pip install -e . pytest
+      - name: Start runner-owned disposable cluster
+        run: |
+          /usr/lib/postgresql/18/bin/initdb -D "$RUNNER_TEMP/benchmark-pg" -A trust -E UTF8
+          /usr/lib/postgresql/18/bin/pg_ctl -D "$RUNNER_TEMP/benchmark-pg" -l "$RUNNER_TEMP/benchmark-pg.log" -o '-p 56543 -h 127.0.0.1' start
+          echo "POSTGRES_USERNAME=$(id -un)" >> "$GITHUB_ENV"
+      - name: Verify Linux cache backend and native pipeline
+        env:
+          POSTGRES_HOST: '127.0.0.1'
+          POSTGRES_PORT: '56543'
+          POSTGRES_PASSWORD: ''
+          OCEANDB_BENCHMARK_SMOKE: '1'
+        run: pytest tests/benchmark -m 'unit or benchmark_database' -q
+      - name: Stop disposable cluster
+        if: always()
+        run: /usr/lib/postgresql/18/bin/pg_ctl -D "$RUNNER_TEMP/benchmark-pg" stop -m fast || true

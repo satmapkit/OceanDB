@@ -134,6 +134,43 @@ distance-weighted averaging, and plotting.
 
 ## Along-Track Queries
 
+### `geographic_point_in_r(...)` and `geographic_point_in_r_batch(...)`
+
+Return observations within a spatial radius over the **entire stored record**,
+without a date filter or row limit. These methods retain the existing radius
+query's connected-basin filtering. The default radius is **50,000 meters**.
+`missions=None` includes all missions; a list restricts missions, and `[]`
+returns no matching observations.
+
+```python
+from OceanDB.data_access.along_track import AlongTrack
+
+reader = AlongTrack()
+results = reader.geographic_point_in_r_batch(
+    fields=["longitude", "latitude", "sla_filtered", "date_time"],
+    latitudes=[30.0, 30.0],
+    longitudes=[-40.0, -39.75],
+    radius=50_000,
+    missions=None,
+)
+for result in results:
+    if result is not None:
+        observations = result["sla_filtered"]
+```
+
+The single-point form takes `latitude` and `longitude`. The batch form takes
+matching `latitudes`/`longitudes` lists and yields one `Dataset` or `None` per
+center in input order. Output row order within a center is unspecified. Overlapping
+centers intentionally return shared observations again. Radius must be finite
+and positive. Centers must be finite; the basin mask accepts latitudes in
+`[-90,90)`. At least one output field is required.
+
+Request `date_time` for observation times. `delta_t` is rejected because this
+query has no central date. The native API retrieves all result sets in a batch;
+use smaller batches for large records. The [core benchmark](core-benchmark.md)
+uses 32-center batches within a 512-point overlapping traversal. It returns
+observations; scientific mean/weight calculations are a separate downstream step.
+
 ### `geographic_point_in_r_dt(...)`
 
 Returns along-track observations inside a spatial radius and temporal window around a single point.

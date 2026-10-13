@@ -1,0 +1,21 @@
+# Copy this file outside the checkout and set the populated source database.
+profile: core
+source_database: ocean
+sample_seed: 20261013
+schedule_seed: 155353
+points: 512
+daily_start: '2022-10-26'
+daily_days: 12
+interior_date: '2022-10-15'
+boundary_date: '2022-11-01'
+half_window_days: 5
+missions: [s6a, j3n]
+radius_m: 50000
+center: [30, -40]
+rows: 16
+columns: 32
+spacing_m: 25000
+chunk_size: 32
+aa_pairs: 4
+cap_seconds: 30
+disk_reserve_gib: 60

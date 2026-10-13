@@ -23,3 +23,6 @@ docs/source/generated
 /notes/
 /src/cat_files.sh
 /src/oceandb_dump.txt
+
+# Maintained template (contains no measurements).
+!/src/OceanDB/benchmark/report.html

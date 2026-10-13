@@ -1,12 +1,12 @@
 from datetime import datetime, timedelta
 from functools import cached_property
+from math import isfinite
 from typing import Generator, Literal
 
 from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
 from OceanDB.ocean_data.basins import BasinConnections, BasinMask
 from OceanDB.ocean_data.dataset import Dataset
-from OceanDB.schemas.along_track_schema import (along_track_fields,
-                                                along_track_schema)
+from OceanDB.schemas.along_track_schema import along_track_fields, along_track_schema
 
 Mission = Literal[
     "al",
@@ -61,6 +61,12 @@ class AlongTrack(BaseReadQuery):
         "queries/along_track/"
         "geographic_points_in_spatialtemporal_window_without_mission.sql"
     )
+    _along_track_spatial_query = (
+        "queries/along_track/geographic_points_in_spatial_window.sql"
+    )
+    _along_track_spatial_without_mission_query = (
+        "queries/along_track/geographic_points_in_spatial_window_without_mission.sql"
+    )
 
     _projected_spatio_temporal_query_mask = "queries/along_track/geographic_points_in_spatialtemporal_projected_window_nomask.sql"
     _projected_spatio_temporal_query_no_mask = (
@@ -74,6 +80,90 @@ class AlongTrack(BaseReadQuery):
     @cached_property
     def basin_connections(self) -> BasinConnections:
         return BasinConnections(config=self.config)
+
+    def geographic_point_in_r(
+        self,
+        fields: list[along_track_fields],
+        latitude: float,
+        longitude: float,
+        radius: float = 50_000.0,
+        missions: list[Mission] | None = None,
+    ) -> Dataset[along_track_fields] | None:
+        """Return every stored observation within a basin-aware radius.
+
+        Radius is in meters. There is no date predicate or row limit. Request
+        ``date_time`` for observation times; ``delta_t`` has no reference date
+        in this query and is rejected. ``None`` missions means all missions.
+        """
+        return next(
+            self.geographic_point_in_r_batch(
+                fields=fields,
+                latitudes=[latitude],
+                longitudes=[longitude],
+                radius=radius,
+                missions=missions,
+            )
+        )
+
+    def geographic_point_in_r_batch(
+        self,
+        fields: list[along_track_fields],
+        latitudes: list[float],
+        longitudes: list[float],
+        radius: float = 50_000.0,
+        missions: list[Mission] | None = None,
+    ) -> Generator[Dataset[along_track_fields] | None, None, None]:
+        """Query the entire stored record at each point, in input order.
+
+        Returns one Dataset or None per center, retaining the existing radius
+        query's basin/mission filters. No temporal window is applied. The
+        native batch executor submits all result sets before yielding; callers
+        processing long records should use bounded groups of nearby centers.
+        """
+        if not fields:
+            raise ValueError("At least one output field is required")
+        if "delta_t" in fields:
+            raise ValueError(
+                "All-record queries have no reference date; request date_time instead of delta_t"
+            )
+        if not isfinite(radius) or radius <= 0:
+            raise ValueError("radius must be finite and positive")
+        centers = list(zip(latitudes, longitudes, strict=True))
+        if any(
+            not isfinite(latitude)
+            or not -90 <= latitude < 90
+            or not isfinite(longitude)
+            for latitude, longitude in centers
+        ):
+            raise ValueError(
+                "Centers must be finite with -90 <= latitude < 90 for the basin mask"
+            )
+        query_spec = QuerySpec(
+            sql_template=self.load_sql_file(
+                self._along_track_spatial_without_mission_query
+                if missions is None
+                else self._along_track_spatial_query
+            ),
+            schema=along_track_schema,
+        )
+        params_batch = [
+            {
+                "longitude": longitude,
+                "latitude": latitude,
+                "distance": radius,
+                "connected_basin_ids": self.basin_connections.connection_map[
+                    self.basin_mask_lookup.lookup(latitude, longitude)
+                ],
+                **({"missions": missions} if missions is not None else {}),
+            }
+            for latitude, longitude in centers
+        ]
+        return self.execute_batch_read_query(
+            query_spec=query_spec,
+            fields=fields,
+            params_batch=params_batch,
+            dataset_name="along_track",
+        )
 
     def geographic_point_in_r_dt(
         self,

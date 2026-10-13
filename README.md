@@ -46,29 +46,22 @@ To get started with OceanDB, perform the following actions:
 6. Run OceanDB queries against along-track and eddy datasets.
    See [Queries](markdown/queries.md).
 
-## Index performance benchmarks
+## Benchmarks
 
-The benchmark runner uses isolated run directories and owned trial databases, validates
-source data and actual index definitions, and checkpoints completed scenarios. Its
-900-second query-phase limit covers six scenarios and their EXPLAIN replays; maintenance
-runs beforehand. Reports and a checksummed ZIP are generated automatically, with explicit
-timeout/failure labels and compatibility checks for combined analyses.
+The maintained benchmark has **core** and **exhaustive** index profiles, using the
+same independently reset episodes and AD-A/AD-B controls. It covers daily
+traversals, isolated dates, and overlapping entire-record radius sweeps.
 
 ```bash
-python optimize_geo_points_r_dt.py --prepare notes/my-benchmark
-python optimize_geo_points_r_dt.py --resume notes/my-benchmark
+# Copy a packaged profile, set source_database and your POSTGRES_* environment.
+python -c "from importlib.resources import files; print(files('OceanDB.benchmark').joinpath('profiles/core.yaml').read_text())" > /tmp/oceandb-core.yaml
+oceandb benchmark check /tmp/oceandb-core.yaml
+oceandb benchmark prepare /tmp/oceandb-core.yaml --output ../benchmark-runs/core-run
+oceandb benchmark run ../benchmark-runs/core-run
 ```
 
-A missing source database requires the explicit `--ingest-source` option during preparation.
-See [the benchmark guide](markdown/index-benchmark.md) for the 32 configurations, workload,
-resume rules, disk requirements, detached execution, and analysis commands.
-
-For the original pre-refactor workflow versus current radius and nearest-neighbor
-queries with BMA, see [the native workflow guide](markdown/native-workflow-comparison.md).
-`compare_native_workflow.py` invokes the old schema, ingestion and eight-index builder
-unchanged, copies the corrected current basin connections into the old database,
-reports any remaining native map-loading differences, and runs
-five alternating timed passes with a final timing table and ZIP.
-
-The earlier [matched-index experiment](markdown/refactor-comparison.md) gave both
-versions BMA and common basin filters; it does not reproduce the original workflow.
+Run directories and reports must be **outside Git checkouts**. No measured results
+are distributed with the package. Preparation requires a populated source and
+local PostgreSQL 18+/PostGIS; it preserves the source. See the
+[benchmark strategy, key tests and exhaustive exclusions](markdown/core-benchmark.md)
+for prerequisites, timing boundaries, failure behavior, and report sharing.
