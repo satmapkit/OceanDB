@@ -54,38 +54,32 @@ class AlongTrack(BaseReadQuery):
         missions: list[Mission] | None = None,
     ) -> Dataset[along_track_fields] | None:
         """
-        Query along-track points within spatial + temporal windows.
+        Return along-track observations within a radius and time window.
 
-        Yields one Dataset, or None if empty.
+        Spatial membership uses WGS84 ellipsoidal distance in meters.
+        Observations must also pass the mission and connected-basin filters.
 
         :param fields:
-            List of requested along track fields to return
-
+            Requested along-track fields. ``distance`` is included only when
+            requested and uses the same WGS84 metric. Requested ``delta_t`` is
+            signed seconds from ``date - date_time`` (center minus observation).
         :param latitude:
-            Central latitude of the window
-
+            Query-center latitude in degrees.
         :param longitude:
-            Central longitude of the window
-
+            Query-center longitude in degrees.
         :param date:
-            Central date of the window
-
+            Center of the temporal window.
         :param radius:
-            Radius of the spatial window in meters
-
+            Inclusive spatial radius in meters; defaults to ``500_000.0``.
         :param time_window:
-            Radius of the temporal window
-            (meaning any point from [date - time_window, date + time_window]
-            could be include)
-
+            Temporal half-width; defaults to ten days. Both endpoints of
+            ``[date - time_window, date + time_window]`` are included.
         :param missions:
-            List of satellite missions to include in the query.
-            If 'None' (default), uses all missions.
-
-        :return:
-            If no points found in the window, :code:`None` is returned.
-            If points are found, then a :class:`Dataset <OceanDB.ocean_data.dataset.Dataset>`
-            of requested fields is returned.
+            Canonical mission names from ``Mission``; ``None`` (default) selects
+            all missions, while ``[]`` selects none.
+        :returns:
+            A :class:`Dataset <OceanDB.ocean_data.dataset.Dataset>` containing
+            the requested fields, or ``None`` if no observations match.
         """
 
         return next(
@@ -114,9 +108,38 @@ class AlongTrack(BaseReadQuery):
         chunk_size: int = 16,
     ) -> Generator[Dataset[along_track_fields] | None, None, None]:
         """
-        Query along-track points for multiple spatial + temporal windows.
+        Query radius-and-time windows for equally sized lists of centers.
 
-        Yields one Dataset per query point, or None where no rows are returned.
+        Each center uses :meth:`geographic_point_in_r_dt` semantics, including
+        WGS84 ellipsoidal distances, filtering, and projected-field meanings.
+
+        :param fields:
+            Requested along-track fields; ``distance`` remains optional.
+        :param latitudes:
+            Query-center latitudes in degrees.
+        :param longitudes:
+            Query-center longitudes in degrees, paired with latitudes by index.
+        :param dates:
+            Temporal centers, paired with coordinates by index.
+        :param radius:
+            Inclusive spatial radius in meters; defaults to ``500_000.0``.
+        :param time_window:
+            Inclusive temporal half-width around each date; defaults to ten days.
+        :param missions:
+            Canonical mission names from ``Mission``; ``None`` (default) selects
+            all missions, while ``[]`` selects none.
+        :param n_jobs:
+            Number of worker jobs, at least one; defaults to ``1``.
+        :param chunk_size:
+            Maximum centers per basin-homogeneous chunk, at least one;
+            defaults to ``16``.
+        :returns:
+            A generator yielding one Dataset or ``None`` per center in input
+            order. ``None`` means no matching observations; empty input lists
+            yield no results.
+        :raises ValueError:
+            If input list lengths differ, or ``n_jobs`` or ``chunk_size`` is
+            less than one.
         """
 
         results: list[Dataset[along_track_fields] | None] = [None] * len(latitudes)
@@ -178,13 +201,39 @@ class AlongTrack(BaseReadQuery):
         max_radius: float | None = None,
     ) -> Dataset[along_track_fields] | None:
         """
-        Query along-track points within spatial + temporal windows.
+        Return up to three nearest eligible along-track observations.
 
-        Yields one Dataset per query point, or None if empty.
+        Observations are ranked by ascending WGS84 ellipsoidal distance in meters
+        after time, mission, connected-basin, and optional radius filtering.
+        Exact distance ties are broken by ascending ``date_time``, then
+        ``latitude``, then stored ``longitude``, including selection at the
+        three-row cutoff.
 
+        :param fields:
+            Requested along-track fields. ``distance`` is always included,
+            even if omitted here. Requested ``delta_t`` is signed seconds from
+            ``date - date_time`` (center minus observation).
+        :param latitude:
+            Query-center latitude in degrees.
+        :param longitude:
+            Query-center longitude in degrees.
+        :param date:
+            Center of the temporal window.
+        :param time_window:
+            Temporal half-width; defaults to ten days. Both endpoints of
+            ``[date - time_window, date + time_window]`` are included.
+        :param missions:
+            Canonical mission names from ``Mission``; ``None`` (default) selects
+            all missions, while ``[]`` selects none.
         :param max_radius:
-            Inclusive WGS84 distance cap in meters; must be finite and
-            non-negative. ``None`` (default) leaves distance unbounded.
+            Inclusive WGS84 ellipsoidal distance cap in meters; must be finite
+            and non-negative. ``None`` (default) leaves distance unbounded.
+        :returns:
+            A :class:`Dataset <OceanDB.ocean_data.dataset.Dataset>` with up to
+            three rows in the order above, including ``distance``, or ``None``
+            if no observations match.
+        :raises ValueError:
+            If ``max_radius`` is negative, NaN, or infinite.
         """
 
         return next(
@@ -213,13 +262,40 @@ class AlongTrack(BaseReadQuery):
         chunk_size: int = 16,
     ) -> Generator[Dataset[along_track_fields] | None, None, None]:
         """
-        Query nearest neighbors for multiple points using a prepared batch query.
+        Query up to three nearest observations for each input center.
 
-        Yields one Dataset per query point, or None where no rows are returned.
+        Each center uses :meth:`geographic_nearest_neighbors` semantics,
+        including WGS84 ellipsoidal ranking, exact tie-breaking, filtering,
+        and the signed meaning of requested ``delta_t``.
 
+        :param fields:
+            Requested along-track fields; ``distance`` is always included.
+        :param latitudes:
+            Query-center latitudes in degrees.
+        :param longitudes:
+            Query-center longitudes in degrees, paired with latitudes by index.
+        :param dates:
+            Temporal centers, paired with coordinates by index.
+        :param time_window:
+            Inclusive temporal half-width around each date; defaults to ten days.
+        :param missions:
+            Canonical mission names from ``Mission``; ``None`` (default) selects
+            all missions, while ``[]`` selects none.
         :param max_radius:
-            Inclusive WGS84 distance cap in meters; must be finite and
-            non-negative. ``None`` (default) leaves distance unbounded.
+            Inclusive WGS84 ellipsoidal distance cap in meters; must be finite
+            and non-negative. ``None`` (default) leaves distance unbounded.
+        :param n_jobs:
+            Number of worker jobs, at least one; defaults to ``1``.
+        :param chunk_size:
+            Maximum centers per basin-homogeneous chunk, at least one;
+            defaults to ``16``.
+        :returns:
+            A generator yielding one Dataset or ``None`` per center in input
+            order. ``None`` means no matching observations; empty input lists
+            yield no results.
+        :raises ValueError:
+            If input list lengths differ, ``n_jobs`` or ``chunk_size`` is less
+            than one, or ``max_radius`` is negative, NaN, or infinite.
         """
 
         results: list[Dataset[along_track_fields] | None] = [None] * len(latitudes)
