@@ -15,13 +15,10 @@ pytestmark = pytest.mark.unit
 
 def test_basic(config):
     ocean_db_init = OceanDBInit(config=config)
-    assert ocean_db_init.username == "postgres"
-    assert ocean_db_init.password == "postgres"
-    assert ocean_db_init.port == 5433
-    assert (
-        ocean_db_init.connection_string
-        == "host=localhost dbname=ocean port=5433 user=postgres password=postgres"
-    )
+    assert ocean_db_init.username == config.postgres_username
+    assert ocean_db_init.password == config.postgres_password
+    assert ocean_db_init.port == config.postgres_port
+    assert ocean_db_init.connection_string == config.postgres_dsn
 
 
 def test_initialize_database_uses_initializer_config(monkeypatch, config):
