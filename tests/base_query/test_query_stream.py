@@ -1,4 +1,5 @@
 import random
+from typing import NoReturn
 
 import pytest
 
@@ -138,3 +139,48 @@ def test_plan_by_basin_rejects_invalid_limits():
     for n_jobs, chunk_size in [(0, 1), (1, 0)]:
         with pytest.raises(ValueError):
             plan_by_basin([1], n_jobs=n_jobs, chunk_size=chunk_size)
+
+
+@pytest.fixture
+def query_without_execution(monkeypatch: pytest.MonkeyPatch) -> BaseReadQuery:
+    query = BaseReadQuery.__new__(BaseReadQuery)
+
+    def fail_execution(*args: object, **kwargs: object) -> NoReturn:
+        pytest.fail("Empty streams must not create an executor or cursor")
+
+    monkeypatch.setattr(
+        "OceanDB.data_access.base_query.ThreadPoolExecutor", fail_execution
+    )
+    monkeypatch.setattr(query, "cursor", fail_execution)
+    return query
+
+
+def test_empty_stream_yields_no_results(
+    query_without_execution: BaseReadQuery,
+) -> None:
+    assert (
+        list(
+            query_without_execution.execute_batch_read_query_stream(
+                query_spec=QuerySpec[str]("", {}),
+                fields=[],
+                params_batch=iter(()),
+                plan=QueryPlan({}, {}),
+            )
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("plan", [QueryPlan({0: 0}, {0: 0}), QueryPlan({}, {0: 0})])
+def test_empty_stream_still_validates_plan(
+    query_without_execution: BaseReadQuery, plan: QueryPlan
+) -> None:
+    with pytest.raises(ValueError, match="Invalid query plan"):
+        list(
+            query_without_execution.execute_batch_read_query_stream(
+                query_spec=QuerySpec[str]("", {}),
+                fields=[],
+                params_batch=[],
+                plan=plan,
+            )
+        )

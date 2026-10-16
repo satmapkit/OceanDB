@@ -1,6 +1,10 @@
+from collections.abc import Callable, Iterable
 from datetime import datetime
+from typing import NoReturn
 
-from OceanDB.data_access.along_track import AlongTrack
+import pytest
+
+from OceanDB.data_access.along_track import AlongTrack, Mission
 from OceanDB.schemas.along_track_schema import along_track_schema
 from tests.database.fixtures import *
 
@@ -124,3 +128,108 @@ def test_ordered_batch_wrapper_reorders_stream_results(monkeypatch):
     assert results == [first, None, last]
     assert captured["n_jobs"] == 3
     assert captured["chunk_size"] == 1
+
+
+class _BasinMask:
+    def lookup(self, latitude: float, longitude: float) -> int:
+        return 1
+
+
+class _BasinConnections:
+    connection_map: dict[int, list[int]] = {1: [1]}
+
+
+_BATCH_AND_STREAM_METHODS = (
+    AlongTrack.geographic_point_in_r_dt_batch,
+    AlongTrack.geographic_point_in_r_dt_stream,
+    AlongTrack.geographic_nearest_neighbors_batch,
+    AlongTrack.geographic_nearest_neighbors_stream,
+)
+
+
+@pytest.fixture
+def query_without_execution(monkeypatch: pytest.MonkeyPatch) -> AlongTrack:
+    query = AlongTrack.__new__(AlongTrack)
+    query.__dict__["basin_mask_lookup"] = _BasinMask()
+    query.__dict__["basin_connections"] = _BasinConnections()
+
+    def fail_execution(*args: object, **kwargs: object) -> NoReturn:
+        pytest.fail("Empty or invalid batches must not create an executor or cursor")
+
+    monkeypatch.setattr(
+        "OceanDB.data_access.base_query.ThreadPoolExecutor", fail_execution
+    )
+    monkeypatch.setattr(query, "cursor", fail_execution)
+    return query
+
+
+@pytest.mark.parametrize("method", _BATCH_AND_STREAM_METHODS)
+@pytest.mark.parametrize("missions", [None, ["j2"]])
+def test_empty_batches_and_streams_yield_no_results(
+    query_without_execution: AlongTrack,
+    method: Callable[..., Iterable[object]],
+    missions: list[Mission] | None,
+) -> None:
+    assert (
+        list(
+            method(
+                query_without_execution,
+                fields=["track"],
+                latitudes=[],
+                longitudes=[],
+                dates=[],
+                missions=missions,
+            )
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("method", _BATCH_AND_STREAM_METHODS)
+@pytest.mark.parametrize(
+    "latitudes, longitudes, dates",
+    [([0.0], [], []), ([], [0.0], []), ([], [], [datetime(2020, 1, 1)])],
+)
+def test_batches_and_streams_still_reject_mismatched_lengths(
+    query_without_execution: AlongTrack,
+    method: Callable[..., Iterable[object]],
+    latitudes: list[float],
+    longitudes: list[float],
+    dates: list[datetime],
+) -> None:
+    with pytest.raises(ValueError, match="zip\\(\\) argument"):
+        list(
+            method(
+                query_without_execution,
+                fields=["track"],
+                latitudes=latitudes,
+                longitudes=longitudes,
+                dates=dates,
+            )
+        )
+
+
+@pytest.mark.parametrize("method", _BATCH_AND_STREAM_METHODS)
+@pytest.mark.parametrize(
+    "n_jobs, chunk_size, message",
+    [(0, 16, "n_jobs must be at least 1"), (4, 0, "chunk_size must be at least 1")],
+)
+def test_empty_batches_and_streams_still_reject_invalid_limits(
+    query_without_execution: AlongTrack,
+    method: Callable[..., Iterable[object]],
+    n_jobs: int,
+    chunk_size: int,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        list(
+            method(
+                query_without_execution,
+                fields=["track"],
+                latitudes=[],
+                longitudes=[],
+                dates=[],
+                n_jobs=n_jobs,
+                chunk_size=chunk_size,
+            )
+        )

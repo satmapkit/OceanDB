@@ -259,6 +259,8 @@ class BaseReadQuery(OceanDB):
         """
         params = list(params_batch)
         plan.validate(len(params))
+        if not params:
+            return
 
         selected_fields = tuple(fields)
         results: Queue[_QueryResult | _WorkerFinished] = Queue()

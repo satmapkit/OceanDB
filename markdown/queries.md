@@ -134,6 +134,11 @@ distance-weighted averaging, and plotting.
 
 ## Along-Track Queries
 
+Radius and nearest-neighbor batches yield one `Dataset | None` per input center
+in input order; `None` represents a window with no matching rows. Empty batches
+and streams (empty latitude, longitude, and date lists) yield zero results.
+Input lengths and worker/chunk limits are still validated.
+
 Along-track radius membership and returned `distance` values use WGS84 ellipsoidal
 geodesic distance in meters. Nearest-neighbor queries rank all observations eligible
 under the time, mission, and basin filters by that same distance, then return up to
