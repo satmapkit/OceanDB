@@ -256,7 +256,6 @@ along_track_fields = (
 )
 
 along_track_schema: dict[along_track_fields, OceanDataField] = {
-    **along_track_columns_schema,
-    "distance": distance,
-    "delta_t": delta_t,
+    name: field for name, field in along_track_columns_schema.items()
 }
+along_track_schema.update({"distance": distance, "delta_t": delta_t})
