@@ -134,6 +134,12 @@ distance-weighted averaging, and plotting.
 
 ## Along-Track Queries
 
+Along-track radius membership and returned `distance` values use WGS84 ellipsoidal
+geodesic distance in meters. Nearest-neighbor queries rank all observations eligible
+under the time, mission, and basin filters by that same distance, then return up to
+three rows; they do not first shortlist candidates using spherical distance. These
+metric semantics apply to both scalar and batch methods.
+
 ### `geographic_point_in_r_dt(...)`
 
 Returns along-track observations inside a spatial radius and temporal window around a single point.

@@ -1,0 +1,198 @@
+"""Regress WGS84 distance, membership, and nearest-neighbor rank.
+
+Oracle literals were independently generated with GeographicLib 2.1 using
+``Geodesic.WGS84.Inverse(0.0, 0.0, latitude, longitude)["s12"]`` (meters;
+semi-major axis 6378137 m, flattening 1/298.257223563). GeographicLib is not a
+test dependency, and no expected distance is computed through PostGIS.
+"""
+
+from datetime import datetime, timedelta
+
+import numpy as np
+import pytest
+from psycopg import sql
+
+from OceanDB.data_access.along_track import AlongTrack, Mission
+from OceanDB.ocean_data.dataset import Dataset
+from OceanDB.OceanDB_Initializer import OceanDBInit
+from OceanDB.schemas import along_track_schema as schema
+from tests.database.fixtures import config as config
+from tests.database.fixtures import db_with_db as db_with_db
+from tests.database.fixtures import db_with_tables as db_with_tables
+from tests.database.fixtures import fresh_db as fresh_db
+
+pytestmark = pytest.mark.uses_database
+DATE = datetime(2013, 1, 4, 12)
+SCIENCE_FIELDS: tuple[schema.along_track_columns, ...] = (
+    "sla_unfiltered",
+    "sla_filtered",
+    "dac",
+    "ocean_tide",
+    "internal_tide",
+    "lwe",
+    "mdt",
+    "tpa_correction",
+)
+POINTS: tuple[tuple[float, float, Mission, datetime, int], ...] = (
+    (1.0, 0.0, "j2", DATE, 1),
+    (0.0, 0.996, "j2", DATE, 1),
+    (0.0, 0.997, "j2", DATE, 1),
+    (0.0, 0.998, "j2", DATE, 1),
+    (0.0, 1.0, "j2", DATE, 1),
+    (0.0, 0.999, "j3", DATE, 1),
+    (0.0, 0.01, "j2", DATE + timedelta(days=3), 1),
+    (0.0, 0.02, "j2", DATE, 2),
+)
+SOURCE_ROWS: list[dict[schema.along_track_columns, str | int | float | datetime]] = [
+    {
+        "file_name": f"wgs84-{index}.nc",
+        "mission": mission,
+        "track": index + 1,
+        "cycle": index + 10,
+        "date_time": date,
+        "latitude": latitude,
+        "longitude": longitude,
+        "basin_id": basin_id,
+        **{
+            field: 100 * (index + 1) + offset
+            for offset, field in enumerate(SCIENCE_FIELDS)
+        },
+    }
+    for index, (latitude, longitude, mission, date, basin_id) in enumerate(POINTS)
+]
+DISTANCES = (
+    110574.38855779878,
+    110874.21283010049,
+    110985.53232089376,
+    111096.85181168703,
+    111319.49079327357,
+    111208.1713024803,
+)
+
+
+class _BasinMask:
+    def lookup(self, latitude: float, longitude: float) -> int:
+        return 1
+
+
+class _BasinConnections:
+    connection_map: dict[int, list[int]] = {1: [1]}
+
+
+@pytest.fixture
+def along_track(db_with_tables: OceanDBInit) -> AlongTrack:
+    """Insert synthetic observations directly into the existing test schema.
+
+    :param db_with_tables: Isolated database from the shared test fixtures.
+    :returns: Query client with deterministic cached basin collaborators.
+    """
+    fields = list(schema.along_track_columns_schema)
+    query = sql.SQL("INSERT INTO along_track ({fields}) VALUES ({values})").format(
+        fields=sql.SQL(", ").join(sql.Identifier(field) for field in fields),
+        values=sql.SQL(", ").join(sql.Placeholder(field) for field in fields),
+    )
+    with db_with_tables.cursor(commit=True) as cursor:
+        cursor.executemany(query, SOURCE_ROWS)
+    client = AlongTrack(config=db_with_tables.config)
+    client.__dict__["basin_mask_lookup"] = _BasinMask()
+    client.__dict__["basin_connections"] = _BasinConnections()
+    return client
+
+
+def _assert_rows(
+    result: Dataset[schema.along_track_fields] | None,
+    indices: list[int],
+    *,
+    ordered: bool,
+) -> None:
+    assert result is not None
+    assert result.row_count == len(indices)
+    assert set(result) == set(schema.along_track_schema)
+    order = np.arange(result.row_count) if ordered else np.argsort(result["track"])
+    for field in schema.along_track_columns_schema:
+        expected = [SOURCE_ROWS[index][field] for index in indices]
+        if field in SCIENCE_FIELDS:
+            np.testing.assert_allclose(
+                result[field][order],
+                np.asarray(expected, dtype=np.float64) * 0.001,
+                rtol=0,
+                atol=1e-12,
+            )
+        else:
+            np.testing.assert_array_equal(result[field][order], np.asarray(expected))
+    np.testing.assert_allclose(
+        result["distance"][order],
+        [DISTANCES[index] for index in indices],
+        rtol=0,
+        atol=1e-6,
+    )
+    np.testing.assert_array_equal(result["delta_t"][order], np.zeros(len(indices)))
+
+
+@pytest.mark.parametrize("missions", [None, ["j2"]])
+def test_nearest_ranks_all_eligible_rows_by_wgs84(
+    along_track: AlongTrack,
+    missions: list[Mission] | None,
+) -> None:
+    # Spherical top three would exclude north (row 0) for the three east rows.
+    scalar = along_track.geographic_nearest_neighbors(
+        fields=list(schema.along_track_schema),
+        latitude=0.0,
+        longitude=0.0,
+        date=DATE,
+        time_window=timedelta(days=1),
+        missions=missions,
+    )
+    _assert_rows(scalar, [0, 1, 2], ordered=True)
+    batch = list(
+        along_track.geographic_nearest_neighbors_batch(
+            fields=list(schema.along_track_schema),
+            latitudes=[0.0, 0.0],
+            longitudes=[0.0, 0.0],
+            dates=[DATE, DATE],
+            time_window=timedelta(days=1),
+            missions=missions,
+            chunk_size=1,
+        )
+    )
+    assert len(batch) == 2
+    for result in batch:
+        _assert_rows(result, [0, 1, 2], ordered=True)
+
+
+@pytest.mark.parametrize("missions", [None, ["j2"]])
+@pytest.mark.parametrize("radius", [111_000.0, 111_250.0])
+def test_radius_membership_and_distance_use_wgs84(
+    along_track: AlongTrack,
+    missions: list[Mission] | None,
+    radius: float,
+) -> None:
+    indices = [0, 1, 2] if radius == 111_000.0 else [0, 1, 2, 3]
+    if radius == 111_250.0 and missions is None:
+        indices.append(5)
+    # North (row 0) is inside 111000 m; east at 1 degree (row 4) exceeds 111250 m.
+    scalar = along_track.geographic_point_in_r_dt(
+        fields=list(schema.along_track_schema),
+        latitude=0.0,
+        longitude=0.0,
+        date=DATE,
+        radius=radius,
+        time_window=timedelta(days=1),
+        missions=missions,
+    )
+    _assert_rows(scalar, indices, ordered=False)
+    batch = list(
+        along_track.geographic_point_in_r_dt_batch(
+            fields=list(schema.along_track_schema),
+            latitudes=[0.0, 0.0],
+            longitudes=[0.0, 0.0],
+            dates=[DATE, DATE],
+            radius=radius,
+            time_window=timedelta(days=1),
+            missions=missions,
+            chunk_size=1,
+        )
+    )
+    assert len(batch) == 2
+    for result in batch:
+        _assert_rows(result, indices, ordered=False)

@@ -192,8 +192,9 @@ distance = DerivedField(
     export_name="distance",
     expression=f"""
         ST_Distance(
-            ST_MakePoint(%(longitude)s, %(latitude)s),
-            {atk_alias}.along_track_point
+            ST_SetSRID(ST_MakePoint(%(longitude)s, %(latitude)s), 4326)::geography,
+            {atk_alias}.along_track_point::geography,
+            true
         )
     """,
     python_type=np.float64,
