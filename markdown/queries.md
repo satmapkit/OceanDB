@@ -134,6 +134,9 @@ distance-weighted averaging, and plotting.
 
 ## Along-Track Queries
 
+See the [provisional scientific contract (#195)](along-track-contract.md) for
+selection, source/reference rules, and the remaining production-freeze boundaries.
+
 Radius and nearest-neighbor batches yield one `Dataset | None` per input center
 in input order; `None` represents a window with no matching rows. Empty batches
 and streams (empty latitude, longitude, and date lists) yield zero results.

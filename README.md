@@ -51,3 +51,6 @@ To get started with OceanDB, perform the following actions:
    See [Index Management](markdown/index.md).
 6. Run OceanDB queries against along-track and eddy datasets.
    See [Queries](markdown/queries.md).
+
+See the [provisional along-track scientific contract (#195)](markdown/along-track-contract.md)
+for correctness/reference rules and the remaining production-freeze boundaries.
