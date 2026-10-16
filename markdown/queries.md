@@ -134,8 +134,9 @@ distance-weighted averaging, and plotting.
 
 ## Along-Track Queries
 
-See the [provisional scientific contract (#195)](along-track-contract.md) for
-selection, source/reference rules, and the remaining production-freeze boundaries.
+See the [scientific contract and PostgreSQL regression reference (#195)](along-track-contract.md)
+for selection, source/reference rules, and the #195/#197 scope. Neither issue
+requires a formal reference freeze.
 
 Radius and nearest-neighbor batches yield one `Dataset | None` per input center
 in input order; `None` represents a window with no matching rows. Empty batches

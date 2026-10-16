@@ -3,27 +3,10 @@
     "src/OceanDB/data/basin_masks/new_basin_mask.nc": "e00d15488c0c22a9a4c4b49e1a13d70bdbe7a72d197781731ae6443933465d4c",
     "src/OceanDB/data/basins/basin_connection_table.txt": "073159a0fbba40b9445804a2d448c110225fdfc5e2b6fcc44cecffec5d6e7bc0",
     "src/OceanDB/data/basins/ocean_basins.csv": "4592278c047c4570b7ee83996f3fa176093820e5d6973e3b9cb80b3824caa6c9",
-    "src/OceanDB/data_access/along_track.py": "2216216500a6bad17ba3d9485c94b6d6fee3aa859c39630911e5d6bf184c4fe8",
-    "src/OceanDB/data_access/base_query.py": "95d69389e75e45c044f07ba09b1f759ad0a2ed9b9ca1e845bf4bc3f8bc8fef91",
-    "src/OceanDB/etl/along_track_etl.py": "d2b639c0967139411132a2bb5558ddf37c2f6ca6eaed3b82d56660dadfbc796c",
-    "src/OceanDB/etl/base_etl.py": "0eb9701e2d749e5ba70dc9c84a3dd89215ade0702badafe3f70903316ee08202",
-    "src/OceanDB/etl/basins_etl.py": "5f9819d4720558aecc30a2d41b7122e308747995499711873e09e043fdf0fa61",
-    "src/OceanDB/ocean_data/basins.py": "ee5e40d6eca16f14b9839ee11491b8eb9c4509d40082b9b40265dd97226bda17",
-    "src/OceanDB/ocean_data/dataset.py": "d91ccd6497d677ca4057276005d428c269c5dba06672de863e77f2ca9e96205d",
-    "src/OceanDB/ocean_data/ocean_data.py": "05ea81e0b9ee5516542f699d1501452fdf480c4d9205462a7ac65261f91d10ed",
-    "src/OceanDB/query_spec.py": "7363f42bcaac55662d767cb1ce8af408e3470f690942f199283e19cc9d18be15",
-    "src/OceanDB/schemas/along_track_schema.py": "f2f18354f7d36396cfacd7c68c2ac8839fb87670e6b62bf818ddb99ed5b281cb",
-    "src/OceanDB/sql/queries/along_track/geographic_nearest_neighbor.sql": "03dac93f7f04a7b28dfd1c4b61015f51fab32c55b3d735c5ad05f0d77236afa2",
-    "src/OceanDB/sql/queries/along_track/geographic_nearest_neighbor_without_mission.sql": "f927ba2bd26f4018f2c57390962cdfcf49f6b2f3bb5a88ae792ecafebdce73e4",
-    "src/OceanDB/sql/queries/along_track/geographic_points_in_spatialtemporal_window.sql": "bb230aca5a6d4729461128cf196c7d858d6a4fbda48e3e6bb2989fa216f522c0",
-    "src/OceanDB/sql/queries/along_track/geographic_points_in_spatialtemporal_window_without_mission.sql": "5ed33759094c3b5c8f04f8724b79dbcc34ab3bb49ea479aec5f2adb00150fbb9",
-    "src/OceanDB/sql/tables/along_track/create_along_track_table.sql": "8c45a142a89a52ba55f9188ec9c94003df85d9c2662e69446f64626e32658015",
-    "src/OceanDB/utils/date_time_conversion.py": "348c5401ad100521e7cf73ea36af6bdff58b91d45db0ddf918cc6ea686b12d8f",
-    "tests/data/along_track_reference/generate.py": "df8e4412699d200d5c35540bca310d169ef12c23b62bd1bb4ff8eecdf7670b54"
+    "tests/data/along_track_reference/generate.py": "7c6ad336fa598c59c93cdf6c80bbd65536c3b2d9b36cdac7dc6af6072ba58320"
   },
   "oracle": "Independent packed/physical literals in generate.py; no production decoder.",
   "origin_base_code_revision": "9d4b76e283aa38898a94bf6420b3c1573e0bad32",
-  "pending": "#197 decoder/catalog finalization; not a production reference freeze.",
   "policies": {
     "basins": "Literal labels measured once from pinned packaged raster; land row 4 retained.",
     "coordinates": "Already [0, 360) longitude; retain decoded float64 microdegree precision.",
@@ -31,7 +14,7 @@
     "missing": "Both science sentinels become SQL NULL and returned NaN; scalar fill broadcasts to all rows.",
     "packing": "Store scientific int16 unchanged; expose metres with scale 0.001 exactly once."
   },
-  "recent_daily_benchmark_identity": "NOT PROVIDED; this synthetic source is not that benchmark.",
+  "scope": "PostgreSQL regression fixture; not real-data or cross-backend benchmark evidence.",
   "source": {
     "actual_time_coverage_utc": {
       "end": "2024-01-02T00:00:03.333333Z",
@@ -66,7 +49,7 @@
     "sha256": "29fbd4c7f1731a21f4167033325af279a17fd50a25759b6a09cb94e7457c28c4",
     "size_bytes": 2680
   },
-  "status": "PROVISIONAL",
+  "status": "SYNTHETIC",
   "variable_metadata": {
     "coordinates": {
       "_FillValue": -2147483647,

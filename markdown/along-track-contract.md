@@ -1,9 +1,9 @@
 # Along-track scientific contract (#195)
 
-**PROVISIONAL — not a production reference freeze or full resolution of #195.**
-This records the implemented behavior at `79a3dc3` and the available evidence.
-Production reader/catalog reconciliation remains with #197; the exact recent
-1-degree DAILY benchmark code identity is still missing.
+**Scientific contract and synthetic PostgreSQL regression reference for #195.**
+This records the implemented behavior at `79a3dc3` and the available evidence
+for #195. There is no formal reference-freeze gate for #195 or #197. #197 covers
+shared-reader and versioned-preparation work only.
 
 ## Scope and query semantics
 
@@ -67,12 +67,13 @@ The user-approved authority is OceanDB's packaged raster and connection assets,
   self-only. This is existing behavior, not an ocean-only eligibility rule.
 - Preserve the file's explicit Caspian `1001 <-> 1002` links. Do not infer that
   every ID >=1000 is isolated from a header description that contradicts those
-  entries. `ocean_basins.csv` is also pinned, but does not replace raster lookup.
+  entries. `ocean_basins.csv` is also hashed, but does not replace raster lookup.
 - The source reference deliberately retains original row index 4, classified
   as land (`basin_id=0`); it is queryable from a same-basin center.
 
-All asset and implementation hashes are pinned in the
+The generator and these three basin assets are hashed in the
 [reference manifest](../tests/data/along_track_reference/manifest.json).
+Runtime Python, schema, and query SQL files are not pinned by the fixture.
 
 ## Source coordinates, time, and missions
 
@@ -154,10 +155,11 @@ and source fields**. Coordinate-only or count-only matches are insufficient.
 Tolerances compare reported values only: never relax membership, NN rank, or
 tie-breaking. Canonically sort **whole rows only for unordered radius results**;
 never sort individual columns. Preserve NN rank in comparisons and hashes.
-Normalize NaN/missing masks for hashing, not NaN payload bits. Freeze the row
-serialization and relevant source/code/runtime identities before timing.
+Normalize NaN/missing masks for hashing, not NaN payload bits. Record lightweight
+source/query, code revision, runtime, and comparison-setting provenance when
+actual #199/#200 comparisons are performed, not as a prerequisite freeze.
 
-## Available evidence and remaining freeze
+## Available evidence and completion boundary
 
 The tiny synthetic source is
 `tests/data/along_track_reference/dt_global_j2_phy_l3_1hz_20240101_20240102.nc`:
@@ -166,10 +168,13 @@ the recent daily benchmark. Its SHA256 is
 `29fbd4c7f1731a21f4167033325af279a17fd50a25759b6a09cb94e7457c28c4`.
 The adjacent [`generate.py`](../tests/data/along_track_reference/generate.py)
 contains independent packed/physical literals, not production-decoder output.
-The manifest pins source metadata/hash plus generator, decoder, schema/scaling,
-query SQL, basin assets, and relevant implementation hashes.
+The manifest records source metadata/hash and hashes only the generator and three
+basin assets. Its `SYNTHETIC` status identifies a PostgreSQL regression fixture,
+not real-data or cross-backend benchmark evidence. The NetCDF's historical
+"provisional" title remains unchanged to preserve its byte identity; it is not a
+completion gate.
 
-Manifest origin base code: `9d4b76e283aa38898a94bf6420b3c1573e0bad32`;
+Informational manifest origin base code: `9d4b76e283aa38898a94bf6420b3c1573e0bad32`;
 fixture commit: `1589bbb`; inclusive-boundary regressions: `79a3dc3`.
 [`test_source_reference.py`](../tests/along_track/test_source_reference.py)
 exercises real INSERT/COPY ingestion, all four methods, full fields, exact
@@ -190,11 +195,17 @@ and basin planners (16 jobs, chunks of 256). It is **not** the future milestone'
 not corrected-query timings. Historical reports remain unchanged; no performance
 ratios are inferred from them.
 
-Before honestly closing #195, #197 must reconcile the canonical source reader
-and catalog, then freeze matching **production PostgreSQL population, source,
-basin, code, and runtime snapshots**, validating complete row/field parity.
-The exact recent 1-degree DAILY benchmark code identity must also be supplied.
-The provisional tests do not complete that freeze or close other issues.
+#195's completion boundary is the scientific contract, WGS84-correct PostgreSQL
+queries, stable ties and bounded/unbounded three-neighbor selection, and the
+existing synthetic source/PostgreSQL regression fixture. These deliverables are
+sufficient for #195; identifying the historical or recent DAILY benchmark is not
+a blocker. They establish the contract for #196/#197, not cross-backend parity or
+a completed benchmark.
+
+#197 is limited to shared-reader and versioned-preparation work. It does not own
+a production source/database/code/runtime freeze or a benchmark-identity gate.
+Lightweight run provenance belongs with actual #199/#200 comparisons, not an
+additional completion requirement for #195 or #197.
 
 ## Reproduce safely
 
@@ -237,5 +248,5 @@ docker stop oceandb-issue195-postgis
 Observed reference runtime (2026-10-16): Python 3.14.5, NumPy 2.0.2,
 netCDF4 1.7.4, psycopg 3.2.13, pytest 9.0.3, mypy 2.3.1;
 PostgreSQL 16.4, PostGIS 3.4.3, GEOS 3.9.0, PROJ 7.2.1.
-This is a recorded environment, **not** a portability guarantee or final runtime
-freeze. These correctness checks are not a performance benchmark.
+This is a recorded environment, **not** a portability guarantee or a required
+runtime snapshot. These correctness checks are not a performance benchmark.

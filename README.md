@@ -52,5 +52,5 @@ To get started with OceanDB, perform the following actions:
 6. Run OceanDB queries against along-track and eddy datasets.
    See [Queries](markdown/queries.md).
 
-See the [provisional along-track scientific contract (#195)](markdown/along-track-contract.md)
-for correctness/reference rules and the remaining production-freeze boundaries.
+See the [along-track scientific contract and PostgreSQL regression reference (#195)](markdown/along-track-contract.md)
+for correctness rules and the #195/#197 scope, without a formal reference-freeze gate.

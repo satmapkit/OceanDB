@@ -7,7 +7,8 @@ From the repository root::
 
 The intended NETCDF3_CLASSIC asset has no downloaded-product identity. Its
 packed and physical oracles below are independent literals, never outputs of
-the production decoder. Reference finalization remains pending issue #197.
+the production decoder. This is a synthetic PostgreSQL regression fixture, not
+real-data or cross-backend benchmark evidence.
 """
 
 import argparse
@@ -134,6 +135,7 @@ SCIENCE_ATTRIBUTES: dict[str, Attribute] = {
     "add_offset": 0.0,
     "units": "m",
 }
+# Preserve the original source bytes; the manifest records the fixture's scope.
 GLOBAL_ATTRIBUTES = {
     "Conventions": "CF-1.6",
     "title": "Synthetic provisional OceanDB source reference",
@@ -144,22 +146,6 @@ DEPENDENCY_PATHS = (
     "src/OceanDB/data/basin_masks/new_basin_mask.nc",
     "src/OceanDB/data/basins/ocean_basins.csv",
     "src/OceanDB/data/basins/basin_connection_table.txt",
-    "src/OceanDB/ocean_data/basins.py",
-    "src/OceanDB/etl/basins_etl.py",
-    "src/OceanDB/etl/along_track_etl.py",
-    "src/OceanDB/etl/base_etl.py",
-    "src/OceanDB/utils/date_time_conversion.py",
-    "src/OceanDB/schemas/along_track_schema.py",
-    "src/OceanDB/ocean_data/ocean_data.py",
-    "src/OceanDB/ocean_data/dataset.py",
-    "src/OceanDB/data_access/along_track.py",
-    "src/OceanDB/data_access/base_query.py",
-    "src/OceanDB/query_spec.py",
-    "src/OceanDB/sql/tables/along_track/create_along_track_table.sql",
-    "src/OceanDB/sql/queries/along_track/geographic_nearest_neighbor.sql",
-    "src/OceanDB/sql/queries/along_track/geographic_nearest_neighbor_without_mission.sql",
-    "src/OceanDB/sql/queries/along_track/geographic_points_in_spatialtemporal_window.sql",
-    "src/OceanDB/sql/queries/along_track/geographic_points_in_spatialtemporal_window_without_mission.sql",
 )
 
 
@@ -206,7 +192,7 @@ def source_variables() -> dict[str, SourceVariable]:
 
 
 def generate(output_directory: Path) -> None:
-    """Write the reproducible asset and compact, dependency-pinned manifest.
+    """Write the reproducible asset and generator/basin provenance manifest.
 
     :param output_directory: Directory receiving the NetCDF source and JSON manifest.
     """
@@ -236,9 +222,8 @@ def generate(output_directory: Path) -> None:
             var[...] = np.asarray(spec.raw, dtype=spec.dtype)
     source_bytes = source_path.read_bytes()
     manifest = {
-        "status": "PROVISIONAL",
-        "pending": "#197 decoder/catalog finalization; not a production reference freeze.",
-        "recent_daily_benchmark_identity": "NOT PROVIDED; this synthetic source is not that benchmark.",
+        "status": "SYNTHETIC",
+        "scope": "PostgreSQL regression fixture; not real-data or cross-backend benchmark evidence.",
         "origin_base_code_revision": BASE_CODE_REVISION,
         "oracle": "Independent packed/physical literals in generate.py; no production decoder.",
         "source": {

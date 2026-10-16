@@ -1,4 +1,4 @@
-"""Regress a provisional literal source through real ETL and query surfaces."""
+"""Regress a synthetic literal source through real ETL and query surfaces."""
 
 import hashlib
 import json
@@ -58,9 +58,7 @@ def test_reference_asset_and_manifest_regenerate_identically(tmp_path: Path) -> 
         ).read_bytes()
     manifest: object = json.loads((REFERENCE_DIRECTORY / "manifest.json").read_bytes())
     assert isinstance(manifest, dict)
-    assert manifest["status"] == "PROVISIONAL"
-    assert "#197" in manifest["pending"]
-    assert "NOT PROVIDED" in manifest["recent_daily_benchmark_identity"]
+    assert manifest["status"] == "SYNTHETIC"
     assert manifest["origin_base_code_revision"] == BASE_CODE_REVISION
     source = manifest["source"]
     assert isinstance(source, dict)
