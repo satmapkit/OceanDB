@@ -9,7 +9,8 @@ from OceanDB.config import Config
 from OceanDB.data_access.base_query import BaseReadQuery
 from OceanDB.etl.along_track_etl import AlongTrackETL
 from OceanDB.etl.base_etl import batch
-from OceanDB.schemas.along_track_schema import (along_track_columns,
+from OceanDB.schemas.along_track_schema import (_expand_if_low_dim,
+                                                along_track_columns,
                                                 along_track_columns_schema)
 
 pytestmark = pytest.mark.unit
@@ -105,3 +106,83 @@ def test_dataset_exposes_scaled_values_and_nan_after_copy_adaptation(
         )
     np.testing.assert_allclose(dataset["tpa_correction"], [0.025] * 4)
     np.testing.assert_array_equal(dataset["track"], [1, 2, 3, 4])
+
+
+@pytest.mark.parametrize("missing_attribute", ["_FillValue", "missing_value"])
+@pytest.mark.parametrize("packed_value", [32767, -25, 0])
+@pytest.mark.parametrize(
+    "rows, expected_length",
+    [(slice(0, 4), 4), (slice(1, 7, 2), 3), (slice(3, 4), 1), (slice(4, 4), 0)],
+)
+def test_scalar_correction_broadcast_preserves_mask_and_values(
+    tmp_path: Path,
+    missing_attribute: str,
+    packed_value: int,
+    rows: slice,
+    expected_length: int,
+) -> None:
+    with nc.Dataset(tmp_path / "correction.nc", "w") as ds:
+        var = ds.createVariable(
+            "tpa_correction",
+            "i2",
+            (),
+            fill_value=32767 if missing_attribute == "_FillValue" else False,
+        )
+        if missing_attribute == "missing_value":
+            var.missing_value = np.int16(32767)
+        var[:] = packed_value
+        values = _expand_if_low_dim(var, rows)
+
+    assert values.shape == (expected_length,)
+    np.testing.assert_array_equal(
+        np.ma.getmaskarray(values), [packed_value == 32767] * expected_length
+    )
+    if packed_value != 32767:
+        np.testing.assert_array_equal(values, [packed_value] * expected_length)
+    expected = None if packed_value == 32767 else packed_value
+    field = along_track_columns_schema["tpa_correction"]
+    assert [AlongTrackETL._copy_value(field, value) for value in values] == [
+        expected
+    ] * expected_length
+
+
+def test_vector_correction_keeps_direct_slice_values_and_mask(tmp_path: Path) -> None:
+    with nc.Dataset(tmp_path / "correction.nc", "w") as ds:
+        ds.createDimension("obs", 4)
+        var = ds.createVariable("tpa_correction", "i2", ("obs",), fill_value=32767)
+        var[:] = [123, 32767, -456, 0]
+        for rows in (slice(None), slice(1, 4, 2)):
+            values = _expand_if_low_dim(var, rows)
+            expected = var[rows]
+            assert values.dtype == expected.dtype
+            np.testing.assert_array_equal(
+                np.ma.getdata(values), np.ma.getdata(expected)
+            )
+            np.testing.assert_array_equal(
+                np.ma.getmaskarray(values), np.ma.getmaskarray(expected)
+            )
+
+
+@pytest.mark.parametrize("day", range(1, 10))
+def test_product_scalar_fill_correction_extracts_and_adapts_to_null(day: int) -> None:
+    file = (
+        Path(__file__).parents[1]
+        / "data"
+        / "along_track"
+        / f"required_underscores_j2_201301{day:02d}.nc"
+    )
+    etl = AlongTrackETL(config=Config.model_construct())
+    with nc.Dataset(file) as ds:
+        var = ds.variables["tpa_correction"]
+        assert var.shape == ()
+        var.set_auto_maskandscale(False)
+        assert var[:] == var._FillValue == 32767
+        batches = list(etl.extract_data_from_netcdf(ds, batch_size=37, file=file))
+
+    assert [len(chunk) for chunk in batches] == [37, 37, 26]
+    field = along_track_columns_schema["tpa_correction"]
+    for chunk in batches:
+        for row in chunk:
+            value = row["tpa_correction"]
+            assert np.ma.is_masked(value)
+            assert AlongTrackETL._copy_value(field, value) is None

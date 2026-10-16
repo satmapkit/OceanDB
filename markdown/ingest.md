@@ -55,6 +55,7 @@ Use `oceandb summary alongtrack` to see what along-track data has already been i
 Along-track ingestion masks scientific `_FillValue` and `missing_value` markers
 before scaling, storing them as SQL `NULL` (exposed as `NaN` by `Dataset`) while
 retaining row alignment. Other scientific values remain packed in storage.
+Scalar `tpa_correction` values retain their missing-value mask when broadcast.
 Existing populated databases are not automatically repaired by SQL/query changes
 or this decoder fix. Validate corrected results with a fresh, controlled reference
 ingestion into a separate database: completion is tracked by file basename, so

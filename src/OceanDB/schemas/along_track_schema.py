@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
 import netCDF4 as nc
 import numpy as np
@@ -155,23 +155,18 @@ mdt = ColumnField(
 )
 
 
-def _expand_if_low_dim(var: nc.Variable, rows: slice) -> Any:
-    """
-    Given a datetime variable in a netcdf dataset
-    which may not have the desired dimension,
-    duplicate the variable to be the right shape.
+def _expand_if_low_dim(
+    var: nc.Variable, rows: slice
+) -> np.ndarray[tuple[int], np.dtype[np.generic]]:
+    """Read correction rows, broadcasting scalar values without losing their mask.
 
-    :param var:
-        The netcdf variable to convert
-
-    :param rows:
-        expected output slice
-
-    :returns:
-        numpy array of the var, with the requested size
+    :param var: Scalar or row-aligned NetCDF correction variable.
+    :param rows: Rows to read, with an explicit stop for scalar broadcasting.
+    :returns: Scalar values and their masks repeated to match the slice length,
+        or the variable slice when no broadcasting is needed.
     """
     if len(var.shape) == 0 and rows.stop is not None:
-        return np.array([var[:] for _ in range(*rows.indices(rows.stop))])
+        return np.ma.repeat(var[:], len(range(*rows.indices(rows.stop))))
     return var[rows]
 
 
