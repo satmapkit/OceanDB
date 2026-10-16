@@ -48,4 +48,4 @@ def test_along_track_points_near_eddy_batch_matches_single_queries(
 
         for field in fields:
             assert field in batch_item
-            assert np.array_equal(batch_item[field], single_item[field])
+            np.testing.assert_array_equal(batch_item[field], single_item[field])

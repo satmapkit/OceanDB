@@ -122,7 +122,7 @@ def test_geographic_point_in_r_dt_batch_matches_single_queries(
 
         for field in fields:
             assert field in batch_item
-            assert np.array_equal(batch_item[field], single_item[field])
+            np.testing.assert_array_equal(batch_item[field], single_item[field])
 
 
 def test_geographic_point_in_r_dt_batch_rejects_mismatched_input_lengths(
