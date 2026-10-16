@@ -15,7 +15,7 @@ def test_create_database(db_with_db):
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = %(db_name)s);",
-                {"db_name": "ocean"},
+                {"db_name": db_with_db.config.postgres_database},
             )
             res = cur.fetchone()
             assert res is not None
