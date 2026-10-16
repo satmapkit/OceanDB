@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from functools import cached_property
+from math import isfinite
 from typing import Any, Generator
 
 from OceanDB.along_track_missions import Mission as Mission
@@ -173,11 +174,17 @@ class AlongTrack(BaseReadQuery):
         date: datetime,
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
+        *,
+        max_radius: float | None = None,
     ) -> Dataset[along_track_fields] | None:
         """
         Query along-track points within spatial + temporal windows.
 
         Yields one Dataset per query point, or None if empty.
+
+        :param max_radius:
+            Inclusive WGS84 distance cap in meters; must be finite and
+            non-negative. ``None`` (default) leaves distance unbounded.
         """
 
         return next(
@@ -188,6 +195,7 @@ class AlongTrack(BaseReadQuery):
                 dates=[date],
                 time_window=time_window,
                 missions=missions,
+                max_radius=max_radius,
             )
         )
 
@@ -200,6 +208,7 @@ class AlongTrack(BaseReadQuery):
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
         *,
+        max_radius: float | None = None,
         n_jobs: int = 1,
         chunk_size: int = 16,
     ) -> Generator[Dataset[along_track_fields] | None, None, None]:
@@ -207,6 +216,10 @@ class AlongTrack(BaseReadQuery):
         Query nearest neighbors for multiple points using a prepared batch query.
 
         Yields one Dataset per query point, or None where no rows are returned.
+
+        :param max_radius:
+            Inclusive WGS84 distance cap in meters; must be finite and
+            non-negative. ``None`` (default) leaves distance unbounded.
         """
 
         results: list[Dataset[along_track_fields] | None] = [None] * len(latitudes)
@@ -217,6 +230,7 @@ class AlongTrack(BaseReadQuery):
             dates=dates,
             time_window=time_window,
             missions=missions,
+            max_radius=max_radius,
             n_jobs=n_jobs,
             chunk_size=chunk_size,
         ):
@@ -232,10 +246,19 @@ class AlongTrack(BaseReadQuery):
         time_window: timedelta = timedelta(days=10),
         missions: list[Mission] | None = None,
         *,
+        max_radius: float | None = None,
         n_jobs: int = 4,
         chunk_size: int = 16,
     ) -> Generator[tuple[int, Dataset[along_track_fields] | None], None, None]:
-        """Stream indexed nearest-neighbor results as workers finish."""
+        """Stream indexed nearest-neighbor results as workers finish.
+
+        :param max_radius:
+            Inclusive WGS84 distance cap in meters; must be finite and
+            non-negative. ``None`` (default) leaves distance unbounded.
+        """
+        if max_radius is not None and (not isfinite(max_radius) or max_radius < 0):
+            raise ValueError("max_radius must be finite and non-negative")
+
         query_spec, params_batch, basin_ids = self._build_basin_query_batch(
             latitudes=latitudes,
             longitudes=longitudes,
@@ -245,6 +268,7 @@ class AlongTrack(BaseReadQuery):
             sql_with_missions=self._along_track_nearest_neighbor_query,
             sql_without_missions=self._along_track_nearest_neighbor_without_mission_query,
             mandatory_fields=["distance"],
+            extra_params={"max_radius": max_radius},
         )
         return self.execute_batch_read_query_stream(
             query_spec=query_spec,

@@ -23,6 +23,9 @@ from tests.database.fixtures import fresh_db as fresh_db
 
 pytestmark = pytest.mark.uses_database
 DATE = datetime(2013, 1, 4, 12)
+RADIUS_DATE = DATE + timedelta(days=10)
+COINCIDENT_DATE = DATE + timedelta(days=11)
+DISTANT_DATE = DATE + timedelta(days=12)
 SCIENCE_FIELDS: tuple[schema.along_track_columns, ...] = (
     "sla_unfiltered",
     "sla_filtered",
@@ -295,3 +298,152 @@ def test_radius_membership_and_distance_use_wgs84(
     assert len(batch) == 2
     for result in batch:
         _assert_rows(result, indices, ordered=False)
+
+
+@pytest.fixture
+def nearest_radius_along_track(along_track: AlongTrack) -> AlongTrack:
+    # Isolate each scenario in time; retain a closer, scientifically ineligible
+    # basin-2 point so radius filtering cannot replace basin eligibility.
+    rows = [SOURCE_ROWS[index].copy() for index in (0, 3, 4, 5, 7)]
+    for row in rows:
+        row["date_time"] = RADIUS_DATE
+        row["file_name"] = f"radius-{row['track']}.nc"
+    for date, longitude, track in (
+        (COINCIDENT_DATE, 0.0, 101),
+        (DISTANT_DATE, 10.0, 102),
+    ):
+        row = SOURCE_ROWS[0].copy()
+        row.update(
+            {
+                "file_name": f"radius-{track}.nc",
+                "date_time": date,
+                "latitude": 0.0,
+                "longitude": longitude,
+                "track": track,
+            }
+        )
+        rows.append(row)
+    fields = list(schema.along_track_columns_schema)
+    query = sql.SQL("INSERT INTO along_track ({fields}) VALUES ({values})").format(
+        fields=sql.SQL(", ").join(sql.Identifier(field) for field in fields),
+        values=sql.SQL(", ").join(sql.Placeholder(field) for field in fields),
+    )
+    with along_track.cursor(commit=True) as cursor:
+        cursor.executemany(query, rows)
+    return along_track
+
+
+def _nearest_radius_results(
+    along_track: AlongTrack,
+    date: datetime,
+    missions: list[Mission] | None,
+    max_radius: float,
+) -> list[Dataset[schema.along_track_fields] | None]:
+    scalar = along_track.geographic_nearest_neighbors(
+        fields=["track"],
+        latitude=0.0,
+        longitude=0.0,
+        date=date,
+        time_window=timedelta(hours=1),
+        missions=missions,
+        max_radius=max_radius,
+    )
+    batch = list(
+        along_track.geographic_nearest_neighbors_batch(
+            fields=["track"],
+            latitudes=[0.0],
+            longitudes=[0.0],
+            dates=[date],
+            time_window=timedelta(hours=1),
+            missions=missions,
+            max_radius=max_radius,
+        )
+    )
+    assert len(batch) == 1
+    return [scalar, *batch]
+
+
+@pytest.mark.parametrize("missions", [None, ["j2"]])
+def test_nearest_radius_membership_and_inclusive_boundary(
+    nearest_radius_along_track: AlongTrack,
+    missions: list[Mission] | None,
+) -> None:
+    # The exact boundary is a frozen GeographicLib oracle, not a PostGIS result.
+    # Use a full millimeter on either side rather than platform-sensitive ULPs.
+    boundary = DISTANCES[0]
+    cases: tuple[tuple[float, list[int]], ...] = (
+        (111_000.0, [0]),
+        (111_250.0, [0, 3, 5] if missions is None else [0, 3]),
+        (100_000.0, []),
+        (0.0, []),
+        (boundary, [0]),
+        (boundary - 0.001, []),
+        (boundary + 0.001, [0]),
+    )
+    for max_radius, indices in cases:
+        for result in _nearest_radius_results(
+            nearest_radius_along_track, RADIUS_DATE, missions, max_radius
+        ):
+            if not indices:
+                assert result is None
+                continue
+            assert result is not None
+            assert result.row_count == len(indices)
+            np.testing.assert_array_equal(
+                result["track"],
+                np.asarray([SOURCE_ROWS[index]["track"] for index in indices]),
+            )
+            np.testing.assert_allclose(
+                result["distance"],
+                [DISTANCES[index] for index in indices],
+                rtol=0,
+                atol=1e-6,
+            )
+
+
+@pytest.mark.parametrize("missions", [None, ["j2"]])
+def test_nearest_zero_radius_includes_coincident_observation(
+    nearest_radius_along_track: AlongTrack,
+    missions: list[Mission] | None,
+) -> None:
+    for result in _nearest_radius_results(
+        nearest_radius_along_track, COINCIDENT_DATE, missions, 0.0
+    ):
+        assert result is not None
+        assert result.row_count == 1
+        np.testing.assert_array_equal(result["track"], [101])
+        np.testing.assert_array_equal(result["distance"], [0.0])
+
+
+@pytest.mark.parametrize("missions", [None, ["j2"]])
+def test_nearest_default_has_no_implicit_500km_cap(
+    nearest_radius_along_track: AlongTrack,
+    missions: list[Mission] | None,
+) -> None:
+    scalar = nearest_radius_along_track.geographic_nearest_neighbors(
+        fields=["track"],
+        latitude=0.0,
+        longitude=0.0,
+        date=DISTANT_DATE,
+        time_window=timedelta(hours=1),
+        missions=missions,
+    )
+    batch = list(
+        nearest_radius_along_track.geographic_nearest_neighbors_batch(
+            fields=["track"],
+            latitudes=[0.0],
+            longitudes=[0.0],
+            dates=[DISTANT_DATE],
+            time_window=timedelta(hours=1),
+            missions=missions,
+        )
+    )
+    assert len(batch) == 1
+    for result in [scalar, *batch]:
+        assert result is not None
+        assert result.row_count == 1
+        np.testing.assert_array_equal(result["track"], [102])
+        assert result["distance"][0] > 500_000.0
+    assert _nearest_radius_results(
+        nearest_radius_along_track, DISTANT_DATE, missions, 500_000.0
+    ) == [None, None]

@@ -140,6 +140,14 @@ under the time, mission, and basin filters by that same distance, then return up
 three rows; they do not first shortlist candidates using spherical distance. These
 metric semantics apply to both scalar and batch methods.
 
+Nearest-neighbor scalar, batch, and stream methods accept a keyword-only
+`max_radius` in meters. It defaults to `None` (unbounded, including observations
+farther than 500 km). A finite, non-negative cap is inclusive: observations at
+exactly that WGS84 distance are eligible, and `0.0` includes coincident points.
+The cap is applied with the time, mission, and basin filters before ranking and
+the three-row limit. Invalid caps (negative, NaN, or infinite) raise `ValueError`
+before database access.
+
 Exact nearest-neighbor distance ties are ordered by ascending `date_time`, then
 `latitude`, then stored canonical `[0, 360)` `longitude`. This scientific unique
 key determines both result order and selection at the three-row cutoff,
@@ -243,6 +251,7 @@ Parameters:
 - `date`
 - `time_window`
 - `missions`
+- `max_radius`: keyword-only inclusive distance cap in meters, default `None` (unbounded)
 
 Example:
 
@@ -259,6 +268,7 @@ result = along_track.geographic_nearest_neighbors(
     longitude=28.1,
     date=datetime(year=2013, month=1, day=4, hour=23),
     time_window=timedelta(days=10),
+    max_radius=500_000.0,  # Return only nearest observations within 500 km.
 )
 ```
 
@@ -283,6 +293,7 @@ Parameters:
 - `dates`
 - `time_window`
 - `missions`
+- `max_radius`: keyword-only inclusive distance cap in meters, default `None` (unbounded)
 - `n_jobs` (defaults to `1`, preserving sequential execution)
 - `chunk_size` (maximum query points in one chunk)
 
@@ -316,6 +327,14 @@ Notes:
 - As with the other batch query, input lengths must match.
 
 The query surface is implemented in [src/OceanDB/data_access/along_track.py](/Users/mddarr/delat/azath/ocean/OceanDB/src/OceanDB/data_access/along_track.py).
+
+### `geographic_nearest_neighbors_stream(...)`
+
+Streaming version of `geographic_nearest_neighbors_batch(...)`, yielding
+`(input_index, Dataset | None)` pairs as workers finish. It accepts the same
+query parameters, including keyword-only `max_radius=None` (unbounded), with
+`n_jobs=4` and `chunk_size=16` by default. A bounded call uses, for example,
+`max_radius=500_000.0` for an inclusive 500 km cap.
 
 ## Eddy Queries
 
