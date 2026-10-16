@@ -7,6 +7,7 @@ test dependency, and no expected distance is computed through PostGIS.
 """
 
 from datetime import datetime, timedelta
+from typing import TypedDict
 
 import numpy as np
 import pytest
@@ -80,6 +81,10 @@ class _BasinMask:
 
 class _BasinConnections:
     connection_map: dict[int, list[int]] = {1: [1]}
+
+
+class _TimeWindow(TypedDict, total=False):
+    time_window: timedelta
 
 
 @pytest.fixture
@@ -298,6 +303,151 @@ def test_radius_membership_and_distance_use_wgs84(
     assert len(batch) == 2
     for result in batch:
         _assert_rows(result, indices, ordered=False)
+
+
+@pytest.mark.parametrize("missions", [None, ["j2"]])
+@pytest.mark.parametrize("zero_window", [False, True])
+def test_time_window_includes_exact_edges_but_not_one_microsecond_outside(
+    along_track: AlongTrack,
+    missions: list[Mission] | None,
+    zero_window: bool,
+) -> None:
+    offsets = (
+        -timedelta(days=10, microseconds=1),
+        -timedelta(days=10),
+        timedelta(0),
+        timedelta(days=10),
+        timedelta(days=10, microseconds=1),
+    )
+    rows = [SOURCE_ROWS[0].copy() for _ in offsets]
+    for index, (row, offset) in enumerate(zip(rows, offsets, strict=True)):
+        row.update(
+            {
+                "file_name": f"time-edge-{index}.nc",
+                "track": 200 + index,
+                "date_time": DATE + offset,
+                "latitude": 20.0,
+                "longitude": 20.0,
+            }
+        )
+    columns = list(schema.along_track_columns_schema)
+    query = sql.SQL("INSERT INTO along_track ({fields}) VALUES ({values})").format(
+        fields=sql.SQL(", ").join(sql.Identifier(field) for field in columns),
+        values=sql.SQL(", ").join(sql.Placeholder(field) for field in columns),
+    )
+    with along_track.cursor(commit=True) as cursor:
+        cursor.executemany(query, list(reversed(rows)))
+
+    identity_fields: tuple[schema.along_track_columns, ...] = (
+        "file_name",
+        "track",
+        "date_time",
+    )
+    fields: list[schema.along_track_fields] = [*identity_fields, "distance", "delta_t"]
+    # Omit the argument entirely to regress the ten-day API default.
+    options: _TimeWindow = {"time_window": timedelta(0)} if zero_window else {}
+    radius_scalar = along_track.geographic_point_in_r_dt(
+        fields=fields,
+        latitude=20.0,
+        longitude=20.0,
+        date=DATE,
+        radius=0.0,
+        missions=missions,
+        **options,
+    )
+    radius_batch = list(
+        along_track.geographic_point_in_r_dt_batch(
+            fields=fields,
+            latitudes=[20.0],
+            longitudes=[20.0],
+            dates=[DATE],
+            radius=0.0,
+            missions=missions,
+            **options,
+        )
+    )
+    nearest_scalar = along_track.geographic_nearest_neighbors(
+        fields=fields,
+        latitude=20.0,
+        longitude=20.0,
+        date=DATE,
+        max_radius=0.0,
+        missions=missions,
+        **options,
+    )
+    nearest_batch = list(
+        along_track.geographic_nearest_neighbors_batch(
+            fields=fields,
+            latitudes=[20.0],
+            longitudes=[20.0],
+            dates=[DATE],
+            max_radius=0.0,
+            missions=missions,
+            **options,
+        )
+    )
+    assert len(radius_batch) == len(nearest_batch) == 1
+    indices = [2] if zero_window else [1, 2, 3]
+    for results, ordered in (
+        ([radius_scalar, *radius_batch], False),
+        ([nearest_scalar, *nearest_batch], True),
+    ):
+        for result in results:
+            assert result is not None
+            assert result.row_count == len(indices)
+            # Do not sort nearest results: all distances tie, so time must ascend.
+            order = (
+                np.arange(result.row_count)
+                if ordered
+                else np.argsort(result["date_time"])
+            )
+            for field in identity_fields:
+                np.testing.assert_array_equal(
+                    result[field][order],
+                    np.asarray([rows[index][field] for index in indices]),
+                )
+            np.testing.assert_array_equal(
+                result["distance"][order], np.zeros(len(indices))
+            )
+            np.testing.assert_array_equal(
+                result["delta_t"][order],
+                [-offsets[index].total_seconds() for index in indices],
+            )
+
+
+@pytest.mark.parametrize("missions", [None, ["j2"]])
+def test_radius_includes_frozen_wgs84_boundary(
+    along_track: AlongTrack,
+    missions: list[Mission] | None,
+) -> None:
+    boundary = DISTANCES[0]
+    for radius in (boundary - 0.001, boundary, boundary + 0.001):
+        scalar = along_track.geographic_point_in_r_dt(
+            fields=list(schema.along_track_schema),
+            latitude=0.0,
+            longitude=0.0,
+            date=DATE,
+            radius=radius,
+            time_window=timedelta(0),
+            missions=missions,
+        )
+        batch = list(
+            along_track.geographic_point_in_r_dt_batch(
+                fields=list(schema.along_track_schema),
+                latitudes=[0.0],
+                longitudes=[0.0],
+                dates=[DATE],
+                radius=radius,
+                time_window=timedelta(0),
+                missions=missions,
+            )
+        )
+        assert len(batch) == 1
+        for result in [scalar, *batch]:
+            if radius < boundary:
+                assert result is None
+            else:
+                _assert_rows(result, [0], ordered=False)
 
 
 @pytest.fixture
