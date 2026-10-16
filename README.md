@@ -28,6 +28,12 @@ oceandb index create --default
 
 See the detailed instructions linked below for the full setup and workflow.
 
+Along-track ingestion preserves scientific missing markers as SQL `NULL` / dataset
+`NaN` before scaling. SQL/query changes and this decoder fix do not repair existing
+populated databases: use a fresh, controlled reference ingestion into a separate
+database to validate corrected results. Completed basenames are skipped on rerun;
+no automatic wipe or repair is performed. See [Ingest Data](markdown/ingest.md).
+
 
 ## Getting Started
 

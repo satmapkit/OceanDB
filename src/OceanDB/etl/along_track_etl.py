@@ -410,9 +410,9 @@ class AlongTrackETL(OceanDBETL):
         Parse & transform NetCDF file
         """
 
-        # Mask, but don't scale
-        ds.set_auto_mask(True)
+        # Disable scaling first, then re-enable masking of packed missing values.
         ds.set_auto_maskandscale(False)
+        ds.set_auto_mask(True)
 
         # pull out mission
         mission = self._extract_mission_from_filename(file)
