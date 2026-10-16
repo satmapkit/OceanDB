@@ -339,6 +339,7 @@ class BaseReadQuery(OceanDB):
 
             values = [row[field.export_name] for row in rows]
 
+            arr: np.ndarray[tuple[int, ...], np.dtype[np.generic]]
             if field.python_type is not None:
                 arr = np.asarray(values, dtype=field.python_type)
             else:
