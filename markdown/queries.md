@@ -140,6 +140,11 @@ under the time, mission, and basin filters by that same distance, then return up
 three rows; they do not first shortlist candidates using spherical distance. These
 metric semantics apply to both scalar and batch methods.
 
+Exact nearest-neighbor distance ties are ordered by ascending `date_time`, then
+`latitude`, then stored canonical `[0, 360)` `longitude`. This scientific unique
+key determines both result order and selection at the three-row cutoff,
+independently of insertion order, for scalar and batch queries.
+
 ### `geographic_point_in_r_dt(...)`
 
 Returns along-track observations inside a spatial radius and temporal window around a single point.

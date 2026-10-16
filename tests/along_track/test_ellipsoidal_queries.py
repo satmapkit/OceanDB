@@ -161,6 +161,105 @@ def test_nearest_ranks_all_eligible_rows_by_wgs84(
 
 
 @pytest.mark.parametrize("missions", [None, ["j2"]])
+@pytest.mark.parametrize("reverse_insertion", [False, True])
+@pytest.mark.parametrize(
+    "latitude, longitude, tie_points",
+    [
+        pytest.param(
+            20.0,
+            20.0,
+            (
+                (DATE - timedelta(hours=3), 20.0, 20.0),
+                (DATE - timedelta(hours=2), 20.0, 20.0),
+                (DATE - timedelta(hours=1), 20.0, 20.0),
+                (DATE + timedelta(hours=1), 20.0, 20.0),
+            ),
+            id="chronological",
+        ),
+        pytest.param(
+            0.0,
+            0.0,
+            (
+                (DATE, -0.5, 0.5),
+                (DATE, -0.5, 359.5),
+                (DATE, 0.5, 0.5),
+                (DATE, 0.5, 359.5),
+            ),
+            id="latitude-canonical-longitude",
+        ),
+    ],
+)
+def test_nearest_ties_follow_scientific_key(
+    along_track: AlongTrack,
+    missions: list[Mission] | None,
+    reverse_insertion: bool,
+    latitude: float,
+    longitude: float,
+    tie_points: tuple[tuple[datetime, float, float], ...],
+) -> None:
+    """Order exact ties by scientific identity, including the three-row cutoff."""
+    rows = [SOURCE_ROWS[0].copy() for _ in tie_points]
+    for index, (row, (date, point_latitude, point_longitude)) in enumerate(
+        zip(rows, tie_points, strict=True)
+    ):
+        row.update(
+            {
+                "file_name": f"ties-{100 - index}.nc",
+                "track": 100 - index,
+                "date_time": date,
+                "latitude": point_latitude,
+                "longitude": point_longitude,
+            }
+        )
+    fields = list(schema.along_track_columns_schema)
+    query = sql.SQL("INSERT INTO along_track ({fields}) VALUES ({values})").format(
+        fields=sql.SQL(", ").join(sql.Identifier(field) for field in fields),
+        values=sql.SQL(", ").join(sql.Placeholder(field) for field in fields),
+    )
+    with along_track.cursor(commit=True) as cursor:
+        cursor.executemany(query, list(reversed(rows)) if reverse_insertion else rows)
+
+    identity_fields: tuple[schema.along_track_columns, ...] = (
+        "date_time",
+        "latitude",
+        "longitude",
+        "file_name",
+        "track",
+    )
+    scalar = along_track.geographic_nearest_neighbors(
+        fields=list(identity_fields),
+        latitude=latitude,
+        longitude=longitude,
+        date=DATE,
+        time_window=timedelta(days=1),
+        missions=missions,
+    )
+    batch = list(
+        along_track.geographic_nearest_neighbors_batch(
+            fields=list(identity_fields),
+            latitudes=[latitude, latitude],
+            longitudes=[longitude, longitude],
+            dates=[DATE, DATE],
+            time_window=timedelta(days=1),
+            missions=missions,
+            chunk_size=1,
+        )
+    )
+    assert len(batch) == 2
+    for result in [scalar, *batch]:
+        assert result is not None
+        assert result.row_count == 3
+        # Four equidistant observations compete for three slots; do not sort results.
+        for field in identity_fields:
+            np.testing.assert_array_equal(
+                result[field], np.asarray([row[field] for row in rows[:3]])
+            )
+        np.testing.assert_array_equal(
+            result["distance"], np.full(3, result["distance"][0])
+        )
+
+
+@pytest.mark.parametrize("missions", [None, ["j2"]])
 @pytest.mark.parametrize("radius", [111_000.0, 111_250.0])
 def test_radius_membership_and_distance_use_wgs84(
     along_track: AlongTrack,
