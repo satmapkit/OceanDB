@@ -167,7 +167,7 @@ class AlongTrack(BaseReadQuery):
 
     def geographic_nearest_neighbors(
         self,
-        fields: list,
+        fields: list[along_track_fields],
         latitude: float,
         longitude: float,
         date: datetime,
