@@ -5,8 +5,6 @@ from typing import Any, overload
 import netCDF4 as nc
 import numpy as np
 
-from OceanDB.OceanDB import OceanDB
-
 
 class BasinMask:
     """
@@ -64,39 +62,34 @@ class BasinMask:
         return self.basin_is_ocean(self.lookup(latitude, longitude))
 
 
-class BasinConnections(OceanDB):
-    """Domain helper for basin connectivity lookups."""
+class BasinConnections:
+    """Basin connectivity from the packaged, versioned connection table.
+
+    This is the same asset used to populate PostgreSQL. Reading it directly
+    allows an indexed backend to classify query centers without a database.
+    """
 
     @cached_property
-    def connection_map(self) -> dict:
-        with self.cursor() as cur:
-            cur.execute(
-                """SELECT DISTINCT basin_id FROM basin_connections ORDER BY basin_id"""
-            )
-            unique_ids = cur.fetchall()
-
-        basin_ids = [row[0] for row in unique_ids]
-        basin_id_params = [{"basin_id": basin_id} for basin_id in basin_ids]
-
-        query = """SELECT array_agg(connected_id) as connected_basin_id
-                FROM basin_connections
-                WHERE basin_id = %(basin_id)s
-                GROUP BY basin_id"""
-
-        basin_id_connection_dict = {}
-        with self.cursor() as cur:
-            cur.executemany(query, basin_id_params, returning=True)
-            i = 0
-            while True:
-                data = cur.fetchall()
-                basin_id_connection_dict[basin_ids[i]] = data[0][0]
-                i += 1
-                if not cur.nextset():
-                    break
+    def connection_map(self) -> dict[int, list[int]]:
+        path = resources.files("OceanDB.data").joinpath(
+            "basins/basin_connection_table.txt"
+        )
+        connections: dict[int, list[int]] = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("HDR"):
+                continue
+            basin, separator, adjacent = line.partition(":")
+            if not separator:
+                raise ValueError(f"Invalid basin connection entry: {line!r}")
+            basin_id = int(basin)
+            if basin_id in connections:
+                raise ValueError(f"Duplicate basin connection entry: {basin_id}")
+            connections[basin_id] = [basin_id]
+            for connected in adjacent.split(","):
+                connected_id = int(connected)
+                if connected_id not in connections[basin_id]:
+                    connections[basin_id].append(connected_id)
 
         for basin_id in BasinMask().basin_ids():
-            if basin_id not in basin_id_connection_dict:
-                basin_id_connection_dict[basin_id] = []
-            basin_id_connection_dict[basin_id].insert(0, basin_id)
-
-        return basin_id_connection_dict
+            connections.setdefault(int(basin_id), [int(basin_id)])
+        return connections

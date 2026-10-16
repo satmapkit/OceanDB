@@ -135,8 +135,35 @@ distance-weighted averaging, and plotting.
 ## Along-Track Queries
 
 See the [scientific contract and PostgreSQL regression reference (#195)](along-track-contract.md)
-for selection, source/reference rules, and the #195/#197 scope. Neither issue
-requires a formal reference freeze.
+for selection and source/reference rules. No formal reference freeze is required.
+
+### Backend selection and capabilities
+
+`AlongTrack(config=...)` uses PostgreSQL by default. To supply another backend,
+construct `AlongTrack(backend=my_backend)`, where `my_backend` implements the four
+methods in `AlongTrackBackend` (`geographic_point_in_r_dt`, its batch variant,
+`geographic_nearest_neighbors`, and its batch variant). The injected backend
+owns its own configuration and source access; passing `config=` alongside
+`backend=` is rejected. `AlongTrack` does not open a PostgreSQL connection or
+query a basin table on behalf of an injected backend. The PostgreSQL
+implementation uses the packaged basin mask and connection table for center
+connectivity; an indexed implementation must apply the same basin definitions
+to satisfy the scientific contract, not QuickMap's polygon policy.
+Existing databases should be checked against the packaged table before relying
+on their stored observation basin IDs. An indexed implementation is **not yet
+bundled**; #198 will integrate one using OceanDB's existing downloaded NetCDF
+files without changing PostgreSQL ingestion.
+
+Both backends must return ordinary OceanDB `Dataset` results with the same
+fields, scaling, nearest `distance`, and empty/batch behavior. The supported
+indexed surface is serial (`n_jobs=1`); requesting parallel batches, SQL debug
+observation, or the completion-order streaming methods with an injected backend
+raises `AlongTrackCapabilityError`. SQL planning, cursors, and planner controls
+remain PostgreSQL-only. This interface does not add indexed entire-record
+queries or silently fall back to PostgreSQL for unsupported operations.
+PostgreSQL-only helpers such as `execute_read_query` and `cursor` remain
+available through `along_track.postgresql_backend`; requesting that property
+with an injected backend raises `AlongTrackCapabilityError`.
 
 Radius and nearest-neighbor batches yield one `Dataset | None` per input center
 in input order; `None` represents a window with no matching rows. Empty batches

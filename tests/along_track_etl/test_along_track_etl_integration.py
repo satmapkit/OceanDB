@@ -27,7 +27,7 @@ def test_along_track_scaling_matches_netcdf(db_with_alongtrack_data):
     file["longitude"].set_auto_scale(True)
 
     atdb = AlongTrack(db_with_alongtrack_data.config)
-    data_from_db = atdb.execute_read_query(
+    data_from_db = atdb.postgresql_backend.execute_read_query(
         query_spec=QuerySpec(
             sql_template="""
                 SELECT

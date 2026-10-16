@@ -31,7 +31,7 @@ class QueryCapture:
 
 @dataclass(frozen=True)
 class QueryScenario:
-    query_class: type[BaseReadQuery]
+    query_class: type[AlongTrack] | type[BaseReadQuery]
     method_name: str
     kwargs: dict[str, Any]
 

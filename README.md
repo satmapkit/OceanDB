@@ -53,4 +53,4 @@ To get started with OceanDB, perform the following actions:
    See [Queries](markdown/queries.md).
 
 See the [along-track scientific contract and PostgreSQL regression reference (#195)](markdown/along-track-contract.md)
-for correctness rules and the #195/#197 scope, without a formal reference-freeze gate.
+for correctness rules and the #195 scope, without a formal reference-freeze gate.

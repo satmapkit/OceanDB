@@ -9,7 +9,9 @@ from typing import Literal, NoReturn, TypedDict
 
 import pytest
 
-from OceanDB.data_access.along_track import AlongTrack, Mission
+from OceanDB.data_access.along_track import Mission
+from OceanDB.data_access.along_track import \
+    PostgreSQLAlongTrackBackend as AlongTrack
 from OceanDB.data_access.base_query import QueryPlan
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.query_spec import QuerySpec

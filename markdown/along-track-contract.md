@@ -2,8 +2,8 @@
 
 **Scientific contract and synthetic PostgreSQL regression reference for #195.**
 This records the implemented behavior at `79a3dc3` and the available evidence
-for #195. There is no formal reference-freeze gate for #195 or #197. #197 covers
-shared-reader and versioned-preparation work only.
+for #195. There is no formal reference-freeze gate for #195. Source reading and
+indexed preparation are not part of this reference.
 
 ## Scope and query semantics
 
@@ -87,15 +87,15 @@ datetimes decoded from CF `days since 1950-01-01 00:00:00`, Gregorian source
 metadata. Actual observations span midnight (including microseconds on either
 side); decoded times, not filename dates, determine coverage and membership.
 Timezone-aware input handling, alternative calendars, and datetime normalization
-are not established here and require #197 reconciliation; no new handling is
+are not established here and require separate reconciliation; no new handling is
 introduced or claimed by this contract.
 
 Public query `missions` use canonical names from `Mission` in
 [`along_track.py`](../src/OceanDB/data_access/along_track.py), matching the
 **actual stored mission strings**: `None` means all, `[]` means none. Mission
 filters are literal, not aliases. The downloader's dataset/layout naming
-`s6a-lr` versus public query `s6a` must be reconciled by #197; the existing
-download mapping is not a guarantee of ingest/query alias normalization.
+`s6a-lr` versus public query `s6a` must be reconciled before parity testing;
+the existing download mapping is not a guarantee of ingest/query alias normalization.
 Ingest extracts the filename mission; no silent `s6a-lr` rewrite is added here.
 
 ## Scientific values, identity, and population integrity
@@ -199,13 +199,12 @@ ratios are inferred from them.
 queries, stable ties and bounded/unbounded three-neighbor selection, and the
 existing synthetic source/PostgreSQL regression fixture. These deliverables are
 sufficient for #195; identifying the historical or recent DAILY benchmark is not
-a blocker. They establish the contract for #196/#197, not cross-backend parity or
-a completed benchmark.
+a blocker. They establish the contract for #196 and future indexed work, not
+cross-backend parity or a completed benchmark.
 
-#197 is limited to shared-reader and versioned-preparation work. It does not own
-a production source/database/code/runtime freeze or a benchmark-identity gate.
-Lightweight run provenance belongs with actual #199/#200 comparisons, not an
-additional completion requirement for #195 or #197.
+Indexed source access and caching are deferred to #198; no shared-reader refactor
+is assumed. Lightweight run provenance belongs with actual #199/#200 comparisons,
+not an additional completion requirement for #195.
 
 ## Reproduce safely
 

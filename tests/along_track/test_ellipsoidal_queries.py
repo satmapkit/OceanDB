@@ -13,7 +13,8 @@ import numpy as np
 import pytest
 from psycopg import sql
 
-from OceanDB.data_access.along_track import AlongTrack, Mission
+from OceanDB.data_access.along_track import (AlongTrack, Mission,
+                                             PostgreSQLAlongTrackBackend)
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.OceanDB_Initializer import OceanDBInit
 from OceanDB.schemas import along_track_schema as schema
@@ -102,8 +103,9 @@ def along_track(db_with_tables: OceanDBInit) -> AlongTrack:
     with db_with_tables.cursor(commit=True) as cursor:
         cursor.executemany(query, SOURCE_ROWS)
     client = AlongTrack(config=db_with_tables.config)
-    client.__dict__["basin_mask_lookup"] = _BasinMask()
-    client.__dict__["basin_connections"] = _BasinConnections()
+    assert isinstance(client.backend, PostgreSQLAlongTrackBackend)
+    client.backend.__dict__["basin_mask_lookup"] = _BasinMask()
+    client.backend.__dict__["basin_connections"] = _BasinConnections()
     return client
 
 
@@ -224,7 +226,7 @@ def test_nearest_ties_follow_scientific_key(
         fields=sql.SQL(", ").join(sql.Identifier(field) for field in fields),
         values=sql.SQL(", ").join(sql.Placeholder(field) for field in fields),
     )
-    with along_track.cursor(commit=True) as cursor:
+    with along_track.postgresql_backend.cursor(commit=True) as cursor:
         cursor.executemany(query, list(reversed(rows)) if reverse_insertion else rows)
 
     identity_fields: tuple[schema.along_track_columns, ...] = (
@@ -335,7 +337,7 @@ def test_time_window_includes_exact_edges_but_not_one_microsecond_outside(
         fields=sql.SQL(", ").join(sql.Identifier(field) for field in columns),
         values=sql.SQL(", ").join(sql.Placeholder(field) for field in columns),
     )
-    with along_track.cursor(commit=True) as cursor:
+    with along_track.postgresql_backend.cursor(commit=True) as cursor:
         cursor.executemany(query, list(reversed(rows)))
 
     identity_fields: tuple[schema.along_track_columns, ...] = (
@@ -478,7 +480,7 @@ def nearest_radius_along_track(along_track: AlongTrack) -> AlongTrack:
         fields=sql.SQL(", ").join(sql.Identifier(field) for field in fields),
         values=sql.SQL(", ").join(sql.Placeholder(field) for field in fields),
     )
-    with along_track.cursor(commit=True) as cursor:
+    with along_track.postgresql_backend.cursor(commit=True) as cursor:
         cursor.executemany(query, rows)
     return along_track
 

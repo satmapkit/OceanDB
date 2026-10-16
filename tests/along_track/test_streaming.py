@@ -4,7 +4,9 @@ from typing import NoReturn
 
 import pytest
 
-from OceanDB.data_access.along_track import AlongTrack, Mission
+from OceanDB.data_access.along_track import Mission
+from OceanDB.data_access.along_track import \
+    PostgreSQLAlongTrackBackend as AlongTrack
 from OceanDB.schemas.along_track_schema import along_track_schema
 from tests.database.fixtures import *
 
