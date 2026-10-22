@@ -471,8 +471,8 @@ class AlongTrack:
 
     :param config: PostgreSQL configuration when no backend is supplied.
     :param backend: An implementation of :class:`AlongTrackBackend`. If omitted,
-        use the existing PostgreSQL implementation. An indexed implementation is
-        not bundled until #198; callers may inject one without a database.
+        use the existing PostgreSQL implementation. The local indexed backend
+        is available from :mod:`OceanDB.data_access.indexed_along_track`.
     """
 
     def __init__(

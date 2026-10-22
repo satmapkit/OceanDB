@@ -15,6 +15,7 @@ dependencies = [
     "psycopg-binary~=3.2.1",
     "python-dateutil~=2.9.0.post0",
     "numpy~=2.0.1",
+    "geographiclib>=2,<3",
     "pandas~=2.2.2",
     "copernicusmarine>=2.0.0",
     "xarray~=2024.6.0",
@@ -48,6 +49,7 @@ where = ["src"]
 include = ["OceanDB*"]
 
 [tool.setuptools.package-data]
+"OceanDB.data_access" = ["QUICKMAP_LICENSE.txt"]
 "OceanDB.sql" = ["*.sql"]
 "OceanDB.sql.tables" = ["*/*.sql", "*.sql"]
 "OceanDB.sql.indices" = ["*/*.sql", "*.sql"]
