@@ -267,44 +267,62 @@ def test_injected_backend_forwards_scalar_queries_and_returns_the_same_datasets(
     ]
 
 
-@pytest.mark.parametrize(
-    "method_name",
-    ["geographic_point_in_r_dt_batch", "geographic_nearest_neighbors_batch"],
-)
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
 def test_injected_backend_requires_one_ordered_result_per_center(
-    injected_backend: tuple[AlongTrack, _FakeBackend], method_name: str
+    injected_backend: tuple[AlongTrack, _FakeBackend], nearest: bool
 ) -> None:
+    """Keep input order while rejecting malformed batches at call time.
+
+    :param injected_backend: Facade and observable database-free backend.
+    :param nearest: Exercise the nearest rather than radius batch.
+    """
     query, backend = injected_backend
-    method = getattr(query, method_name)
+    method = (
+        query.geographic_nearest_neighbors_batch
+        if nearest
+        else query.geographic_point_in_r_dt_batch
+    )
     assert list(method(FIELDS, [], [], [])) == []
-    with pytest.raises(ValueError, match="equal lengths"):
-        list(method(FIELDS, [10.0], [], [DATE]))
+    for longitudes, dates in (([], [DATE]), ([20.0], [])):
+        with pytest.raises(ValueError, match="equal lengths"):
+            method(FIELDS, [10.0], longitudes, dates)
     results = list(method(FIELDS, LATITUDES, LONGITUDES, DATES))
     assert len(results) == len(DATES)
     assert results[1] is None
     assert results[0] is not None and results[0]["date_time"][0] == DATE
 
 
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
 @pytest.mark.parametrize(
-    "method_name",
-    ["geographic_point_in_r_dt_batch", "geographic_nearest_neighbors_batch"],
-)
-@pytest.mark.parametrize(
-    "options, message",
+    "n_jobs, chunk_size, message",
     [
-        ({"n_jobs": 0}, "n_jobs must be at least 1"),
-        ({"chunk_size": 0}, "chunk_size must be at least 1"),
+        (0, 16, "n_jobs must be at least 1"),
+        (1, 0, "chunk_size must be at least 1"),
     ],
 )
 def test_injected_backend_rejects_invalid_batch_limits(
     injected_backend: tuple[AlongTrack, _FakeBackend],
-    method_name: str,
-    options: dict[str, int],
+    nearest: bool,
+    n_jobs: int,
+    chunk_size: int,
     message: str,
 ) -> None:
+    """Reject worker and chunk limits without consuming a generator.
+
+    :param injected_backend: Facade and observable database-free backend.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param n_jobs: Worker count, invalid in the worker-limit case.
+    :param chunk_size: Chunk size, invalid in the chunk-limit case.
+    :param message: Expected eager validation error.
+    """
     query, backend = injected_backend
+    method = (
+        query.geographic_nearest_neighbors_batch
+        if nearest
+        else query.geographic_point_in_r_dt_batch
+    )
     with pytest.raises(ValueError, match=message):
-        list(getattr(query, method_name)(FIELDS, [], [], [], **options))
+        method(FIELDS, [], [], [], n_jobs=n_jobs, chunk_size=chunk_size)
     assert backend.calls == []
 
 
@@ -312,14 +330,17 @@ def test_injected_backend_rejects_invalid_batch_limits(
 def test_injected_backend_rejects_invalid_nearest_radius(
     injected_backend: tuple[AlongTrack, _FakeBackend], radius: float
 ) -> None:
+    """Validate nearest caps eagerly for both scalar and batch calls.
+
+    :param injected_backend: Facade and observable database-free backend.
+    :param radius: Negative or nonfinite cap.
+    """
     query, backend = injected_backend
     with pytest.raises(ValueError, match="max_radius must be finite"):
         query.geographic_nearest_neighbors(FIELDS, 10.0, 20.0, DATE, max_radius=radius)
     with pytest.raises(ValueError, match="max_radius must be finite"):
-        list(
-            query.geographic_nearest_neighbors_batch(
-                FIELDS, LATITUDES, LONGITUDES, DATES, max_radius=radius
-            )
+        query.geographic_nearest_neighbors_batch(
+            FIELDS, LATITUDES, LONGITUDES, DATES, max_radius=radius
         )
     assert backend.calls == []
 
@@ -488,33 +509,45 @@ def test_injected_backend_preserves_batch_defaults(
     ]
 
 
-@pytest.mark.parametrize(
-    "method_name",
-    ["geographic_point_in_r_dt_stream", "geographic_nearest_neighbors_stream"],
-)
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
 def test_injected_backend_does_not_fall_through_to_postgres_streams(
     injected_backend: tuple[AlongTrack, _FakeBackend],
-    method_name: str,
+    nearest: bool,
 ) -> None:
+    """Reject unsupported streaming at call time, without SQL fallback.
+
+    :param injected_backend: Facade and observable database-free backend.
+    :param nearest: Exercise the nearest rather than radius stream.
+    """
     query, backend = injected_backend
-    method = getattr(query, method_name)
+    method = (
+        query.geographic_nearest_neighbors_stream
+        if nearest
+        else query.geographic_point_in_r_dt_stream
+    )
     with pytest.raises(NotImplementedError):
-        list(method(FIELDS, LATITUDES, LONGITUDES, DATES))
+        method(FIELDS, LATITUDES, LONGITUDES, DATES)
     assert backend.calls == []
 
 
-@pytest.mark.parametrize(
-    "method_name",
-    ["geographic_point_in_r_dt_batch", "geographic_nearest_neighbors_batch"],
-)
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
 def test_injected_backend_rejects_parallel_batches(
     injected_backend: tuple[AlongTrack, _FakeBackend],
-    method_name: str,
+    nearest: bool,
 ) -> None:
+    """Reject unsupported parallel batches before generator consumption.
+
+    :param injected_backend: Facade and observable database-free backend.
+    :param nearest: Exercise the nearest rather than radius batch.
+    """
     query, backend = injected_backend
-    method = getattr(query, method_name)
+    method = (
+        query.geographic_nearest_neighbors_batch
+        if nearest
+        else query.geographic_point_in_r_dt_batch
+    )
     with pytest.raises(NotImplementedError, match="parallel"):
-        list(method(FIELDS, LATITUDES, LONGITUDES, DATES, n_jobs=2))
+        method(FIELDS, LATITUDES, LONGITUDES, DATES, n_jobs=2)
     assert backend.calls == []
 
 

@@ -8,6 +8,8 @@ import hashlib
 import os
 import re
 import shutil
+from collections.abc import Generator, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import NoReturn
@@ -17,8 +19,8 @@ import numpy as np
 import psycopg
 import pytest
 
-from OceanDB.data_access.along_track import AlongTrack, Mission
-from OceanDB.data_access.indexed_along_track import IndexedAlongTrackBackend
+from OceanDB.data_access.along_track import AlongTrack, AlongTrackBackend, Mission
+from OceanDB.data_access.indexed_along_track import IndexedAlongTrackBackend, _Source
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas import along_track_schema as schema
 from tests.data.along_track_reference.generate import (BASIN_ID, CYCLE,
@@ -141,6 +143,204 @@ def _assert_source_row(
         )
     np.testing.assert_array_equal(result["distance"], [0.0])
     np.testing.assert_array_equal(result["delta_t"], [0.0])
+
+
+@dataclass
+class _WorkEvents:
+    """Separate complete inventory passes from additional source safety checks."""
+
+    inventory_passes: int = 0
+    inventory_checks: list[Path] = field(default_factory=list)
+    selected_checks: list[Path] = field(default_factory=list)
+    windows: list[datetime] = field(default_factory=list)
+
+
+def _observe_work(
+    backend: IndexedAlongTrackBackend, monkeypatch: pytest.MonkeyPatch
+) -> _WorkEvents:
+    """Observe narrow preparation boundaries without inspecting window arrays.
+
+    :param backend: Constructed backend whose subsequent work is observed.
+    :param monkeypatch: Scoped method patcher.
+    :returns: Mutable event log; all wrapped methods retain their behavior.
+    """
+    events = _WorkEvents()
+    in_inventory = False
+    validate_inventory = backend._validate_inventory
+    check_source = backend._check_source
+    prepare_window = backend.prepare_window
+
+    def observe_inventory() -> None:
+        nonlocal in_inventory
+        events.inventory_passes += 1
+        in_inventory = True
+        try:
+            validate_inventory()
+        finally:
+            in_inventory = False
+
+    def observe_source(source: _Source) -> None:
+        checks = events.inventory_checks if in_inventory else events.selected_checks
+        checks.append(source.path)
+        check_source(source)
+
+    def observe_window(
+        date: datetime,
+        time_window: timedelta,
+        missions: Sequence[Mission] | None = None,
+    ) -> None:
+        events.windows.append(date)
+        prepare_window(date, time_window, missions)
+
+    monkeypatch.setattr(backend, "_validate_inventory", observe_inventory)
+    monkeypatch.setattr(backend, "_check_source", observe_source)
+    monkeypatch.setattr(backend, "prepare_window", observe_window)
+    return events
+
+
+def _query_batch(
+    client: AlongTrackBackend,
+    nearest: bool,
+    fields: list[schema.along_track_fields],
+    latitudes: list[float],
+    longitudes: list[float],
+    dates: list[datetime],
+    *,
+    radius: float = 0.0,
+    time_window: timedelta = timedelta(0),
+    missions: list[Mission] | None = None,
+    n_jobs: int = 1,
+    chunk_size: int = 16,
+) -> Generator[Dataset[schema.along_track_fields] | None, None, None]:
+    """Apply the same lifecycle case to either public batch operation.
+
+    :param client: Direct backend or facade with the four-method contract.
+    :param nearest: Use nearest rather than radius selection.
+    :param fields: Requested projection.
+    :param latitudes: Paired center latitudes.
+    :param longitudes: Paired center longitudes.
+    :param dates: Paired center dates.
+    :param radius: Radius or nearest cap, in meters.
+    :param time_window: Temporal half-window.
+    :param missions: Mission selection.
+    :param n_jobs: Worker limit forwarded unchanged.
+    :param chunk_size: Chunk limit forwarded unchanged.
+    :returns: Unconsumed public batch generator.
+    """
+    if nearest:
+        return client.geographic_nearest_neighbors_batch(
+            fields,
+            latitudes,
+            longitudes,
+            dates,
+            time_window,
+            missions,
+            max_radius=radius,
+            n_jobs=n_jobs,
+            chunk_size=chunk_size,
+        )
+    return client.geographic_point_in_r_dt_batch(
+        fields,
+        latitudes,
+        longitudes,
+        dates,
+        radius,
+        time_window,
+        missions,
+        n_jobs=n_jobs,
+        chunk_size=chunk_size,
+    )
+
+
+def _copy_shifted_mission_source(
+    product: Path, source: Path, mission: Mission, days: int
+) -> Path:
+    """Create a second valid mission with nonduplicate literal observation times.
+
+    :param product: Temporary product root.
+    :param source: Original synthetic fixture copy.
+    :param mission: Mission embedded in the new source name and directory.
+    :param days: Integral day offset applied to the independent raw time literals.
+    :returns: New source path, created before backend construction.
+    """
+    month = (
+        product
+        / f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411"
+        / "2024"
+        / "01"
+    )
+    month.mkdir(parents=True)
+    other = month / SOURCE_NAME.replace("_j2_", f"_{mission}_")
+    shutil.copyfile(source, other)
+    with nc.Dataset(other, "r+") as dataset:
+        variable = dataset["time"]
+        variable.set_auto_maskandscale(False)
+        variable[:] = np.asarray(TIME_RAW) + days
+    return other
+
+
+def _assert_projected_source_rows(
+    result: Dataset[schema.along_track_fields] | None,
+    fields: list[schema.along_track_fields],
+    indices: Sequence[int],
+    date: datetime,
+    distances: Sequence[float],
+    *,
+    nearest: bool = False,
+) -> None:
+    """Check every projected column against source literals, not the reader.
+
+    :param result: Query result using the original single-mission source.
+    :param fields: Requested fields, excluding implicit nearest distance.
+    :param indices: Expected source rows, in date order or required nearest order.
+    :param date: Temporal center for signed offsets.
+    :param distances: Independent WGS84 distances aligned with expected rows.
+    :param nearest: Preserve nearest ordering and require mandatory distance.
+    """
+    assert isinstance(result, Dataset)
+    assert result.name == "along_track"
+    assert result.row_count == len(indices)
+    assert set(result) == set(fields) | ({"distance"} if nearest else set())
+    order = np.arange(len(indices))
+    if not nearest and len(indices) > 1:
+        order = np.argsort(result["date_time"])
+    expected: dict[
+        schema.along_track_fields, Sequence[str | int | float | datetime]
+    ] = {
+        "date_time": [DATES[index] for index in indices],
+        "latitude": [LATITUDE[index] for index in indices],
+        "longitude": [LONGITUDE[index] for index in indices],
+        "track": [TRACK[index] for index in indices],
+        "cycle": [CYCLE[index] for index in indices],
+        "basin_id": [BASIN_ID[index] for index in indices],
+        "file_name": [SOURCE_NAME] * len(indices),
+        "mission": ["j2"] * len(indices),
+    }
+    for name in result:
+        if name in SCIENCE:
+            oracle = SCIENCE[name]
+            for actual, values in (
+                (result.get_unscaled(name)[order], oracle.packed),
+                (result[name][order], oracle.physical),
+            ):
+                literal = np.asarray([values[index] for index in indices], dtype=float)
+                np.testing.assert_array_equal(np.isnan(actual), np.isnan(literal))
+                np.testing.assert_allclose(
+                    actual, literal, rtol=0, atol=1e-12, equal_nan=True
+                )
+        elif name == "distance":
+            np.testing.assert_allclose(
+                result[name][order], distances, rtol=0, atol=1e-4
+            )
+        elif name == "delta_t":
+            np.testing.assert_array_equal(
+                result[name][order],
+                [(date - DATES[index]).total_seconds() for index in indices],
+            )
+        else:
+            np.testing.assert_array_equal(
+                result[name][order], np.asarray(expected[name], dtype=object)
+            )
 
 
 def test_all_four_queries_preserve_source_rows_and_scalar_correction_mask(
@@ -530,6 +730,523 @@ def test_zero_column_radius_projection_preserves_legacy_dataset_shape(
     )
     assert isinstance(result, Dataset)
     assert len(result) == 0 and result.row_count == 0
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+def test_indexed_batches_defer_work_until_first_next(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+) -> None:
+    """Constructing either direct batch must not validate or prepare sources.
+
+    :param source_layout: Temporary product root, cache, and literal source.
+    :param monkeypatch: Scoped work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    """
+    product, cache, source = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    catalog_reads = backend.stats.catalog_reads
+    assert catalog_reads == 1
+    events = _observe_work(backend, monkeypatch)
+    results = _query_batch(
+        backend, nearest, FULL_FIELDS, [LATITUDE[0]], [LONGITUDE[0]], [DATES[0]]
+    )
+    assert events == _WorkEvents()
+    assert backend.stats.catalog_reads == catalog_reads
+    assert (
+        backend.stats.source_reads
+        == backend.stats.disk_hits
+        == backend.stats.memory_hits
+        == 0
+    )
+    assert backend.stats.window_builds == backend.stats.active_bytes == 0
+
+    _assert_source_row(next(results), 0)
+    assert events.inventory_passes == 1
+    assert events.inventory_checks == [source]
+    assert events.windows == [DATES[0]]
+    assert backend.stats.catalog_reads == catalog_reads
+    assert backend.stats.source_reads == backend.stats.window_builds == 1
+    results.close()
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+@pytest.mark.parametrize("n_jobs, chunk_size", [(0, 16), (2, 16), (1, 0), (1, -1)])
+def test_direct_batch_worker_and_chunk_errors_are_eager(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+    n_jobs: int,
+    chunk_size: int,
+) -> None:
+    """Direct wrappers validate their limits without starting the generator.
+
+    :param source_layout: Temporary product root, cache, and source.
+    :param monkeypatch: Scoped work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param n_jobs: Invalid worker count, or one for chunk cases.
+    :param chunk_size: Invalid chunk size, or the default for worker cases.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    events = _observe_work(backend, monkeypatch)
+    with pytest.raises(ValueError, match="n_jobs=1 and positive chunk_size"):
+        _query_batch(
+            backend,
+            nearest,
+            ["track"],
+            [],
+            [],
+            [],
+            n_jobs=n_jobs,
+            chunk_size=chunk_size,
+        )
+    assert events == _WorkEvents()
+    assert backend.stats.source_reads == backend.stats.window_builds == 0
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+@pytest.mark.parametrize("problem", ["shape", "fields", "negative", "nan", "infinite"])
+def test_direct_batch_shape_fields_and_radius_errors_are_deferred(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+    problem: str,
+) -> None:
+    """Keep direct shape, projection, and radius validation at first iteration.
+
+    :param source_layout: Temporary product root, cache, and source.
+    :param monkeypatch: Scoped schema and work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param problem: Runtime validation failure to introduce.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    events = _observe_work(backend, monkeypatch)
+    longitudes = [] if problem == "shape" else [LONGITUDE[0]]
+    radius = {"negative": -1.0, "nan": float("nan"), "infinite": float("inf")}.get(
+        problem, 0.0
+    )
+    message = "equal lengths" if problem == "shape" else "radius must be finite"
+    if problem == "fields":
+        monkeypatch.delitem(schema.along_track_schema, "track")
+        message = "Unknown AlongTrack fields"
+    results = _query_batch(
+        backend,
+        nearest,
+        ["track"],
+        [LATITUDE[0]],
+        longitudes,
+        [DATES[0]],
+        radius=radius,
+    )
+    assert events == _WorkEvents()
+    with pytest.raises(ValueError, match=message):
+        next(results)
+    assert events == _WorkEvents()
+    assert backend.stats.source_reads == backend.stats.window_builds == 0
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+@pytest.mark.parametrize("empty", [False, True], ids=["nonempty", "empty"])
+def test_facade_batches_defer_field_checks_until_first_next(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+    empty: bool,
+) -> None:
+    """Reject unknown fields on iteration, including through the facade.
+
+    :param source_layout: Temporary product root, cache, and source.
+    :param monkeypatch: Scoped shared-schema and work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param empty: Supply no centers while retaining projection validation.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    client = AlongTrack(backend=backend)
+    events = _observe_work(backend, monkeypatch)
+    # Mutate the shared mapping rather than rebinding only the backend's alias:
+    # an incorrectly eager facade validator must see the same unknown field.
+    monkeypatch.delitem(schema.along_track_schema, "track")
+    results = _query_batch(
+        client,
+        nearest,
+        ["track"],
+        [] if empty else [LATITUDE[0]],
+        [] if empty else [LONGITUDE[0]],
+        [] if empty else [DATES[0]],
+    )
+    assert events == _WorkEvents()
+    with pytest.raises(ValueError, match="Unknown AlongTrack fields"):
+        next(results)
+    assert events == _WorkEvents()
+    assert backend.stats.source_reads == backend.stats.window_builds == 0
+
+
+@pytest.mark.parametrize("empty", [False, True], ids=["nonempty", "empty"])
+@pytest.mark.parametrize("radius", [-1.0, float("nan"), float("inf")])
+def test_facade_radius_batches_defer_radius_checks_until_first_next(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    empty: bool,
+    radius: float,
+) -> None:
+    """Keep radius validation deferred, unlike the facade's nearest-cap check.
+
+    :param source_layout: Temporary product root, cache, and source.
+    :param monkeypatch: Scoped work-boundary patcher.
+    :param empty: Supply no centers while retaining radius validation.
+    :param radius: Negative or nonfinite radius.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    client = AlongTrack(backend=backend)
+    events = _observe_work(backend, monkeypatch)
+    results = client.geographic_point_in_r_dt_batch(
+        ["track"],
+        [] if empty else [LATITUDE[0]],
+        [] if empty else [LONGITUDE[0]],
+        [] if empty else [DATES[0]],
+        radius=radius,
+    )
+    assert events == _WorkEvents()
+    with pytest.raises(ValueError, match="radius must be finite"):
+        next(results)
+    assert events == _WorkEvents()
+    assert backend.stats.source_reads == backend.stats.window_builds == 0
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+@pytest.mark.parametrize("facade", [False, True], ids=["direct", "facade"])
+def test_partial_batch_consumption_prepares_only_consumed_centers(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+    facade: bool,
+) -> None:
+    """Closing a nonmonotonic batch after one result must not prepare its future.
+
+    :param source_layout: Temporary product root, cache, and source.
+    :param monkeypatch: Scoped work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param facade: Enter through AlongTrack instead of the direct backend.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    client: AlongTrackBackend = AlongTrack(backend=backend) if facade else backend
+    events = _observe_work(backend, monkeypatch)
+    indices = [4, 0, 5]
+    results = _query_batch(
+        client,
+        nearest,
+        FULL_FIELDS,
+        [LATITUDE[index] for index in indices],
+        [LONGITUDE[index] for index in indices],
+        [DATES[index] for index in indices],
+        chunk_size=3,
+    )
+    assert events == _WorkEvents()
+    _assert_source_row(next(results), 4)
+    assert events.windows == [DATES[4]]
+    assert backend.stats.window_builds == backend.stats.source_reads == 1
+    results.close()
+    with pytest.raises(StopIteration):
+        next(results)
+    assert events.windows == [DATES[4]]
+    assert events.inventory_passes == 1
+    assert backend.stats.window_builds == backend.stats.source_reads == 1
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+@pytest.mark.parametrize("facade", [False, True], ids=["direct", "facade"])
+@pytest.mark.parametrize("problem", [None, "fields", "radius"])
+def test_empty_batch_skips_inventory_and_preparation(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+    facade: bool,
+    problem: str | None,
+) -> None:
+    """Empty batches skip sources but still validate fields and spatial limits.
+
+    :param source_layout: Temporary product root, cache, and source.
+    :param monkeypatch: Scoped schema and work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param facade: Enter through AlongTrack instead of the direct backend.
+    :param problem: Optional invalid projection or negative spatial limit.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    client: AlongTrackBackend = AlongTrack(backend=backend) if facade else backend
+    events = _observe_work(backend, monkeypatch)
+    catalog_reads = backend.stats.catalog_reads
+    radius = -1.0 if problem == "radius" else 0.0
+    if problem == "fields":
+        monkeypatch.delitem(schema.along_track_schema, "track")
+    if problem == "radius" and nearest and facade:
+        with pytest.raises(ValueError, match="max_radius must be finite"):
+            _query_batch(client, nearest, ["track"], [], [], [], radius=radius)
+    else:
+        results = _query_batch(client, nearest, ["track"], [], [], [], radius=radius)
+        assert events == _WorkEvents()
+        if problem is None:
+            assert list(results) == []
+        else:
+            message = (
+                "Unknown AlongTrack fields"
+                if problem == "fields"
+                else "radius must be finite"
+            )
+            with pytest.raises(ValueError, match=message):
+                next(results)
+    assert events == _WorkEvents()
+    assert backend.stats.catalog_reads == catalog_reads
+    assert (
+        backend.stats.source_reads
+        == backend.stats.disk_hits
+        == backend.stats.memory_hits
+        == 0
+    )
+    assert backend.stats.window_builds == backend.stats.active_bytes == 0
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+def test_nonempty_batch_validates_all_pinned_sources_once(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+) -> None:
+    """Separate inventory-wide checks from decode, load, and active-key checks.
+
+    :param source_layout: Temporary product root, cache, and selected source.
+    :param monkeypatch: Scoped work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    """
+    product, cache, source = source_layout
+    other = _copy_shifted_mission_source(product, source, "j3", 100)
+    backend = IndexedAlongTrackBackend(product, cache)
+    events = _observe_work(backend, monkeypatch)
+    indices = [0, 0, 1]
+    results = _query_batch(
+        backend,
+        nearest,
+        FULL_FIELDS,
+        [LATITUDE[index] for index in indices],
+        [LONGITUDE[index] for index in indices],
+        [DATES[index] for index in indices],
+    )
+    assert events == _WorkEvents()
+    for position, index in enumerate(indices):
+        _assert_source_row(next(results), index)
+        assert events.inventory_passes == 1
+        assert events.inventory_checks == [source, other]
+        # First load checks before and after decode; the repeated window checks
+        # its active source; the third center checks the retained file on load.
+        assert events.selected_checks == [source] * (position + 2)
+        assert events.windows == [DATES[value] for value in indices[: position + 1]]
+    with pytest.raises(StopIteration):
+        next(results)
+    assert events.inventory_passes == 1
+    assert backend.stats.source_reads == backend.stats.memory_hits == 1
+    assert backend.stats.window_builds == 2
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+@pytest.mark.parametrize("facade", [False, True], ids=["direct", "facade"])
+@pytest.mark.parametrize("mutation", ["changed", "deleted"])
+def test_unselected_pinned_source_mutation_before_iteration_fails_closed(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+    facade: bool,
+    mutation: str,
+) -> None:
+    """Check unselected inventory before reusing an already warm exact window.
+
+    :param source_layout: Temporary product root, cache, and selected source.
+    :param monkeypatch: Scoped work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param facade: Enter through AlongTrack instead of the direct backend.
+    :param mutation: Change time coverage or delete the previously unselected file.
+    """
+    product, cache, source = source_layout
+    other = _copy_shifted_mission_source(product, source, "j3", 100)
+    backend = IndexedAlongTrackBackend(product, cache)
+    client: AlongTrackBackend = AlongTrack(backend=backend) if facade else backend
+    warm = _query_batch(
+        client, nearest, FULL_FIELDS, [LATITUDE[0]], [LONGITUDE[0]], [DATES[0]]
+    )
+    _assert_source_row(next(warm), 0)
+    warm.close()
+    assert backend.stats.source_reads == backend.stats.window_builds == 1
+    events = _observe_work(backend, monkeypatch)
+    results = _query_batch(
+        client, nearest, FULL_FIELDS, [LATITUDE[0]], [LONGITUDE[0]], [DATES[0]]
+    )
+    assert events == _WorkEvents()
+    if mutation == "changed":
+        old_stat = other.stat()
+        with nc.Dataset(other, "r+") as dataset:
+            variable = dataset["time"]
+            variable.set_auto_maskandscale(False)
+            variable[:] = TIME_RAW
+        os.utime(other, ns=(old_stat.st_atime_ns, old_stat.st_mtime_ns + 2_000_000_000))
+        message = "source changed"
+    else:
+        other.unlink()
+        message = "source disappeared"
+    with pytest.raises(RuntimeError, match=message):
+        next(results)
+    assert events.inventory_passes == 1
+    assert events.inventory_checks == [source, other]
+    assert events.selected_checks == events.windows == []
+    assert backend.stats.source_reads == backend.stats.window_builds == 1
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+def test_exact_window_reuse_canonicalizes_missions(
+    source_layout: tuple[Path, Path, Path], nearest: bool
+) -> None:
+    """Canonical mission lists hit only the current exact temporal window.
+
+    :param source_layout: Temporary product root, cache, and original source.
+    :param nearest: Exercise the nearest rather than radius batch.
+    """
+    product, cache, source = source_layout
+    _copy_shifted_mission_source(product, source, "j3", 1)
+    backend = IndexedAlongTrackBackend(product, cache)
+    fields: list[schema.along_track_fields] = ["date_time", "mission"]
+    selections: list[list[Mission] | None] = [
+        None,
+        ["j3", "j2"],
+        ["j2", "j3", "j2"],
+        ["j3", "j2", "j3"],
+        None,
+    ]
+    cases: list[
+        tuple[list[Mission] | None, datetime, timedelta, list[Mission], int]
+    ] = [
+        (missions, DATES[0], timedelta(days=1), ["j2", "j3"], 1)
+        for missions in selections
+    ]
+    cases.extend(
+        [
+            ([], DATES[0], timedelta(days=1), [], 2),
+            ([], DATES[0], timedelta(days=1), [], 2),
+            (None, DATES[0], timedelta(days=1), ["j2", "j3"], 3),
+            # Widening and overlapping keys rebuild, as does returning to an old key.
+            (None, DATES[0], timedelta(days=1, microseconds=1), ["j2", "j3"], 4),
+            (None, DATES[0] + timedelta(hours=12), timedelta(days=1), ["j2", "j3"], 5),
+            (None, DATES[0], timedelta(days=1), ["j2", "j3"], 6),
+            # Adjacent inclusive intervals share only their endpoint, not a key.
+            (None, DATES[0] + timedelta(days=2), timedelta(days=1), ["j3"], 7),
+        ]
+    )
+    for missions, date, half_window, expected_missions, builds in cases:
+        (result,) = _query_batch(
+            backend,
+            nearest,
+            fields,
+            [LATITUDE[0]],
+            [LONGITUDE[0]],
+            [date],
+            time_window=half_window,
+            missions=missions,
+        )
+        assert backend.stats.window_builds == builds
+        if not expected_missions:
+            assert result is None
+            continue
+        assert isinstance(result, Dataset)
+        assert result.name == "along_track"
+        assert set(result) == set(fields) | ({"distance"} if nearest else set())
+        assert result.row_count == len(expected_missions)
+        order = (
+            np.arange(result.row_count) if nearest else np.argsort(result["date_time"])
+        )
+        np.testing.assert_array_equal(result["mission"][order], expected_missions)
+        np.testing.assert_array_equal(
+            result["date_time"][order],
+            np.asarray(
+                [
+                    DATES[0] + timedelta(days=mission == "j3")
+                    for mission in expected_missions
+                ],
+                dtype=object,
+            ),
+        )
+        if nearest:
+            np.testing.assert_array_equal(result["distance"], [0.0] * result.row_count)
+    assert backend.stats.source_reads == 2
+    assert backend.stats.disk_hits == 0
+
+
+def test_exact_window_reuse_ignores_projection_radius_and_query_kind(
+    source_layout: tuple[Path, Path, Path],
+) -> None:
+    """Vary all non-temporal inputs while checking complete independent results.
+
+    :param source_layout: Temporary product root, cache, and literal source.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    client = AlongTrack(backend=backend)
+    date = datetime(2024, 1, 2)
+    half_window = timedelta(microseconds=2)
+    boundary = 110574.38855779878  # Independent WGS84 inverse: (0, 180) -> (1, 180).
+    fields: list[schema.along_track_fields] = ["date_time", "sla_filtered", "delta_t"]
+    result = client.geographic_point_in_r_dt(
+        fields, 0.0, 180.0, date, radius=0, time_window=half_window
+    )
+    _assert_projected_source_rows(result, fields, [1], date, [0.0])
+    assert backend.stats.window_builds == 1
+
+    fields = ["date_time", "track", "longitude", "distance"]
+    result = client.geographic_point_in_r_dt(
+        fields, 0.0, 180.0, date, radius=111_000, time_window=half_window
+    )
+    _assert_projected_source_rows(result, fields, [1, 2], date, [0.0, boundary])
+    assert backend.stats.window_builds == 1
+
+    fields = ["date_time", "latitude", "sla_filtered", "delta_t"]
+    result = client.geographic_point_in_r_dt(
+        fields, 1.0, 180.0, date, radius=0, time_window=half_window
+    )
+    _assert_projected_source_rows(result, fields, [2], date, [0.0])
+    assert backend.stats.window_builds == 1
+
+    result = client.geographic_nearest_neighbors(
+        fields, 1.0, 180.0, date, time_window=half_window, max_radius=111_000
+    )
+    _assert_projected_source_rows(
+        result, fields, [2, 1], date, [0.0, boundary], nearest=True
+    )
+    assert backend.stats.window_builds == 1
+
+    result = client.geographic_nearest_neighbors(
+        [], 0.0, 180.0, date, time_window=half_window, max_radius=0
+    )
+    _assert_projected_source_rows(result, [], [1], date, [0.0], nearest=True)
+    assert backend.stats.window_builds == 1
+
+    fields = ["date_time", "track", "delta_t"]
+    result = client.geographic_nearest_neighbors(
+        fields, 0.0, 180.0, date, time_window=half_window
+    )
+    _assert_projected_source_rows(
+        result, fields, [1, 2], date, [0.0, boundary], nearest=True
+    )
+    assert backend.stats.window_builds == 1
+    assert (
+        client.geographic_point_in_r_dt(
+            fields, 0.0, 190.0, date, radius=0, time_window=half_window
+        )
+        is None
+    )
+    assert backend.stats.window_builds == backend.stats.source_reads == 1
+    assert backend.stats.memory_hits == backend.stats.disk_hits == 0
 
 
 def test_disk_cache_survives_restart_and_adjacent_time_windows(
@@ -1098,3 +1815,503 @@ def test_cell_count_has_a_safe_bound(source_layout: tuple[Path, Path, Path]) -> 
     product, cache, _ = source_layout
     with pytest.raises(ValueError, match="index is too large"):
         IndexedAlongTrackBackend(product, cache, cell_size_degrees=0.001)
+
+
+# These exact integer offsets encode the independent TIME_UTC literals, without
+# asking the production decoder (or floating-day arithmetic) to make an oracle.
+_REFERENCE_TIME_US = (-876_544, -2, 2, 1_654_321, 2_000_000, 3_333_333)
+_SECOND_SOURCE_SHIFT = timedelta(seconds=7)
+
+
+@dataclass(frozen=True)
+class _ProjectionOracleRow:
+    """Identify a literal source row independently of window/file indices."""
+
+    file_name: str
+    mission: Mission
+    source_index: int
+    date_time: datetime
+    latitude: float
+    longitude: float
+    basin_id: int
+    distance: float = 0.0
+
+
+def _reference_projection_oracle(
+    source: Path, *, second_mission: bool = False
+) -> tuple[_ProjectionOracleRow, ...]:
+    """Describe unchanged coordinates and explicitly shifted reference times.
+
+    :param source: Filename to expect in projected provenance.
+    :param second_mission: Select the seven-second-shifted j3 clone.
+    :returns: One independent identity/coordinate oracle per source row.
+    """
+    return tuple(
+        _ProjectionOracleRow(
+            file_name=source.name,
+            mission="j3" if second_mission else "j2",
+            source_index=index,
+            date_time=date + (_SECOND_SOURCE_SHIFT if second_mission else timedelta(0)),
+            latitude=latitude,
+            longitude=longitude,
+            basin_id=basin_id,
+        )
+        for index, (date, latitude, longitude, basin_id) in enumerate(
+            zip(DATES, LATITUDE, LONGITUDE, BASIN_ID, strict=True)
+        )
+    )
+
+
+def _clone_shifted_reference_source(source: Path) -> Path:
+    """Make a nonduplicate j3 source with explicitly transformed raw literals.
+
+    Valid row-science integers increase by 100, while both missing sentinels
+    remain unchanged. The missing scalar correction becomes the valid -123.
+    Track/cycle increase by 1000/10. Physical expectations independently add
+    0.1 to the existing physical literals; they never use a production decoder.
+
+    :param source: Original temporary reference file to clone.
+    :returns: Newly written j3 source alongside the original j2 file.
+    """
+    destination = source.with_name(source.name.replace("_j2_", "_j3_"))
+    shutil.copyfile(source, destination)
+    with nc.Dataset(destination, "r+") as dataset:
+        variable = dataset["time"]
+        variable.set_auto_maskandscale(False)
+        variable.units = "microseconds since 2024-01-02 00:00:00"
+        variable[:] = np.asarray(_REFERENCE_TIME_US, dtype=np.int64) + 7_000_000
+        for name, values in (("track", TRACK), ("cycle", CYCLE)):
+            variable = dataset[name]
+            variable.set_auto_maskandscale(False)
+            variable[:] = np.asarray(values) + (1000 if name == "track" else 10)
+        for name, oracle in SCIENCE.items():
+            variable = dataset[name]
+            variable.set_auto_maskandscale(False)
+            if isinstance(oracle.raw, int):
+                variable[...] = -123
+            else:
+                variable[:] = [
+                    value if value in (32767, -32766) else value + 100
+                    for value in oracle.raw
+                ]
+    return destination
+
+
+def _assert_complete_projection(
+    result: Dataset[schema.along_track_fields] | None,
+    expected_rows: Sequence[_ProjectionOracleRow],
+    center: datetime,
+    *,
+    ordered: bool = False,
+) -> None:
+    """Compare all metadata, packed/scaled science, masks, and derived columns.
+
+    Radius membership is compared by scientific/provenance key, without adding
+    a radius-order contract. Nearest callers supply the required ranked order.
+
+    :param result: Complete radius or nearest result.
+    :param expected_rows: Independent source-row oracles, ranked for nearest.
+    :param center: Query time used for signed center-minus-observation seconds.
+    :param ordered: Preserve the supplied nearest sequence rather than sort keys.
+    """
+    assert isinstance(result, Dataset)
+    assert result.name == "along_track"
+    assert result.schema == schema.along_track_schema
+    assert result.row_count == len(expected_rows)
+    assert set(result) == set(schema.along_track_schema)
+    assert len(
+        {(row.date_time, row.latitude, row.longitude) for row in expected_rows}
+    ) == len(expected_rows)
+    if ordered:
+        rows = tuple(expected_rows)
+        order = np.arange(result.row_count)
+    else:
+        rows = tuple(
+            sorted(
+                expected_rows,
+                key=lambda row: (
+                    row.file_name,
+                    row.date_time,
+                    row.latitude,
+                    row.longitude,
+                ),
+            )
+        )
+        order = np.lexsort(
+            (
+                result["longitude"],
+                result["latitude"],
+                result["date_time"],
+                result["file_name"],
+            )
+        )
+    metadata: dict[
+        schema.along_track_fields, Sequence[str | int | float | datetime]
+    ] = {
+        "file_name": [row.file_name for row in rows],
+        "mission": [row.mission for row in rows],
+        "date_time": [row.date_time for row in rows],
+        "latitude": [row.latitude for row in rows],
+        "longitude": [row.longitude for row in rows],
+        "basin_id": [row.basin_id for row in rows],
+        "track": [
+            TRACK[row.source_index] + (1000 if row.mission == "j3" else 0)
+            for row in rows
+        ],
+        "cycle": [
+            CYCLE[row.source_index] + (10 if row.mission == "j3" else 0) for row in rows
+        ],
+    }
+    for field, values in metadata.items():
+        np.testing.assert_array_equal(
+            result[field][order], np.asarray(values, dtype=object)
+        )
+        np.testing.assert_array_equal(
+            result.get_unscaled(field)[order], np.asarray(values, dtype=object)
+        )
+    for field, oracle in SCIENCE.items():
+        packed: list[float] = []
+        physical: list[float] = []
+        for row in rows:
+            if row.mission == "j3" and field == "tpa_correction":
+                packed.append(-123.0)
+                physical.append(-0.123)
+                continue
+            raw_value = oracle.packed[row.source_index]
+            physical_value = oracle.physical[row.source_index]
+            packed.append(
+                np.nan
+                if raw_value is None
+                else float(raw_value + (100 if row.mission == "j3" else 0))
+            )
+            physical.append(
+                np.nan
+                if physical_value is None
+                else physical_value + (0.1 if row.mission == "j3" else 0.0)
+            )
+        actual_packed = result.get_unscaled(field)[order]
+        actual_physical = result[field][order]
+        np.testing.assert_array_equal(np.isnan(actual_packed), np.isnan(packed))
+        np.testing.assert_array_equal(np.isnan(actual_physical), np.isnan(physical))
+        np.testing.assert_allclose(
+            actual_packed, packed, rtol=0, atol=0, equal_nan=True
+        )
+        np.testing.assert_allclose(
+            actual_physical, physical, rtol=0, atol=1e-12, equal_nan=True
+        )
+    np.testing.assert_allclose(
+        result["distance"][order],
+        [row.distance for row in rows],
+        rtol=0,
+        atol=1e-4,
+    )
+    np.testing.assert_array_equal(
+        result["delta_t"][order],
+        [(center - row.date_time).total_seconds() for row in rows],
+    )
+
+
+def _prepared_artifact_fingerprints(cache: Path) -> dict[str, tuple[int, int, str]]:
+    """Record prepared-file bytes and metadata without changing their contents.
+
+    :param cache: Temporary indexed-backend disk-cache directory.
+    :returns: Prepared basenames mapped to size, mtime, and content SHA256.
+    """
+    return {
+        path.name: (
+            path.stat().st_size,
+            path.stat().st_mtime_ns,
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+        )
+        for path in (cache / "files").glob("*.npy")
+    }
+
+
+def test_multifile_projection_preserves_provenance_after_cell_sort(
+    source_layout: tuple[Path, Path, Path],
+) -> None:
+    """Keep two missions aligned through cell sorting and the nearest cutoff.
+
+    :param source_layout: Isolated product root, disk cache, and literal asset.
+    """
+    product, cache, source = source_layout
+    second = _clone_shifted_reference_source(source)
+    # Each source straddles the wrapped 180-degree cell boundary; the two files
+    # interleave in cell order, unlike j2-then-j3 inventory order or source rows.
+    longitudes = (185, 181, 183, 179, 177, 175)
+    second_longitudes = (184, 180, 182, 178, 176, 174)
+    for path, values in ((source, longitudes), (second, second_longitudes)):
+        with nc.Dataset(path, "r+") as dataset:
+            variable = dataset["latitude"]
+            variable.set_auto_maskandscale(False)
+            variable[:] = 0
+            variable = dataset["longitude"]
+            variable.set_auto_maskandscale(False)
+            variable[:] = np.asarray(values, dtype=np.int64) * 1_000_000
+    # Equatorial WGS84 distances are independent GeographicLib inverse literals;
+    # basin labels were pinned once from the packaged raster, not query results.
+    j2_distances = (
+        556597.4539663679,
+        111319.49079327357,
+        333958.4723798207,
+        111319.49079327357,
+        333958.4723798207,
+        556597.4539663679,
+    )
+    j3_distances = (
+        445277.96317309426,
+        0.0,
+        222638.98158654713,
+        222638.98158654713,
+        445277.96317309426,
+        667916.9447596414,
+    )
+    first_rows = tuple(
+        replace(
+            row, latitude=0.0, longitude=float(lon), basin_id=basin, distance=distance
+        )
+        for row, lon, basin, distance in zip(
+            _reference_projection_oracle(source),
+            longitudes,
+            (5, 5, 5, 4, 4, 4),
+            j2_distances,
+            strict=True,
+        )
+    )
+    second_rows = tuple(
+        replace(
+            row, latitude=0.0, longitude=float(lon), basin_id=basin, distance=distance
+        )
+        for row, lon, basin, distance in zip(
+            _reference_projection_oracle(second, second_mission=True),
+            second_longitudes,
+            (5, 5, 5, 4, 4, 5),
+            j3_distances,
+            strict=True,
+        )
+    )
+    client = AlongTrack(backend=IndexedAlongTrackBackend(product, cache))
+    center = datetime(2024, 1, 2, 0, 0, 5)
+    radius = client.geographic_point_in_r_dt(
+        FULL_FIELDS,
+        0.0,
+        180.0,
+        center,
+        radius=700_000,
+        time_window=timedelta(seconds=20),
+        missions=["j3", "j2"],
+    )
+    _assert_complete_projection(radius, (*first_rows, *second_rows), center)
+    nearest = client.geographic_nearest_neighbors(
+        NEAREST_FIELDS,
+        0.0,
+        180.0,
+        center,
+        time_window=timedelta(seconds=20),
+        missions=["j2", "j3"],
+        max_radius=700_000,
+    )
+    # Zero distance wins first; the two one-degree ties then use observation
+    # time. The nine remaining radius members must not leak past the cutoff.
+    _assert_complete_projection(
+        nearest, (second_rows[1], first_rows[1], first_rows[3]), center, ordered=True
+    )
+
+
+def test_refresh_visibility_geometry_and_cumulative_counters(
+    source_layout: tuple[Path, Path, Path],
+) -> None:
+    """Discover new files explicitly while keeping geometry and disk artifacts.
+
+    :param source_layout: Isolated product root, disk cache, and literal asset.
+    """
+    product, cache, source = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    backend.prepare_grid([LATITUDE[0]], [LONGITUDE[0]], radius=0)
+    client = AlongTrack(backend=backend)
+    original = client.geographic_point_in_r_dt(
+        FULL_FIELDS,
+        LATITUDE[0],
+        LONGITUDE[0],
+        DATES[0],
+        radius=0,
+        time_window=timedelta(0),
+    )
+    _assert_source_row(original, 0)
+    artifacts = _prepared_artifact_fingerprints(cache)
+    assert len(artifacts) == 1
+    second = _clone_shifted_reference_source(source)
+    new_date = DATES[0] + _SECOND_SOURCE_SHIFT
+    assert (
+        client.geographic_point_in_r_dt(
+            FULL_FIELDS,
+            LATITUDE[0],
+            LONGITUDE[0],
+            new_date,
+            radius=0,
+            time_window=timedelta(0),
+        )
+        is None
+    )
+    # Restore a nonempty active window and exercise a decoded-file memory hit
+    # before testing which current-byte fields and cumulative counters refresh.
+    _assert_source_row(
+        client.geographic_point_in_r_dt(
+            FULL_FIELDS,
+            LATITUDE[0],
+            LONGITUDE[0],
+            DATES[0],
+            radius=0,
+            time_window=timedelta(0),
+        ),
+        0,
+    )
+    before = replace(backend.stats)
+    assert before.cached_bytes > 0 and before.active_bytes > 0
+    assert before.geometry_bytes > 0 and before.geometry_hits > 0
+    assert before.memory_hits > 0 and before.window_builds > 0
+    backend.refresh()
+    # The only cumulative cost of this refresh is cataloging the added file.
+    assert backend.stats == replace(
+        before,
+        catalog_reads=before.catalog_reads + 1,
+        cached_bytes=0,
+        active_bytes=0,
+    )
+    assert _prepared_artifact_fingerprints(cache) == artifacts
+    _assert_source_row(
+        client.geographic_point_in_r_dt(
+            FULL_FIELDS,
+            LATITUDE[0],
+            LONGITUDE[0],
+            DATES[0],
+            radius=0,
+            time_window=timedelta(0),
+        ),
+        0,
+    )
+    assert backend.stats.disk_hits == before.disk_hits + 1
+    assert backend.stats.source_reads == before.source_reads
+    assert backend.stats.memory_hits == before.memory_hits
+    assert backend.stats.window_builds == before.window_builds + 1
+    assert backend.stats.geometry_builds == before.geometry_builds
+    assert backend.stats.geometry_hits == before.geometry_hits + 1
+    assert backend.stats.geometry_bytes == before.geometry_bytes
+    assert _prepared_artifact_fingerprints(cache) == artifacts
+    new_result = client.geographic_point_in_r_dt(
+        FULL_FIELDS,
+        LATITUDE[0],
+        LONGITUDE[0],
+        new_date,
+        radius=0,
+        time_window=timedelta(0),
+    )
+    _assert_complete_projection(
+        new_result,
+        [_reference_projection_oracle(second, second_mission=True)[0]],
+        new_date,
+    )
+    assert backend.stats.source_reads == before.source_reads + 1
+    assert backend.stats.disk_hits == before.disk_hits + 1
+    assert backend.stats.geometry_builds == before.geometry_builds
+    assert backend.stats.geometry_hits == before.geometry_hits + 2
+    after_artifacts = _prepared_artifact_fingerprints(cache)
+    assert len(after_artifacts) == 2
+    assert {name: after_artifacts[name] for name in artifacts} == artifacts
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+def test_returned_dataset_survives_eviction_window_change_and_refresh(
+    source_layout: tuple[Path, Path, Path], nearest: bool
+) -> None:
+    """Retain read and unread scaled columns across eviction and refresh.
+
+    :param source_layout: Isolated product root, disk cache, and literal asset.
+    :param nearest: Exercise a ranked nearest result instead of radius membership.
+    """
+    product, cache, source = source_layout
+    second = _clone_shifted_reference_source(source)
+    # One six-row prepared file fits, but the two files cannot both be retained.
+    backend = IndexedAlongTrackBackend(product, cache, max_cache_bytes=1024)
+    client = AlongTrack(backend=backend)
+    center = DATES[1]
+    if nearest:
+        retained = client.geographic_nearest_neighbors(
+            NEAREST_FIELDS,
+            LATITUDE[1],
+            LONGITUDE[1],
+            center,
+            time_window=timedelta(microseconds=4),
+            max_radius=111_000,
+        )
+    else:
+        retained = client.geographic_point_in_r_dt(
+            FULL_FIELDS,
+            LATITUDE[1],
+            LONGITUDE[1],
+            center,
+            radius=111_000,
+            time_window=timedelta(microseconds=4),
+        )
+    assert isinstance(retained, Dataset)
+    assert retained.row_count == 2
+    # Only this science column is accessed before eviction. In particular, the
+    # valid/NaN values in other scaled columns remain genuinely lazy until last.
+    np.testing.assert_allclose(
+        retained["sla_filtered"][np.argsort(retained["date_time"])],
+        [199e-3, np.nan],
+        rtol=0,
+        atol=1e-12,
+        equal_nan=True,
+    )
+    first_state = replace(backend.stats)
+    assert 0 < first_state.cached_bytes <= 1024
+    assert first_state.cached_bytes * 2 > 1024
+    second_center = center + _SECOND_SOURCE_SHIFT
+    also_retained = client.geographic_point_in_r_dt(
+        FULL_FIELDS,
+        LATITUDE[1],
+        LONGITUDE[1],
+        second_center,
+        radius=111_000,
+        time_window=timedelta(microseconds=4),
+    )
+    assert isinstance(also_retained, Dataset) and also_retained.row_count == 2
+    second_state = replace(backend.stats)
+    assert second_state.source_reads == first_state.source_reads + 1
+    assert second_state.window_builds == first_state.window_builds + 1
+    assert second_state.cached_bytes == first_state.cached_bytes
+    assert second_state.memory_hits == first_state.memory_hits
+    # Request a third window in the first source. A disk hit, not a memory hit,
+    # proves the first file was evicted rather than merely switching windows.
+    _assert_source_row(
+        client.geographic_point_in_r_dt(
+            FULL_FIELDS,
+            LATITUDE[4],
+            LONGITUDE[4],
+            DATES[4],
+            radius=0,
+            time_window=timedelta(0),
+        ),
+        4,
+    )
+    assert backend.stats.disk_hits == second_state.disk_hits + 1
+    assert backend.stats.memory_hits == second_state.memory_hits
+    assert backend.stats.source_reads == second_state.source_reads
+    assert backend.stats.window_builds == second_state.window_builds + 1
+    backend.refresh()
+    assert backend.stats.cached_bytes == backend.stats.active_bytes == 0
+    first_rows = _reference_projection_oracle(source)
+    second_rows = _reference_projection_oracle(second, second_mission=True)
+    boundary = 110574.38855779878  # Independent WGS84 (0, 180) -> (1, 180).
+    _assert_complete_projection(
+        retained,
+        [first_rows[1], replace(first_rows[2], distance=boundary)],
+        center,
+        ordered=nearest,
+    )
+    _assert_complete_projection(
+        also_retained,
+        [second_rows[1], replace(second_rows[2], distance=boundary)],
+        second_center,
+    )
