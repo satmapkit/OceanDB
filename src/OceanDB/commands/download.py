@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import click
@@ -31,6 +32,7 @@ from OceanDB.config import Config
 )
 @click.option(
     "--dataset-version",
+    type=str,
     default="202411",
     show_default=True,
     help="Copernicus dataset version to download.",
@@ -51,15 +53,15 @@ from OceanDB.config import Config
     help="Overwrite files that already exist locally.",
 )
 def download(
-    missions,
-    start_date,
-    end_date,
-    dataset_type,
-    dataset_version,
-    dry_run,
-    yes,
-    overwrite,
-):
+    missions: tuple[str, ...],
+    start_date: datetime | None,
+    end_date: datetime | None,
+    dataset_type: str,
+    dataset_version: str,
+    dry_run: bool,
+    yes: bool,
+    overwrite: bool,
+) -> None:
     """
     Download Copernicus Marine along-track data.
 
