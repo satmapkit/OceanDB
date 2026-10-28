@@ -6,13 +6,14 @@ from datetime import datetime
 from functools import cached_property
 from multiprocessing import Pool, TimeoutError
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Optional, TypedDict
 
 import netCDF4 as nc
 import numpy as np
 from psycopg import sql
 from psycopg.rows import dict_row
 
+from OceanDB.along_track_missions import MISSION_DEFINITIONS
 from OceanDB.etl.base_etl import OceanDBETL, batch
 from OceanDB.ocean_data.basins import BasinMask
 from OceanDB.ocean_data.ocean_data import ColumnField
@@ -124,6 +125,13 @@ class AlongTrackMetaData:
         )
 
 
+class AlongTrackDiscovery(TypedDict):
+    """Selected missions and local NetCDF files found for ingest."""
+
+    missions: list[str]
+    files: list[Path]
+
+
 class AlongTrackETL(OceanDBETL):
     ocean_basin_table_name: str = "basin"
     ocean_basins_connections_table_name: str = "basin_connection"
@@ -131,33 +139,7 @@ class AlongTrackETL(OceanDBETL):
     along_track_metadata_table_name: str = "along_track_metadata"
 
     variable_add_offset: dict = dict()
-    missions = [
-        "al",
-        "alg",
-        "c2",
-        "c2n",
-        "e1g",
-        "e1",
-        "e2",
-        "en",
-        "enn",
-        "g2",
-        "h2a",
-        "h2b",
-        "j1g",
-        "j1",
-        "j1n",
-        "j2g",
-        "j2",
-        "j2n",
-        "j3",
-        "j3n",
-        "s3a",
-        "s3b",
-        "s6a",
-        "tp",
-        "tpn",
-    ]
+    missions: list[str] = list(MISSION_DEFINITIONS)
 
     @staticmethod
     def _iter_year_months(
@@ -179,7 +161,7 @@ class AlongTrackETL(OceanDBETL):
         missions: list[str] | tuple[str, ...],
         start_date: datetime | None = None,
         end_date: datetime | None = None,
-    ) -> dict[str, Any]:
+    ) -> AlongTrackDiscovery:
         start_date = start_date.replace(tzinfo=None) if start_date is not None else None
         end_date = end_date.replace(tzinfo=None) if end_date is not None else None
         selected_missions = list(missions)
@@ -208,9 +190,11 @@ class AlongTrackETL(OceanDBETL):
         files: list[Path] = []
 
         for mission in selected_missions:
+            definition = MISSION_DEFINITIONS[mission]
+            release = f"PT1S{definition.dataset_suffix}_{definition.default_version}"
             file_structures = [
-                f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411",
-                f"cmems_obs-sl_glo_phy-ssh_my_{mission}-lr-l3-duacs_PT1S_202411",
+                f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_{release}",
+                f"cmems_obs-sl_glo_phy-ssh_my_{mission}-lr-l3-duacs_{release}",
             ]
             for structure in file_structures:
                 ingest_directory = (
@@ -255,7 +239,7 @@ class AlongTrackETL(OceanDBETL):
                 )
             ocean_db_init.initialize_database()
 
-        discovery = (
+        discovery: AlongTrackDiscovery = (
             self.discover_files(missions, start_date, end_date)
             if files is None
             else {"missions": list(missions), "files": list(files)}
