@@ -125,6 +125,13 @@ class AlongTrackMetaData:
         )
 
 
+class AlongTrackDiscovery(TypedDict):
+    """Selected missions and local NetCDF files found for ingest."""
+
+    missions: list[str]
+    files: list[Path]
+
+
 class AlongTrackETL(OceanDBETL):
     ocean_basin_table_name: str = "basin"
     ocean_basins_connections_table_name: str = "basin_connection"
@@ -154,7 +161,7 @@ class AlongTrackETL(OceanDBETL):
         missions: list[str] | tuple[str, ...],
         start_date: datetime | None = None,
         end_date: datetime | None = None,
-    ) -> dict[str, Any]:
+    ) -> AlongTrackDiscovery:
         start_date = start_date.replace(tzinfo=None) if start_date is not None else None
         end_date = end_date.replace(tzinfo=None) if end_date is not None else None
         selected_missions = list(missions)
@@ -230,7 +237,7 @@ class AlongTrackETL(OceanDBETL):
                 )
             ocean_db_init.initialize_database()
 
-        discovery = (
+        discovery: AlongTrackDiscovery = (
             self.discover_files(missions, start_date, end_date)
             if files is None
             else {"missions": list(missions), "files": list(files)}
