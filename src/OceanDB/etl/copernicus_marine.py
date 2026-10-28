@@ -198,6 +198,19 @@ class OceanDBCopernicusMarine:
         dry_run: bool = False,
         overwrite: bool = False,
     ) -> list[Any]:
+        """Sync along-track files using each mission's catalogue release by default.
+
+        :param missions: Mission identities, or None/empty/``all`` for all missions.
+        :param output_directory: Destination, defaulting to the configured directory.
+        :param start_date: First month to include; alone, selects only that month.
+        :param end_date: Last month to include; alone, selects only that month.
+        :param dataset_type: Dataset type component of the dataset ID.
+        :param version: Release override applied unchanged to every selected mission;
+            None uses each mission's default. Overrides may request unavailable releases.
+        :param dry_run: List matching files without downloading them.
+        :param overwrite: Overwrite files rather than syncing missing files.
+        :returns: Copernicus client results for each mission and month request.
+        """
         datasets = OceanDBCopernicusMarine.build_copernicus_datasets(
             missions=missions,
             dataset_type=dataset_type,
