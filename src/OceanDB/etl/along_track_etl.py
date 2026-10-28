@@ -6,13 +6,14 @@ from datetime import datetime
 from functools import cached_property
 from multiprocessing import Pool, TimeoutError
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Optional, TypedDict
 
 import netCDF4 as nc
 import numpy as np
 from psycopg import sql
 from psycopg.rows import dict_row
 
+from OceanDB.along_track_missions import MISSION_DEFINITIONS
 from OceanDB.etl.base_etl import OceanDBETL, batch
 from OceanDB.ocean_data.basins import BasinMask
 from OceanDB.ocean_data.ocean_data import ColumnField
@@ -131,33 +132,7 @@ class AlongTrackETL(OceanDBETL):
     along_track_metadata_table_name: str = "along_track_metadata"
 
     variable_add_offset: dict = dict()
-    missions = [
-        "al",
-        "alg",
-        "c2",
-        "c2n",
-        "e1g",
-        "e1",
-        "e2",
-        "en",
-        "enn",
-        "g2",
-        "h2a",
-        "h2b",
-        "j1g",
-        "j1",
-        "j1n",
-        "j2g",
-        "j2",
-        "j2n",
-        "j3",
-        "j3n",
-        "s3a",
-        "s3b",
-        "s6a",
-        "tp",
-        "tpn",
-    ]
+    missions: list[str] = list(MISSION_DEFINITIONS)
 
     @staticmethod
     def _iter_year_months(

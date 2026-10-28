@@ -1,41 +1,14 @@
 from datetime import datetime, timedelta
 from functools import cached_property
-from typing import Any, Generator, Literal
+from typing import Any, Generator
 
+from OceanDB.along_track_missions import Mission as Mission
 from OceanDB.data_access.base_query import BaseReadQuery, QuerySpec
 from OceanDB.data_access.query_plan import plan_by_basin
 from OceanDB.ocean_data.basins import BasinConnections, BasinMask
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas.along_track_schema import (along_track_fields,
                                                 along_track_schema)
-
-Mission = Literal[
-    "al",
-    "alg",
-    "c2",
-    "c2n",
-    "e1g",
-    "e1",
-    "e2",
-    "en",
-    "enn",
-    "g2",
-    "h2a",
-    "h2b",
-    "j1g",
-    "j1",
-    "j1n",
-    "j2g",
-    "j2",
-    "j2n",
-    "j3",
-    "j3n",
-    "s3a",
-    "s3b",
-    "s6a",
-    "tp",
-    "tpn",
-]
 
 
 class AlongTrack(BaseReadQuery):

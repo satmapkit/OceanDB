@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
+from OceanDB.along_track_missions import MISSION_DEFINITIONS
 from OceanDB.config import Config
 
 
@@ -27,63 +28,6 @@ class CopernicusDownloadSummary:
         if self.total_size_mb is None:
             return None
         return self.total_size_mb / 1024
-
-
-MISSION_DATASET_IDS = {
-    "al": "al",
-    "alg": "alg",
-    "c2": "c2",
-    "c2n": "c2n",
-    "e1": "e1",
-    "e1g": "e1g",
-    "e2": "e2",
-    "en": "en",
-    "enn": "enn",
-    "g2": "g2",
-    "h2a": "h2a",
-    "h2b": "h2b",
-    "j1": "j1",
-    "j1g": "j1g",
-    "j1n": "j1n",
-    "j2": "j2",
-    "j2g": "j2g",
-    "j2n": "j2n",
-    "j3": "j3",
-    "j3n": "j3n",
-    "s3a": "s3a",
-    "s3b": "s3b",
-    "s6a": "s6a-lr",
-    "tp": "tp",
-    "tpn": "tpn",
-}
-
-MISSION_NAMES = {
-    "e1": "ERS-1 (only for dt)",
-    "e1g": "ERS-1 geodetic phase (only for dt)",
-    "e2": "ERS-2 (only for dt)",
-    "tp": "TOPEX/Poseidon (only for dt)",
-    "tpn": "TOPEX/Poseidon on its new orbit (only for dt)",
-    "g2": "GFO (only for dt)",
-    "j1": "Jason-1 (only for dt)",
-    "j1n": "Jason-1 on its new orbit (only for dt)",
-    "j1g": "Jason-1 on its geodetic orbit (only for dt)",
-    "j2": "OSTM/Jason-2 (only for dt)",
-    "j2n": "OSTM/Jason-2 on its interleaved orbit",
-    "j2g": "OSTM/Jason-2 on its long repeat orbit (LRO)",
-    "j3": "Jason-3",
-    "j3n": "Jason-3 on its new (interleaved) orbit",
-    "en": "Envisat (only for dt)",
-    "enn": "Envisat on its new orbit (only for dt)",
-    "c2": "Cryosat-2",
-    "c2n": "Cryosat-2 on its new orbit",
-    "al": "Saral/AltiKa",
-    "alg": "Saral/AltiKa on its geodetic orbit (only for dt)",
-    "h2a": "HaiYang-2A (only for dt)",
-    "h2b": "HaiYang-2B",
-    "s3a": "Sentinel-3A",
-    "s3b": "Sentinel-3B",
-    "s6a": "Sentinel-6A with LRM mode measurement",
-}
 
 
 class OceanDBCopernicusMarine:
@@ -171,35 +115,35 @@ class OceanDBCopernicusMarine:
         version: str = "202411",
     ) -> list[CopernicusDataset]:
         """Build a list of Copernicus Marine dataset configurations."""
-        selected_missions = list(missions or MISSION_DATASET_IDS)
+        selected_missions = list(missions or MISSION_DEFINITIONS.keys())
         if selected_missions == ["all"]:
-            selected_missions = list(MISSION_DATASET_IDS)
+            selected_missions = list(MISSION_DEFINITIONS.keys())
 
         invalid_missions = [
             mission
             for mission in selected_missions
-            if mission not in MISSION_DATASET_IDS
+            if mission not in MISSION_DEFINITIONS
         ]
         if invalid_missions:
             raise ValueError(
                 f"Invalid Copernicus mission(s): {invalid_missions}. "
-                f"Expected one or more of: {sorted(MISSION_DATASET_IDS)}"
+                f"Expected one or more of: {sorted(MISSION_DEFINITIONS.keys())}"
             )
 
         datasets: list[CopernicusDataset] = []
         for mission in selected_missions:
-            dataset_mission = MISSION_DATASET_IDS[mission]
+            definition = MISSION_DEFINITIONS[mission]
             datasets.append(
                 CopernicusDataset(
                     mission=mission,
-                    dataset_mission=dataset_mission,
+                    dataset_mission=definition.shortname,
                     dataset_type=dataset_type,
                     version=version,
                     dataset_id=(
                         f"cmems_obs-sl_glo_phy-ssh_{dataset_type}_"
-                        f"{dataset_mission}-l3-duacs_PT1S"
+                        f"{definition.shortname}-l3-duacs_PT1S"
                     ),
-                    name=MISSION_NAMES.get(mission, mission),
+                    name=definition.longname,
                 )
             )
         return datasets
