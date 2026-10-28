@@ -19,6 +19,7 @@ Mission = Literal[
     "enn",
     "g2",
     "h2a",
+    "h2ag",
     "h2b",
     "j1",
     "j1g",
@@ -31,6 +32,8 @@ Mission = Literal[
     "s3a",
     "s3b",
     "s6a",
+    "swon",
+    "swonc",
     "tp",
     "tpn",
 ]
@@ -60,6 +63,7 @@ MISSION_DEFINITIONS: dict[str, MissionDefinition] = {
     "enn": MissionDefinition("enn", "Envisat on its new orbit (only for dt)"),
     "g2": MissionDefinition("g2", "GFO (only for dt)"),
     "h2a": MissionDefinition("h2a", "HaiYang-2A (only for dt)"),
+    "h2ag": MissionDefinition("h2ag", "HaiYang-2A on its geodetic orbit (only for dt)"),
     "h2b": MissionDefinition("h2b", "HaiYang-2B"),
     "j1": MissionDefinition("j1", "Jason-1 (only for dt)"),
     "j1g": MissionDefinition("j1g", "Jason-1 on its geodetic orbit (only for dt)"),
@@ -74,6 +78,10 @@ MISSION_DEFINITIONS: dict[str, MissionDefinition] = {
     "s6a": MissionDefinition(
         "s6a-lr", "Sentinel-6A with LRM mode measurement"
     ),  # note that s6a's ID is "s6a-lr"
+    "swon": MissionDefinition("swon", "SWOT-nadir"),
+    "swonc": MissionDefinition(
+        "swonc", "SWOT-nadir (CALVAL phase with 1 day cycle, only for dt)"
+    ),
     "tp": MissionDefinition("tp", "TOPEX/Poseidon (only for dt)"),
     "tpn": MissionDefinition("tpn", "TOPEX/Poseidon on its new orbit (only for dt)"),
 }
