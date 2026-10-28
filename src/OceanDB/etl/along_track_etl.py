@@ -190,9 +190,11 @@ class AlongTrackETL(OceanDBETL):
         files: list[Path] = []
 
         for mission in selected_missions:
+            definition = MISSION_DEFINITIONS[mission]
+            release = f"PT1S{definition.dataset_suffix}_{definition.default_version}"
             file_structures = [
-                f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411",
-                f"cmems_obs-sl_glo_phy-ssh_my_{mission}-lr-l3-duacs_PT1S_202411",
+                f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_{release}",
+                f"cmems_obs-sl_glo_phy-ssh_my_{mission}-lr-l3-duacs_{release}",
             ]
             for structure in file_structures:
                 ingest_directory = (

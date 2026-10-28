@@ -112,10 +112,18 @@ class OceanDBCopernicusMarine:
         missions: Iterable[str] | None = None,
         *,
         dataset_type: str = "my",
-        version: str = "202411",
+        version: str | None = None,
     ) -> list[CopernicusDataset]:
-        """Build a list of Copernicus Marine dataset configurations."""
-        selected_missions = list(missions or MISSION_DEFINITIONS.keys())
+        """Build Copernicus dataset configurations from the MY mission registry.
+
+        :param missions: Mission identities, or None/empty/``all`` for all missions.
+        :param dataset_type: Dataset type component of the dataset ID.
+        :param version: Release override for every mission; None uses each mission's
+            catalogue default (202506 for j3g, 202411 for the other missions).
+        :returns: Configurations with resolved dataset IDs and release versions.
+        :raises ValueError: If any requested mission is unknown.
+        """
+        selected_missions = list(missions or MISSION_DEFINITIONS)
         if selected_missions == ["all"]:
             selected_missions = list(MISSION_DEFINITIONS.keys())
 
@@ -138,10 +146,10 @@ class OceanDBCopernicusMarine:
                     mission=mission,
                     dataset_mission=definition.shortname,
                     dataset_type=dataset_type,
-                    version=version,
+                    version=definition.default_version if version is None else version,
                     dataset_id=(
                         f"cmems_obs-sl_glo_phy-ssh_{dataset_type}_"
-                        f"{definition.shortname}-l3-duacs_PT1S"
+                        f"{definition.shortname}-l3-duacs_PT1S{definition.dataset_suffix}"
                     ),
                     name=definition.longname,
                 )
@@ -186,7 +194,7 @@ class OceanDBCopernicusMarine:
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         dataset_type: str = "my",
-        version: str = "202411",
+        version: str | None = None,
         dry_run: bool = False,
         overwrite: bool = False,
     ) -> list[Any]:
@@ -211,7 +219,7 @@ class OceanDBCopernicusMarine:
 
         results = []
         for dataset in datasets:
-            active_filters = filters or [None]
+            active_filters: Iterable[str | None] = filters or [None]
             for file_filter in active_filters:
                 filter_message = f" filter: {file_filter}" if file_filter else ""
                 action = "Listing" if dry_run else "Downloading"

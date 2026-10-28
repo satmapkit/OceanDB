@@ -28,6 +28,7 @@ Mission = Literal[
     "j2g",
     "j2n",
     "j3",
+    "j3g",
     "j3n",
     "s3a",
     "s3b",
@@ -45,10 +46,14 @@ class MissionDefinition:
 
     :param shortname: Mission component of the Copernicus dataset ID, e.g. 'j2n'.
     :param longname: Human-readable mission name and details.
+    :param dataset_suffix: Suffix following PT1S in the dataset ID.
+    :param default_version: Catalogue release used when no version is requested.
     """
 
     shortname: str
     longname: str
+    dataset_suffix: str = ""
+    default_version: str = "202411"
 
 
 MISSION_DEFINITIONS: dict[str, MissionDefinition] = {
@@ -72,6 +77,12 @@ MISSION_DEFINITIONS: dict[str, MissionDefinition] = {
     "j2g": MissionDefinition("j2g", "OSTM/Jason-2 on its long repeat orbit (LRO)"),
     "j2n": MissionDefinition("j2n", "OSTM/Jason-2 on its interleaved orbit"),
     "j3": MissionDefinition("j3", "Jason-3"),
+    "j3g": MissionDefinition(
+        "j3g",
+        "Jason-3 on its long-repeat orbit",
+        dataset_suffix="-i",
+        default_version="202506",
+    ),
     "j3n": MissionDefinition("j3n", "Jason-3 on its new (interleaved) orbit"),
     "s3a": MissionDefinition("s3a", "Sentinel-3A"),
     "s3b": MissionDefinition("s3b", "Sentinel-3B"),
