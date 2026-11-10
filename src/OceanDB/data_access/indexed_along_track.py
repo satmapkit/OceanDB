@@ -16,6 +16,7 @@ from typing import get_args
 
 import netCDF4 as nc
 import numpy as np
+from numpy.typing import NDArray
 
 from OceanDB.data_access.along_track import Mission
 from OceanDB.data_access.indexed_geometry import (MAX_WGS84_DISTANCE_M,
@@ -92,6 +93,16 @@ class _Source:
     start_us: int
     end_us: int
     mission: str
+
+
+@dataclass(frozen=True)
+class _PreparedWindow:
+    """Read-only query arrays and the provenance belonging to those rows."""
+
+    rows: NDArray[np.void]
+    offsets: NDArray[np.int64]
+    vectors: NDArray[np.float64]
+    sources: tuple[_Source, ...]
 
 
 @dataclass
@@ -620,19 +631,29 @@ class IndexedAlongTrackBackend:
         self._record_retained()
         self.stats.preparation_seconds += perf_counter() - started
 
+    def _snapshot(self) -> _PreparedWindow:
+        """Capture the prepared arrays without copying them.
+
+        :returns: A stable window, including source-row provenance.
+        :raises RuntimeError: If no window has been prepared.
+        """
+        active, offsets, vectors = self._active, self._offsets, self._vectors
+        if active is None or offsets is None or vectors is None:
+            raise RuntimeError("AlongTrack window has not been prepared")
+        return _PreparedWindow(active, offsets, vectors, self._active_sources)
+
     def _select(
-        self, latitude: float, longitude: float, radius: float
+        self, window: _PreparedWindow, latitude: float, longitude: float, radius: float
     ) -> tuple[np.ndarray, np.ndarray]:
         """Prune by cell and basin, then apply exact WGS84 radius selection.
 
+        :param window: Stable prepared arrays for this query.
         :param latitude: Query-center latitude.
         :param longitude: Query-center longitude.
         :param radius: Inclusive WGS84 radius in meters.
         :returns: Active row indices and their corresponding distances.
         """
-        active, offsets, vectors = self._active, self._offsets, self._vectors
-        if active is None or offsets is None or vectors is None:
-            raise RuntimeError("AlongTrack window has not been prepared")
+        active, offsets, vectors = window.rows, window.offsets, window.vectors
         if not np.isfinite(radius) or radius < 0:
             raise ValueError("radius must be finite and nonnegative")
         geometry = self._grid_geometry.get((longitude, latitude, radius))
@@ -683,10 +704,15 @@ class IndexedAlongTrackBackend:
         return candidates[inside], distances[inside]
 
     def _nearest(
-        self, latitude: float, longitude: float, max_radius: float | None
+        self,
+        window: _PreparedWindow,
+        latitude: float,
+        longitude: float,
+        max_radius: float | None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Expand complete inner caps until three eligible rows are enclosed.
 
+        :param window: Stable prepared arrays for this query.
         :param latitude: Query-center latitude.
         :param longitude: Query-center longitude.
         :param max_radius: Inclusive cap, or ``None`` for global nearest.
@@ -695,7 +721,7 @@ class IndexedAlongTrackBackend:
         limit = MAX_WGS84_DISTANCE_M if max_radius is None else max_radius
         search = min(limit, 150_000.0)
         while True:
-            rows, distances = self._select(latitude, longitude, search)
+            rows, distances = self._select(window, latitude, longitude, search)
             if search >= limit or (
                 len(rows) >= 3 and np.count_nonzero(distances < search - 1e-5) >= 3
             ):
@@ -703,9 +729,7 @@ class IndexedAlongTrackBackend:
             search = min(limit, search * 2)
         if not len(rows):
             return rows, distances
-        active = self._active
-        if active is None:
-            raise RuntimeError("AlongTrack window has not been prepared")
+        active = window.rows
         top = np.argpartition(distances, min(3, len(rows)) - 1)[:3]
         decisive = np.any(
             np.abs(distances[:, None] - distances[top][None, :]) <= _DECISION_MARGIN_M,
@@ -730,6 +754,7 @@ class IndexedAlongTrackBackend:
 
     def _materialize(
         self,
+        window: _PreparedWindow,
         fields: list[along_track_fields],
         rows: np.ndarray,
         distances: np.ndarray,
@@ -739,6 +764,7 @@ class IndexedAlongTrackBackend:
     ) -> Dataset[along_track_fields] | None:
         """Project stored values into a schema-backed OceanDB dataset.
 
+        :param window: Stable prepared arrays and their source metadata.
         :param fields: Requested field names in result order.
         :param rows: Selected active-window row indices.
         :param distances: Exact WGS84 distances aligned with ``rows``.
@@ -748,9 +774,7 @@ class IndexedAlongTrackBackend:
         """
         if not len(rows):
             return None
-        active = self._active
-        if active is None:
-            raise RuntimeError("AlongTrack window has not been prepared")
+        active = window.rows
         requested = list(dict.fromkeys(fields))
         if nearest and "distance" not in requested:
             requested.append("distance")
@@ -773,7 +797,7 @@ class IndexedAlongTrackBackend:
             elif name == "file_name":
                 values = np.asarray(
                     [
-                        self._active_sources[int(index)].path.name
+                        window.sources[int(index)].path.name
                         for index in active["file_id"][rows]
                     ],
                     dtype=str,
@@ -781,7 +805,7 @@ class IndexedAlongTrackBackend:
             elif name == "mission":
                 values = np.asarray(
                     [
-                        self._active_sources[int(index)].mission
+                        window.sources[int(index)].mission
                         for index in active["file_id"][rows]
                     ],
                     dtype=str,
@@ -797,6 +821,37 @@ class IndexedAlongTrackBackend:
         return Dataset(
             name="along_track", data=data, dtypes=dtypes, schema=along_track_schema
         )
+
+    def _query(
+        self,
+        window: _PreparedWindow,
+        fields: list[along_track_fields],
+        latitude: float,
+        longitude: float,
+        date: datetime,
+        radius: float | None,
+        *,
+        nearest: bool,
+    ) -> Dataset[along_track_fields] | None:
+        """Select and project one center against its captured window.
+
+        :param window: Stable prepared arrays and provenance.
+        :param fields: Requested OceanDB columns.
+        :param latitude: Query-center latitude.
+        :param longitude: Query-center longitude.
+        :param date: Center datetime for signed temporal offsets.
+        :param radius: Inclusive radius or optional nearest cap.
+        :param nearest: Select three nearest rows instead of radius membership.
+        :returns: Projected observations, or ``None`` when no rows match.
+        """
+        rows, distances = (
+            self._nearest(window, latitude, longitude, radius)
+            if nearest
+            else self._select(
+                window, latitude, longitude, 500_000.0 if radius is None else radius
+            )
+        )
+        return self._materialize(window, fields, rows, distances, date, nearest=nearest)
 
     def _batch(
         self,
@@ -833,14 +888,15 @@ class IndexedAlongTrackBackend:
             self._validate_inventory()
         for latitude, longitude, date in zip(latitudes, longitudes, dates, strict=True):
             self.prepare_window(date, time_window, missions)
-            rows, distances = (
-                self._nearest(latitude, longitude, radius)
-                if nearest
-                else self._select(
-                    latitude, longitude, 500_000.0 if radius is None else radius
-                )
+            yield self._query(
+                self._snapshot(),
+                fields,
+                latitude,
+                longitude,
+                date,
+                radius,
+                nearest=nearest,
             )
-            yield self._materialize(fields, rows, distances, date, nearest=nearest)
 
     def geographic_point_in_r_dt(
         self,
