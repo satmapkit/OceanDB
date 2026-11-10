@@ -1,6 +1,9 @@
 """Database-free complete-catalog and interrupted-discovery regressions."""
 
+import json
+import os
 import shutil
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -30,6 +33,178 @@ def source_layout(tmp_path: Path) -> tuple[Path, Path, Path]:
     source = month / SOURCE_NAME
     shutil.copyfile(_ASSET, source)
     return product, tmp_path / "cache", source
+
+
+def _append_source(source: Path, day: int = 3) -> Path:
+    """Add a second source without changing the original source fingerprint.
+
+    :param source: Original literal source.
+    :param day: Distinct basename day, not an assumption about decoded times.
+    :returns: Newly copied source path.
+    """
+    added = source.with_name(source.name.replace("20240102.nc", f"202401{day:02d}.nc"))
+    shutil.copyfile(source, added)
+    return added
+
+
+def test_warm_constructor_is_scan_free_and_keeps_saved_visibility(
+    source_layout: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Appended sources remain invisible across a scan-free restart.
+
+    :param source_layout: Product root, cache directory, and source.
+    :param monkeypatch: Scoped method patcher.
+    """
+    product, cache, source = source_layout
+    first = indexed.IndexedAlongTrackBackend(product, cache)
+    added = _append_source(source)
+    stat = Path.stat
+    dataset = nc.Dataset
+
+    def forbid_discovery(*args: object, **kwargs: object) -> None:
+        pytest.fail("Warm construction must not discover sources")
+
+    def guarded_stat(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        assert path not in (source, added), "Warm construction must not stat sources"
+        return stat(path, follow_symlinks=follow_symlinks)
+
+    def guarded_dataset(
+        filename: str | Path, *, memory: bytes | None = None
+    ) -> nc.Dataset:
+        assert Path(filename) not in (
+            source,
+            added,
+        ), "Warm construction must not read sources"
+        return dataset(filename, memory=memory)
+
+    monkeypatch.setattr(Path, "glob", forbid_discovery)
+    monkeypatch.setattr(Path, "stat", guarded_stat)
+    monkeypatch.setattr(nc, "Dataset", guarded_dataset)
+    restarted = indexed.IndexedAlongTrackBackend(product, cache)
+    assert restarted._sources == first._sources
+    assert restarted.stats.catalog_reads == restarted.stats.source_reads == 0
+    assert [entry.path for entry in restarted._sources] == [source]
+
+
+def test_explicit_refresh_discovers_and_publishes_actual_coverage(
+    source_layout: tuple[Path, Path, Path],
+) -> None:
+    """Refresh reuses unchanged coverage and publishes decoded rather than filename times.
+
+    :param source_layout: Product root, cache directory, and source.
+    """
+    product, cache, source = source_layout
+    backend = indexed.IndexedAlongTrackBackend(product, cache)
+    backend.prepare_window(_DATE, timedelta(0))
+    added = _append_source(source)
+    with nc.Dataset(added, "r+") as dataset:
+        dataset["time"][:] = dataset["time"][:] + 100
+    assert backend.stats.cached_bytes > 0 and backend.stats.active_bytes > 0
+    backend.refresh()
+    assert [entry.path for entry in backend._sources] == [source, added]
+    assert backend.stats.catalog_reads == 2
+    assert backend.stats.cached_bytes == backend.stats.active_bytes == 0
+    first, second = backend._sources
+    assert first.start_us == indexed._microseconds(_DATE)
+    assert first.end_us == indexed._microseconds(
+        datetime.fromisoformat(TIME_UTC[-1].removesuffix("Z"))
+    )
+    assert second.start_us == first.start_us + 100 * 86_400_000_000
+    assert second.end_us == first.end_us + 100 * 86_400_000_000
+    restarted = indexed.IndexedAlongTrackBackend(product, cache)
+    assert restarted._sources == backend._sources
+    assert restarted.stats.catalog_reads == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("manifest", []),
+        ("version", True),
+        ("version", "2"),
+        ("version", -1),
+        ("root", "/another/root"),
+        ("sources", {}),
+        ("sources", []),
+        ("entry", None),
+        ("duplicate", None),
+        ("path", None),
+        ("path", f"/mission/2024/01/{SOURCE_NAME}"),
+        ("path", f"../2024/01/{SOURCE_NAME}"),
+        ("path", f"mission/../01/{SOURCE_NAME}"),
+        ("path", f"mission/2024/./01/{SOURCE_NAME}"),
+        ("path", f"mission//2024/01/{SOURCE_NAME}"),
+        ("path", f"mission\\2024\\01\\{SOURCE_NAME}"),
+        ("path", f"mission/2024/01/{SOURCE_NAME}\x00"),
+        ("path", f"mission/2024/{SOURCE_NAME}"),
+        ("path", f"mission/2024/01/{SOURCE_NAME.removesuffix('.nc')}.txt"),
+        ("path", f"mission/2024/01/{SOURCE_NAME.replace('_j2_', '_unknown_')}"),
+        ("size", True),
+        ("size", "1"),
+        ("size", -1),
+        ("size", 2**63),
+        ("mtime_ns", True),
+        ("mtime_ns", "1"),
+        ("mtime_ns", -1),
+        ("mtime_ns", 2**63),
+        ("start_us", True),
+        ("start_us", 1.0),
+        ("start_us", -(2**63)),
+        ("start_us", 2**63),
+        ("end_us", None),
+        ("end_us", -1),
+        ("end_us", 2**63),
+    ],
+)
+def test_invalid_catalog_is_rebuilt_without_trusting_records(
+    source_layout: tuple[Path, Path, Path], field: str, invalid: object
+) -> None:
+    """Reject malformed schemas, unsafe paths, missions, and metadata ranges.
+
+    :param source_layout: Product root, cache directory, and source.
+    :param field: Manifest or record component to corrupt.
+    :param invalid: Invalid JSON-compatible replacement.
+    """
+    product, cache, _ = source_layout
+    first = indexed.IndexedAlongTrackBackend(product, cache)
+    catalog = first._catalog_path
+    original = catalog.read_bytes()
+    manifest: object = json.loads(original)
+    assert isinstance(manifest, dict)
+    entries = manifest["sources"]
+    assert isinstance(entries, list)
+    if field == "manifest":
+        manifest = invalid
+    elif field in ("version", "root", "sources"):
+        manifest[field] = invalid
+    elif field == "entry":
+        entries[0] = invalid
+    elif field == "duplicate":
+        entries.append(entries[0])
+    else:
+        entries[0][field] = invalid
+    catalog.write_text(json.dumps(manifest), encoding="utf-8")
+    rebuilt = indexed.IndexedAlongTrackBackend(product, cache)
+    assert rebuilt._sources == first._sources
+    assert rebuilt.stats.catalog_reads == 1
+    assert catalog.read_bytes() == original
+
+
+@pytest.mark.parametrize("damaged", [b"{", b"\xff", b"null"])
+def test_unreadable_catalog_is_rebuilt(
+    source_layout: tuple[Path, Path, Path], damaged: bytes
+) -> None:
+    """Treat invalid JSON and invalid encoding as cache misses.
+
+    :param source_layout: Product root, cache directory, and source.
+    :param damaged: Incomplete or non-manifest file contents.
+    """
+    product, cache, _ = source_layout
+    first = indexed.IndexedAlongTrackBackend(product, cache)
+    first._catalog_path.write_bytes(damaged)
+    rebuilt = indexed.IndexedAlongTrackBackend(product, cache)
+    assert rebuilt._sources == first._sources
+    assert rebuilt.stats.catalog_reads == 1
 
 
 @pytest.mark.parametrize("calendar", ["standard", "gregorian", "proleptic_gregorian"])

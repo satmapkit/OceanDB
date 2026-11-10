@@ -140,8 +140,8 @@ class IndexedAlongTrackBackend:
     Other queries, preparation, and refresh are rejected during an active stream.
     Close partially consumed streams to release their workers and ownership.
     An explicit
-    :meth:`refresh` discovers archive changes. New windows validate only selected
-    sources;
+    :meth:`refresh` discovers archive changes. Construction reuses a valid saved
+    inventory without rescanning. New windows validate only selected sources;
     repeated queries reuse immutable prepared arrays without filesystem checks,
     even after source edits. Changed or missing selected files raise when a new
     window is prepared against an outdated inventory.
@@ -192,8 +192,15 @@ class IndexedAlongTrackBackend:
         self._offsets: np.ndarray | None = None
         self._active_key: tuple[int, int, tuple[str, ...]] | None = None
         self._active_sources: tuple[_Source, ...] = ()
-        self._sources: list[_Source] = []
-        self.refresh()
+        self._catalog_path = (
+            self.cache_dir
+            / f"catalog-{sha256(str(self.data_root).encode()).hexdigest()[:20]}.json"
+        )
+        sources = self._read_catalog()
+        self._sources: list[_Source] = sources if sources is not None else []
+        self._missions = tuple(sorted({source.mission for source in self._sources}))
+        if sources is None:
+            self.refresh()
 
     @staticmethod
     def _asset_signature() -> str:
@@ -280,6 +287,94 @@ class IndexedAlongTrackBackend:
             raise ValueError(f"No observations in AlongTrack source: {path}")
         return int(times.min()), int(times.max())
 
+    def _catalog_identity(self, value: object) -> bool:
+        """Check the root and version shared by complete and progress manifests.
+
+        :param value: Decoded JSON header or manifest.
+        :returns: Whether the manifest belongs to this source root and decoder.
+        """
+        return (
+            isinstance(value, dict)
+            and type(value.get("version")) is int
+            and value.get("version") == _CACHE_VERSION
+            and value.get("root") == str(self.data_root)
+        )
+
+    def _catalog_source(self, value: object) -> _Source:
+        """Validate a source record without accessing its filesystem metadata.
+
+        :param value: Decoded JSON source record.
+        :returns: A source pinned to this root with supported coverage and mission.
+        :raises ValueError: If a field, path, or coverage bound is invalid.
+        """
+        if not isinstance(value, dict):
+            raise ValueError("Invalid AlongTrack catalog source")
+        relative: object = value.get("path")
+        size: object = value.get("size")
+        mtime_ns: object = value.get("mtime_ns")
+        start: object = value.get("start_us")
+        end: object = value.get("end_us")
+        if not isinstance(relative, str) or "\\" in relative or "\x00" in relative:
+            raise ValueError("Invalid AlongTrack catalog path")
+        path = Path(relative)
+        if (
+            path.is_absolute()
+            or len(path.parts) != 4
+            or ".." in path.parts
+            or path.as_posix() != relative
+            or path.suffix != ".nc"
+        ):
+            raise ValueError("Unsafe AlongTrack catalog path")
+        if (
+            type(size) is not int
+            or not 0 <= size <= 2**63 - 1
+            or type(mtime_ns) is not int
+            or not 0 <= mtime_ns <= 2**63 - 1
+            or type(start) is not int
+            or type(end) is not int
+            or not _microseconds(datetime.min)
+            <= start
+            <= end
+            <= _microseconds(datetime.max)
+        ):
+            raise ValueError("Invalid AlongTrack catalog fingerprint or coverage")
+        return _Source(
+            self.data_root / path, size, mtime_ns, start, end, self._mission(path)
+        )
+
+    def _read_catalog(self) -> list[_Source] | None:
+        """Load only a complete validated inventory, never discover source files.
+
+        :returns: The saved snapshot, or ``None`` when it must be rebuilt.
+        """
+        try:
+            manifest: object = json.loads(self._catalog_path.read_bytes())
+            if not isinstance(manifest, dict) or not self._catalog_identity(manifest):
+                return None
+            entries: object = manifest.get("sources")
+            if not isinstance(entries, list) or not entries:
+                return None
+            sources = [self._catalog_source(entry) for entry in entries]
+            if len({source.path for source in sources}) != len(sources):
+                return None
+            return sources
+        except (OSError, ValueError, TypeError):
+            return None
+
+    def _catalog_entry(self, source: _Source) -> dict[str, str | int]:
+        """Serialize the shared complete-catalog and journal source record.
+
+        :param source: Completed source coverage and fingerprint.
+        :returns: Root-relative JSON fields.
+        """
+        return {
+            "path": source.path.relative_to(self.data_root).as_posix(),
+            "size": source.size,
+            "mtime_ns": source.mtime_ns,
+            "start_us": source.start_us,
+            "end_us": source.end_us,
+        }
+
     def refresh(self) -> None:
         """Reinventory local sources and invalidate the in-memory snapshot.
 
@@ -294,61 +389,34 @@ class IndexedAlongTrackBackend:
         self._active_key = None
         self._active_sources = ()
         self.stats.cached_bytes = self.stats.active_bytes = 0
-        catalog_path = (
-            self.cache_dir
-            / f"catalog-{sha256(str(self.data_root).encode()).hexdigest()[:20]}.json"
-        )
-        previous: dict[str, dict[str, object]] = {}
-        if catalog_path.exists():
-            try:
-                manifest = json.loads(catalog_path.read_text(encoding="utf-8"))
-                if manifest["version"] == _CACHE_VERSION and manifest["root"] == str(
-                    self.data_root
-                ):
-                    previous = {entry["path"]: entry for entry in manifest["sources"]}
-            except (OSError, ValueError, KeyError, TypeError):
-                previous = {}
+        previous = {source.path: source for source in self._read_catalog() or ()}
         paths = sorted(self.data_root.glob("*/*/*/*.nc"))
         if not paths:
             raise FileNotFoundError(
                 f"No mission/year/month/*.nc files under {self.data_root}"
             )
         self._sources = []
-        serializable: list[dict[str, object]] = []
         for path in paths:
-            relative = str(path.relative_to(self.data_root))
+            mission = self._mission(path)
             stat = path.stat()
-            cached = previous.get(relative)
-            if (
-                cached is not None
-                and cached.get("size") == stat.st_size
-                and cached.get("mtime_ns") == stat.st_mtime_ns
-                and isinstance(cached.get("start_us"), int)
-                and isinstance(cached.get("end_us"), int)
+            cached = previous.get(path)
+            if cached is not None and (cached.size, cached.mtime_ns) == (
+                stat.st_size,
+                stat.st_mtime_ns,
             ):
-                start, end = cached["start_us"], cached["end_us"]
-                assert isinstance(start, int) and isinstance(end, int)
+                source = cached
             else:
                 start, end = self._coverage(path)
-            source = _Source(
-                path, stat.st_size, stat.st_mtime_ns, start, end, self._mission(path)
-            )
+                source = _Source(
+                    path, stat.st_size, stat.st_mtime_ns, start, end, mission
+                )
             self._sources.append(source)
-            serializable.append(
-                {
-                    "path": relative,
-                    "size": source.size,
-                    "mtime_ns": source.mtime_ns,
-                    "start_us": start,
-                    "end_us": end,
-                }
-            )
         _atomic_json(
-            catalog_path,
+            self._catalog_path,
             {
                 "version": _CACHE_VERSION,
                 "root": str(self.data_root),
-                "sources": serializable,
+                "sources": [self._catalog_entry(source) for source in self._sources],
             },
         )
         self._missions = tuple(sorted({source.mission for source in self._sources}))

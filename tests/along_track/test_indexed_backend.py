@@ -1440,7 +1440,7 @@ def test_disk_cache_survives_restart_and_adjacent_time_windows(
     )
 
 
-def test_changed_source_keeps_prepared_window_but_rejects_memory_rebuilds(
+def test_changed_source_keeps_prepared_window_but_rejects_memory_and_disk_rebuilds(
     source_layout: tuple[Path, Path, Path],
 ) -> None:
     """Pin prepared science until refresh, but validate every new preparation.
@@ -1485,7 +1485,20 @@ def test_changed_source_keeps_prepared_window_but_rejects_memory_rebuilds(
     assert backend.stats.memory_hits == 0
     assert backend.stats.window_builds == backend.stats.source_reads == 1
 
-    restarted = AlongTrack(backend=IndexedAlongTrackBackend(product, cache))
+    restarted_backend = IndexedAlongTrackBackend(product, cache)
+    assert restarted_backend.stats.catalog_reads == 0
+    assert len(list((cache / "files").glob("*.npy"))) == 1
+    with pytest.raises(RuntimeError, match="source changed"):
+        restarted_backend.prepare_window(DATES[4], timedelta(0))
+    assert (
+        restarted_backend.stats.disk_hits == restarted_backend.stats.source_reads == 0
+    )
+    assert restarted_backend.stats.window_builds == 0
+
+    restarted_backend.refresh()
+    assert restarted_backend._active is None
+    assert restarted_backend._active_key is None
+    restarted = AlongTrack(backend=restarted_backend)
     after = restarted.geographic_point_in_r_dt(
         ["sla_filtered"],
         LATITUDE[4],
@@ -1500,7 +1513,7 @@ def test_changed_source_keeps_prepared_window_but_rejects_memory_rebuilds(
     np.testing.assert_array_equal(before.get_unscaled("sla_filtered"), [-1])
 
 
-def test_deleted_source_keeps_prepared_window_but_rejects_memory_rebuilds(
+def test_deleted_source_keeps_prepared_window_but_rejects_memory_and_disk_rebuilds(
     source_layout: tuple[Path, Path, Path],
 ) -> None:
     """A deleted selected source is usable only in the already prepared window.
@@ -1540,6 +1553,14 @@ def test_deleted_source_keeps_prepared_window_but_rejects_memory_rebuilds(
         backend.prepare_window(DATES[1], timedelta(0))
     assert backend.stats.memory_hits == 0
     assert backend.stats.window_builds == backend.stats.source_reads == 1
+
+    restarted = IndexedAlongTrackBackend(product, cache)
+    assert restarted.stats.catalog_reads == 0
+    assert len(list((cache / "files").glob("*.npy"))) == 1
+    with pytest.raises(RuntimeError, match="source disappeared"):
+        restarted.prepare_window(DATES[0], timedelta(0))
+    assert restarted.stats.disk_hits == restarted.stats.source_reads == 0
+    assert restarted.stats.window_builds == 0
 
     backend.refresh()
     assert backend._active is None and backend._active_key is None
