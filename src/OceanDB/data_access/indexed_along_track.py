@@ -140,8 +140,11 @@ class IndexedAlongTrackBackend:
     Other queries, preparation, and refresh are rejected during an active stream.
     Close partially consumed streams to release their workers and ownership.
     An explicit
-    :meth:`refresh` is needed to include newly added source files; changed or
-    missing files from the existing snapshot instead raise before reuse.
+    :meth:`refresh` discovers archive changes. New windows validate only selected
+    sources;
+    repeated queries reuse immutable prepared arrays without filesystem checks,
+    even after source edits. Changed or missing selected files raise when a new
+    window is prepared against an outdated inventory.
 
     :param data_root: ``ALONG_TRACK_DATA_DIRECTORY`` or its product directory.
     :param cache_dir: Directory for reusable, versioned local cache artifacts.
@@ -348,6 +351,7 @@ class IndexedAlongTrackBackend:
                 "sources": serializable,
             },
         )
+        self._missions = tuple(sorted({source.mission for source in self._sources}))
 
     def prepare_grid(
         self,
@@ -415,16 +419,6 @@ class IndexedAlongTrackBackend:
             raise RuntimeError(
                 f"AlongTrack source changed: {source.path}; call refresh()"
             )
-
-    def _validate_inventory(self) -> None:
-        """Validate all pinned sources before relying on cached time coverage.
-
-        A previously unselected file could have moved into the current window.
-        This check runs once per public query/batch, rather than per batch center.
-        New file discovery remains an explicit :meth:`refresh`.
-        """
-        for source in self._sources:
-            self._check_source(source)
 
     def _prepare_file(self, source: _Source) -> np.ndarray:
         """Decode one source into aligned packed columns and row provenance.
@@ -588,7 +582,11 @@ class IndexedAlongTrackBackend:
         time_window: timedelta,
         missions: Sequence[Mission] | None = None,
     ) -> None:
-        """Prepare the window once for repeated spatial queries.
+        """Validate selected sources and prepare immutable rows for spatial queries.
+
+        An already prepared key is reused without source checks. Call
+        :meth:`refresh` to incorporate archive edits, including coverage changes
+        in previously unselected files.
 
         :param date: Center datetime.
         :param time_window: Nonnegative temporal half-width.
@@ -624,16 +622,14 @@ class IndexedAlongTrackBackend:
             time_window.days * 86_400 + time_window.seconds
         ) * 1_000_000 + time_window.microseconds
         selection = (
-            tuple(sorted(set(missions)))
-            if missions is not None
-            else tuple(sorted({s.mission for s in self._sources}))
+            tuple(sorted(set(missions))) if missions is not None else self._missions
         )
         key = (center, half, selection)
         if self._active_key == key:
-            for source in self._active_sources:
-                self._check_source(source)
             return
         started = perf_counter()
+        # Empty and disk-cached windows must also load lazy basin data before queries.
+        _ = self._basins.data
         lower, upper = center - half, center + half
         selected = tuple(
             source
@@ -939,8 +935,6 @@ class IndexedAlongTrackBackend:
             raise ValueError(f"Unknown AlongTrack fields: {sorted(unknown)}")
         if radius is not None and (not np.isfinite(radius) or radius < 0):
             raise ValueError("radius must be finite and nonnegative")
-        if latitudes:
-            self._validate_inventory()
         for latitude, longitude, date in zip(latitudes, longitudes, dates, strict=True):
             self.prepare_window(date, time_window, missions)
             yield self._query(

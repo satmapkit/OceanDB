@@ -8,8 +8,8 @@ import hashlib
 import os
 import re
 import shutil
-from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Generator, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import NoReturn
@@ -19,8 +19,8 @@ import numpy as np
 import psycopg
 import pytest
 
-from OceanDB.data_access.along_track import AlongTrack, Mission
-from OceanDB.data_access.indexed_along_track import IndexedAlongTrackBackend
+from OceanDB.data_access.along_track import AlongTrack, AlongTrackBackend, Mission
+from OceanDB.data_access.indexed_along_track import IndexedAlongTrackBackend, _Source
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas import along_track_schema as schema
 from tests.data.along_track_reference.generate import (
@@ -150,6 +150,189 @@ def _assert_source_row(
         )
     np.testing.assert_array_equal(result["distance"], [0.0])
     np.testing.assert_array_equal(result["delta_t"], [0.0])
+
+
+@dataclass
+class _WorkEvents:
+    """Record selected-source safety checks and requested window preparations."""
+
+    selected_checks: list[Path] = field(default_factory=list)
+    windows: list[datetime] = field(default_factory=list)
+
+
+def _observe_work(
+    backend: IndexedAlongTrackBackend, monkeypatch: pytest.MonkeyPatch
+) -> _WorkEvents:
+    """Observe narrow preparation boundaries without inspecting window arrays.
+
+    :param backend: Constructed backend whose subsequent work is observed.
+    :param monkeypatch: Scoped method patcher.
+    :returns: Mutable event log; all wrapped methods retain their behavior.
+    """
+    events = _WorkEvents()
+    check_source = backend._check_source
+    prepare_window = backend.prepare_window
+
+    def observe_source(source: _Source) -> None:
+        events.selected_checks.append(source.path)
+        check_source(source)
+
+    def observe_window(
+        date: datetime,
+        time_window: timedelta,
+        missions: Sequence[Mission] | None = None,
+    ) -> None:
+        events.windows.append(date)
+        prepare_window(date, time_window, missions)
+
+    monkeypatch.setattr(backend, "_check_source", observe_source)
+    monkeypatch.setattr(backend, "prepare_window", observe_window)
+    return events
+
+
+def _query_batch(
+    client: AlongTrackBackend,
+    nearest: bool,
+    fields: list[schema.along_track_fields],
+    latitudes: list[float],
+    longitudes: list[float],
+    dates: list[datetime],
+    *,
+    radius: float = 0.0,
+    time_window: timedelta = timedelta(0),
+    missions: list[Mission] | None = None,
+    n_jobs: int = 1,
+    chunk_size: int = 16,
+) -> Generator[Dataset[schema.along_track_fields] | None, None, None]:
+    """Apply the same lifecycle case to either public batch operation.
+
+    :param client: Direct backend or facade with the four-method contract.
+    :param nearest: Use nearest rather than radius selection.
+    :param fields: Requested projection.
+    :param latitudes: Paired center latitudes.
+    :param longitudes: Paired center longitudes.
+    :param dates: Paired center dates.
+    :param radius: Radius or nearest cap, in meters.
+    :param time_window: Temporal half-window.
+    :param missions: Mission selection.
+    :param n_jobs: Worker limit forwarded unchanged.
+    :param chunk_size: Chunk limit forwarded unchanged.
+    :returns: Unconsumed public batch generator.
+    """
+    if nearest:
+        return client.geographic_nearest_neighbors_batch(
+            fields,
+            latitudes,
+            longitudes,
+            dates,
+            time_window,
+            missions,
+            max_radius=radius,
+            n_jobs=n_jobs,
+            chunk_size=chunk_size,
+        )
+    return client.geographic_point_in_r_dt_batch(
+        fields,
+        latitudes,
+        longitudes,
+        dates,
+        radius,
+        time_window,
+        missions,
+        n_jobs=n_jobs,
+        chunk_size=chunk_size,
+    )
+
+
+def _copy_shifted_mission_source(
+    product: Path, source: Path, mission: Mission, days: int
+) -> Path:
+    """Create a second valid mission with nonduplicate literal observation times.
+
+    :param product: Temporary product root.
+    :param source: Original synthetic fixture copy.
+    :param mission: Mission embedded in the new source name and directory.
+    :param days: Integral day offset applied to the independent raw time literals.
+    :returns: New source path, created before backend construction.
+    """
+    month = (
+        product
+        / f"cmems_obs-sl_glo_phy-ssh_my_{mission}-l3-duacs_PT1S_202411"
+        / "2024"
+        / "01"
+    )
+    month.mkdir(parents=True)
+    other = month / SOURCE_NAME.replace("_j2_", f"_{mission}_")
+    shutil.copyfile(source, other)
+    with nc.Dataset(other, "r+") as dataset:
+        variable = dataset["time"]
+        variable.set_auto_maskandscale(False)
+        variable[:] = np.asarray(TIME_RAW) + days
+    return other
+
+
+def _assert_projected_source_rows(
+    result: Dataset[schema.along_track_fields] | None,
+    fields: list[schema.along_track_fields],
+    indices: Sequence[int],
+    date: datetime,
+    distances: Sequence[float],
+    *,
+    nearest: bool = False,
+) -> None:
+    """Check every projected column against source literals, not the reader.
+
+    :param result: Query result using the original single-mission source.
+    :param fields: Requested fields, excluding implicit nearest distance.
+    :param indices: Expected source rows, in date order or required nearest order.
+    :param date: Temporal center for signed offsets.
+    :param distances: Independent WGS84 distances aligned with expected rows.
+    :param nearest: Preserve nearest ordering and require mandatory distance.
+    """
+    assert isinstance(result, Dataset)
+    assert result.name == "along_track"
+    assert result.row_count == len(indices)
+    assert set(result) == set(fields) | ({"distance"} if nearest else set())
+    order = np.arange(len(indices))
+    if not nearest and len(indices) > 1:
+        order = np.argsort(result["date_time"])
+    expected: dict[
+        schema.along_track_fields, Sequence[str | int | float | datetime]
+    ] = {
+        "date_time": [DATES[index] for index in indices],
+        "latitude": [LATITUDE[index] for index in indices],
+        "longitude": [LONGITUDE[index] for index in indices],
+        "track": [TRACK[index] for index in indices],
+        "cycle": [CYCLE[index] for index in indices],
+        "basin_id": [BASIN_ID[index] for index in indices],
+        "file_name": [SOURCE_NAME] * len(indices),
+        "mission": ["j2"] * len(indices),
+    }
+    for name in result:
+        if name in SCIENCE:
+            oracle = SCIENCE[name]
+            for actual, values in (
+                (result.get_unscaled(name)[order], oracle.packed),
+                (result[name][order], oracle.physical),
+            ):
+                literal = np.asarray([values[index] for index in indices], dtype=float)
+                np.testing.assert_array_equal(np.isnan(actual), np.isnan(literal))
+                np.testing.assert_allclose(
+                    actual, literal, rtol=0, atol=1e-12, equal_nan=True
+                )
+        elif name == "distance":
+            np.testing.assert_allclose(
+                result[name][order], distances, rtol=0, atol=1e-4
+            )
+        elif name == "delta_t":
+            np.testing.assert_array_equal(
+                result[name][order],
+                [(date - DATES[index]).total_seconds() for index in indices],
+            )
+        else:
+            np.testing.assert_array_equal(
+                result[name][order], np.asarray(expected[name], dtype=object)
+            )
 
 
 def test_all_four_queries_preserve_source_rows_and_scalar_correction_mask(
@@ -541,6 +724,663 @@ def test_zero_column_radius_projection_preserves_legacy_dataset_shape(
     assert len(result) == 0 and result.row_count == 0
 
 
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+def test_indexed_batches_defer_work_until_first_next(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+) -> None:
+    """Constructing either direct batch must not validate or prepare sources.
+
+    :param source_layout: Temporary product root, cache, and literal source.
+    :param monkeypatch: Scoped work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    """
+    product, cache, source = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    catalog_reads = backend.stats.catalog_reads
+    assert catalog_reads == 1
+    events = _observe_work(backend, monkeypatch)
+    results = _query_batch(
+        backend, nearest, FULL_FIELDS, [LATITUDE[0]], [LONGITUDE[0]], [DATES[0]]
+    )
+    assert events == _WorkEvents()
+    assert backend.stats.catalog_reads == catalog_reads
+    assert (
+        backend.stats.source_reads
+        == backend.stats.disk_hits
+        == backend.stats.memory_hits
+        == 0
+    )
+    assert backend.stats.window_builds == backend.stats.active_bytes == 0
+
+    _assert_source_row(next(results), 0)
+    assert events.selected_checks == [source, source]
+    assert events.windows == [DATES[0]]
+    assert backend.stats.catalog_reads == catalog_reads
+    assert backend.stats.source_reads == backend.stats.window_builds == 1
+    results.close()
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+@pytest.mark.parametrize("n_jobs, chunk_size", [(0, 16), (2, 16), (1, 0), (1, -1)])
+def test_direct_batch_worker_and_chunk_errors_are_eager(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+    n_jobs: int,
+    chunk_size: int,
+) -> None:
+    """Direct wrappers validate their limits without starting the generator.
+
+    :param source_layout: Temporary product root, cache, and source.
+    :param monkeypatch: Scoped work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param n_jobs: Invalid worker count, or one for chunk cases.
+    :param chunk_size: Invalid chunk size, or the default for worker cases.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    events = _observe_work(backend, monkeypatch)
+    with pytest.raises(ValueError, match="n_jobs=1 and positive chunk_size"):
+        _query_batch(
+            backend,
+            nearest,
+            ["track"],
+            [],
+            [],
+            [],
+            n_jobs=n_jobs,
+            chunk_size=chunk_size,
+        )
+    assert events == _WorkEvents()
+    assert backend.stats.source_reads == backend.stats.window_builds == 0
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+@pytest.mark.parametrize("problem", ["shape", "fields", "negative", "nan", "infinite"])
+def test_direct_batch_shape_fields_and_radius_errors_are_deferred(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+    problem: str,
+) -> None:
+    """Keep direct shape, projection, and radius validation at first iteration.
+
+    :param source_layout: Temporary product root, cache, and source.
+    :param monkeypatch: Scoped schema and work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param problem: Runtime validation failure to introduce.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    events = _observe_work(backend, monkeypatch)
+    longitudes = [] if problem == "shape" else [LONGITUDE[0]]
+    radius = {"negative": -1.0, "nan": float("nan"), "infinite": float("inf")}.get(
+        problem, 0.0
+    )
+    message = "equal lengths" if problem == "shape" else "radius must be finite"
+    if problem == "fields":
+        monkeypatch.delitem(schema.along_track_schema, "track")
+        message = "Unknown AlongTrack fields"
+    results = _query_batch(
+        backend,
+        nearest,
+        ["track"],
+        [LATITUDE[0]],
+        longitudes,
+        [DATES[0]],
+        radius=radius,
+    )
+    assert events == _WorkEvents()
+    with pytest.raises(ValueError, match=message):
+        next(results)
+    assert events == _WorkEvents()
+    assert backend.stats.source_reads == backend.stats.window_builds == 0
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+@pytest.mark.parametrize("empty", [False, True], ids=["nonempty", "empty"])
+def test_facade_batches_defer_field_checks_until_first_next(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+    empty: bool,
+) -> None:
+    """Reject unknown fields on iteration, including through the facade.
+
+    :param source_layout: Temporary product root, cache, and source.
+    :param monkeypatch: Scoped shared-schema and work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param empty: Supply no centers while retaining projection validation.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    client = AlongTrack(backend=backend)
+    events = _observe_work(backend, monkeypatch)
+    # Mutate the shared mapping rather than rebinding only the backend's alias:
+    # an incorrectly eager facade validator must see the same unknown field.
+    monkeypatch.delitem(schema.along_track_schema, "track")
+    results = _query_batch(
+        client,
+        nearest,
+        ["track"],
+        [] if empty else [LATITUDE[0]],
+        [] if empty else [LONGITUDE[0]],
+        [] if empty else [DATES[0]],
+    )
+    assert events == _WorkEvents()
+    with pytest.raises(ValueError, match="Unknown AlongTrack fields"):
+        next(results)
+    assert events == _WorkEvents()
+    assert backend.stats.source_reads == backend.stats.window_builds == 0
+
+
+@pytest.mark.parametrize("empty", [False, True], ids=["nonempty", "empty"])
+@pytest.mark.parametrize("radius", [-1.0, float("nan"), float("inf")])
+def test_facade_radius_batches_defer_radius_checks_until_first_next(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    empty: bool,
+    radius: float,
+) -> None:
+    """Keep radius validation deferred, unlike the facade's nearest-cap check.
+
+    :param source_layout: Temporary product root, cache, and source.
+    :param monkeypatch: Scoped work-boundary patcher.
+    :param empty: Supply no centers while retaining radius validation.
+    :param radius: Negative or nonfinite radius.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    client = AlongTrack(backend=backend)
+    events = _observe_work(backend, monkeypatch)
+    results = client.geographic_point_in_r_dt_batch(
+        ["track"],
+        [] if empty else [LATITUDE[0]],
+        [] if empty else [LONGITUDE[0]],
+        [] if empty else [DATES[0]],
+        radius=radius,
+    )
+    assert events == _WorkEvents()
+    with pytest.raises(ValueError, match="radius must be finite"):
+        next(results)
+    assert events == _WorkEvents()
+    assert backend.stats.source_reads == backend.stats.window_builds == 0
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+@pytest.mark.parametrize("facade", [False, True], ids=["direct", "facade"])
+def test_partial_batch_consumption_prepares_only_consumed_centers(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+    facade: bool,
+) -> None:
+    """Closing a nonmonotonic batch after one result must not prepare its future.
+
+    :param source_layout: Temporary product root, cache, and source.
+    :param monkeypatch: Scoped work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param facade: Enter through AlongTrack instead of the direct backend.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    client: AlongTrackBackend = AlongTrack(backend=backend) if facade else backend
+    events = _observe_work(backend, monkeypatch)
+    indices = [4, 0, 5]
+    results = _query_batch(
+        client,
+        nearest,
+        FULL_FIELDS,
+        [LATITUDE[index] for index in indices],
+        [LONGITUDE[index] for index in indices],
+        [DATES[index] for index in indices],
+        chunk_size=3,
+    )
+    assert events == _WorkEvents()
+    _assert_source_row(next(results), 4)
+    assert events.windows == [DATES[4]]
+    assert backend.stats.window_builds == backend.stats.source_reads == 1
+    results.close()
+    with pytest.raises(StopIteration):
+        next(results)
+    assert events.windows == [DATES[4]]
+    assert backend.stats.window_builds == backend.stats.source_reads == 1
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+@pytest.mark.parametrize("facade", [False, True], ids=["direct", "facade"])
+@pytest.mark.parametrize("problem", [None, "fields", "radius"])
+def test_empty_batch_skips_inventory_and_preparation(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+    facade: bool,
+    problem: str | None,
+) -> None:
+    """Empty batches skip sources but still validate fields and spatial limits.
+
+    :param source_layout: Temporary product root, cache, and source.
+    :param monkeypatch: Scoped schema and work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param facade: Enter through AlongTrack instead of the direct backend.
+    :param problem: Optional invalid projection or negative spatial limit.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    client: AlongTrackBackend = AlongTrack(backend=backend) if facade else backend
+    events = _observe_work(backend, monkeypatch)
+    catalog_reads = backend.stats.catalog_reads
+    radius = -1.0 if problem == "radius" else 0.0
+    if problem == "fields":
+        monkeypatch.delitem(schema.along_track_schema, "track")
+    if problem == "radius" and nearest and facade:
+        with pytest.raises(ValueError, match="max_radius must be finite"):
+            _query_batch(client, nearest, ["track"], [], [], [], radius=radius)
+    else:
+        results = _query_batch(client, nearest, ["track"], [], [], [], radius=radius)
+        assert events == _WorkEvents()
+        if problem is None:
+            assert list(results) == []
+        else:
+            message = (
+                "Unknown AlongTrack fields"
+                if problem == "fields"
+                else "radius must be finite"
+            )
+            with pytest.raises(ValueError, match=message):
+                next(results)
+    assert events == _WorkEvents()
+    assert backend.stats.catalog_reads == catalog_reads
+    assert (
+        backend.stats.source_reads
+        == backend.stats.disk_hits
+        == backend.stats.memory_hits
+        == 0
+    )
+    assert backend.stats.window_builds == backend.stats.active_bytes == 0
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+def test_nonempty_batch_validates_only_new_windows_selected_sources(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+) -> None:
+    """Never check an unrelated source or revalidate an already prepared key.
+
+    :param source_layout: Temporary product root, cache, and selected source.
+    :param monkeypatch: Scoped work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    """
+    product, cache, source = source_layout
+    _copy_shifted_mission_source(product, source, "j3", 100)
+    backend = IndexedAlongTrackBackend(product, cache)
+    events = _observe_work(backend, monkeypatch)
+    indices = [0, 0, 1]
+    results = _query_batch(
+        backend,
+        nearest,
+        FULL_FIELDS,
+        [LATITUDE[index] for index in indices],
+        [LONGITUDE[index] for index in indices],
+        [DATES[index] for index in indices],
+    )
+    assert events == _WorkEvents()
+    for position, index in enumerate(indices):
+        _assert_source_row(next(results), index)
+        # Decode checks before and after reading; a repeated key does no work;
+        # the third center validates the retained file before its memory hit.
+        assert events.selected_checks == [source] * (2 if position < 2 else 3)
+        assert events.windows == [DATES[value] for value in indices[: position + 1]]
+    with pytest.raises(StopIteration):
+        next(results)
+    assert backend.stats.source_reads == backend.stats.memory_hits == 1
+    assert backend.stats.window_builds == 2
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+@pytest.mark.parametrize("facade", [False, True], ids=["direct", "facade"])
+@pytest.mark.parametrize("mutation", ["changed", "deleted"])
+@pytest.mark.parametrize("unselected_by", ["time", "mission"])
+def test_unselected_pinned_source_mutation_is_ignored_until_refresh(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    nearest: bool,
+    facade: bool,
+    mutation: str,
+    unselected_by: str,
+) -> None:
+    """Unselected changes do not affect an exact key or a new selected window.
+
+    :param source_layout: Temporary product root, cache, and selected source.
+    :param monkeypatch: Scoped work-boundary patcher.
+    :param nearest: Exercise the nearest rather than radius batch.
+    :param facade: Enter through AlongTrack instead of the direct backend.
+    :param mutation: Change time coverage or delete the previously unselected file.
+    :param unselected_by: Exclude the unrelated file by time coverage or mission.
+    """
+    product, cache, source = source_layout
+    other = _copy_shifted_mission_source(
+        product, source, "j3", 100 if unselected_by == "time" else 0
+    )
+    missions: list[Mission] | None = ["j2"] if unselected_by == "mission" else None
+    backend = IndexedAlongTrackBackend(product, cache)
+    client: AlongTrackBackend = AlongTrack(backend=backend) if facade else backend
+    warm = _query_batch(
+        client,
+        nearest,
+        FULL_FIELDS,
+        [LATITUDE[0]],
+        [LONGITUDE[0]],
+        [DATES[0]],
+        missions=missions,
+    )
+    _assert_source_row(next(warm), 0)
+    warm.close()
+    assert backend.stats.source_reads == backend.stats.window_builds == 1
+    events = _observe_work(backend, monkeypatch)
+    results = _query_batch(
+        client,
+        nearest,
+        FULL_FIELDS,
+        [LATITUDE[0]],
+        [LONGITUDE[0]],
+        [DATES[0]],
+        missions=missions,
+    )
+    assert events == _WorkEvents()
+    if mutation == "changed":
+        old_stat = other.stat()
+        with nc.Dataset(other, "r+") as dataset:
+            variable = dataset["time"]
+            variable.set_auto_maskandscale(False)
+            variable[:] = TIME_RAW
+        os.utime(other, ns=(old_stat.st_atime_ns, old_stat.st_mtime_ns + 2_000_000_000))
+    else:
+        other.unlink()
+    reused = list(results)
+    assert len(reused) == 1
+    _assert_source_row(reused[0], 0)
+    assert events.selected_checks == []
+    assert events.windows == [DATES[0]]
+    assert backend.stats.source_reads == backend.stats.window_builds == 1
+    (new_window,) = _query_batch(
+        client,
+        nearest,
+        FULL_FIELDS,
+        [LATITUDE[1]],
+        [LONGITUDE[1]],
+        [DATES[1]],
+        missions=missions,
+    )
+    _assert_source_row(new_window, 1)
+    assert events.selected_checks == [source]
+    assert events.windows == [DATES[0], DATES[1]]
+    assert backend.stats.source_reads == backend.stats.memory_hits == 1
+    assert backend.stats.window_builds == 2
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+def test_exact_window_reuse_canonicalizes_missions(
+    source_layout: tuple[Path, Path, Path], nearest: bool
+) -> None:
+    """Canonical mission lists hit only the current exact temporal window.
+
+    :param source_layout: Temporary product root, cache, and original source.
+    :param nearest: Exercise the nearest rather than radius batch.
+    """
+    product, cache, source = source_layout
+    _copy_shifted_mission_source(product, source, "j3", 1)
+    backend = IndexedAlongTrackBackend(product, cache)
+    fields: list[schema.along_track_fields] = ["date_time", "mission"]
+    selections: list[list[Mission] | None] = [
+        None,
+        ["j3", "j2"],
+        ["j2", "j3", "j2"],
+        ["j3", "j2", "j3"],
+        None,
+    ]
+    cases: list[
+        tuple[list[Mission] | None, datetime, timedelta, list[Mission], int]
+    ] = [
+        (missions, DATES[0], timedelta(days=1), ["j2", "j3"], 1)
+        for missions in selections
+    ]
+    cases.extend(
+        [
+            ([], DATES[0], timedelta(days=1), [], 2),
+            ([], DATES[0], timedelta(days=1), [], 2),
+            (None, DATES[0], timedelta(days=1), ["j2", "j3"], 3),
+            # Widening and overlapping keys rebuild, as does returning to an old key.
+            (None, DATES[0], timedelta(days=1, microseconds=1), ["j2", "j3"], 4),
+            (None, DATES[0] + timedelta(hours=12), timedelta(days=1), ["j2", "j3"], 5),
+            (None, DATES[0], timedelta(days=1), ["j2", "j3"], 6),
+            # Adjacent inclusive intervals share only their endpoint, not a key.
+            (None, DATES[0] + timedelta(days=2), timedelta(days=1), ["j3"], 7),
+        ]
+    )
+    for missions, date, half_window, expected_missions, builds in cases:
+        (result,) = _query_batch(
+            backend,
+            nearest,
+            fields,
+            [LATITUDE[0]],
+            [LONGITUDE[0]],
+            [date],
+            time_window=half_window,
+            missions=missions,
+        )
+        assert backend.stats.window_builds == builds
+        if not expected_missions:
+            assert result is None
+            continue
+        assert isinstance(result, Dataset)
+        assert result.name == "along_track"
+        assert set(result) == set(fields) | ({"distance"} if nearest else set())
+        assert result.row_count == len(expected_missions)
+        order = (
+            np.arange(result.row_count) if nearest else np.argsort(result["date_time"])
+        )
+        np.testing.assert_array_equal(result["mission"][order], expected_missions)
+        np.testing.assert_array_equal(
+            result["date_time"][order],
+            np.asarray(
+                [
+                    DATES[0] + timedelta(days=mission == "j3")
+                    for mission in expected_missions
+                ],
+                dtype=object,
+            ),
+        )
+        if nearest:
+            np.testing.assert_array_equal(result["distance"], [0.0] * result.row_count)
+    assert backend.stats.source_reads == 2
+    assert backend.stats.disk_hits == 0
+
+
+def test_exact_window_reuse_ignores_projection_radius_and_query_kind(
+    source_layout: tuple[Path, Path, Path],
+) -> None:
+    """Vary all non-temporal inputs while checking complete independent results.
+
+    :param source_layout: Temporary product root, cache, and literal source.
+    """
+    product, cache, _ = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    client = AlongTrack(backend=backend)
+    date = datetime(2024, 1, 2)
+    half_window = timedelta(microseconds=2)
+    boundary = 110574.38855779878  # Independent WGS84 inverse: (0, 180) -> (1, 180).
+    fields: list[schema.along_track_fields] = ["date_time", "sla_filtered", "delta_t"]
+    result = client.geographic_point_in_r_dt(
+        fields, 0.0, 180.0, date, radius=0, time_window=half_window
+    )
+    _assert_projected_source_rows(result, fields, [1], date, [0.0])
+    assert backend.stats.window_builds == 1
+
+    fields = ["date_time", "track", "longitude", "distance"]
+    result = client.geographic_point_in_r_dt(
+        fields, 0.0, 180.0, date, radius=111_000, time_window=half_window
+    )
+    _assert_projected_source_rows(result, fields, [1, 2], date, [0.0, boundary])
+    assert backend.stats.window_builds == 1
+
+    fields = ["date_time", "latitude", "sla_filtered", "delta_t"]
+    result = client.geographic_point_in_r_dt(
+        fields, 1.0, 180.0, date, radius=0, time_window=half_window
+    )
+    _assert_projected_source_rows(result, fields, [2], date, [0.0])
+    assert backend.stats.window_builds == 1
+
+    result = client.geographic_nearest_neighbors(
+        fields, 1.0, 180.0, date, time_window=half_window, max_radius=111_000
+    )
+    _assert_projected_source_rows(
+        result, fields, [2, 1], date, [0.0, boundary], nearest=True
+    )
+    assert backend.stats.window_builds == 1
+
+    result = client.geographic_nearest_neighbors(
+        [], 0.0, 180.0, date, time_window=half_window, max_radius=0
+    )
+    _assert_projected_source_rows(result, [], [1], date, [0.0], nearest=True)
+    assert backend.stats.window_builds == 1
+
+    fields = ["date_time", "track", "delta_t"]
+    result = client.geographic_nearest_neighbors(
+        fields, 0.0, 180.0, date, time_window=half_window
+    )
+    _assert_projected_source_rows(
+        result, fields, [1, 2], date, [0.0, boundary], nearest=True
+    )
+    assert backend.stats.window_builds == 1
+    assert (
+        client.geographic_point_in_r_dt(
+            fields, 0.0, 190.0, date, radius=0, time_window=half_window
+        )
+        is None
+    )
+    assert backend.stats.window_builds == backend.stats.source_reads == 1
+    assert backend.stats.memory_hits == backend.stats.disk_hits == 0
+
+
+@pytest.mark.parametrize("window", ["source", "outside-coverage", "no-missions"])
+@pytest.mark.parametrize("mutation", ["unchanged", "changed", "deleted"])
+@pytest.mark.parametrize("file_cache", ["cold", "disk"])
+def test_prepared_window_all_four_queries_do_no_filesystem_work(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    window: str,
+    mutation: str,
+    file_cache: str,
+) -> None:
+    """Consume all public queries from immutable arrays, even after source edits.
+
+    :param source_layout: Temporary product root, cache, and literal source.
+    :param monkeypatch: Scoped filesystem and source-validation patcher.
+    :param window: Nonempty selection or either kind of empty prepared window.
+    :param mutation: Leave, edit, or delete the source after preparation.
+    :param file_cache: Decode the source or restart with a prepared disk cache.
+    """
+    product, cache, source = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    if file_cache == "disk":
+        backend.prepare_window(DATES[4], timedelta(0))
+        backend = IndexedAlongTrackBackend(product, cache)
+    date = datetime(2030, 1, 1) if window == "outside-coverage" else DATES[4]
+    missions: list[Mission] | None = [] if window == "no-missions" else None
+    backend.prepare_window(date, timedelta(0), missions)
+    active, offsets, vectors = backend._active, backend._offsets, backend._vectors
+    assert active is not None and offsets is not None and vectors is not None
+    arrays = (active, offsets, vectors)
+    snapshots = tuple(array.tobytes() for array in arrays)
+    for array in arrays:
+        assert not array.flags.writeable
+        with pytest.raises(ValueError, match="read-only"):
+            array[...] = array
+    before = replace(backend.stats)
+    assert before.window_builds == 1
+    if mutation == "changed":
+        old_stat = source.stat()
+        with nc.Dataset(source, "r+") as dataset:
+            variable = dataset["sla_filtered"]
+            variable.set_auto_maskandscale(False)
+            variable[4] = -1234
+        os.utime(
+            source, ns=(old_stat.st_atime_ns, old_stat.st_mtime_ns + 2_000_000_000)
+        )
+    elif mutation == "deleted":
+        source.unlink()
+
+    def fail_filesystem(*args: object, **kwargs: object) -> NoReturn:
+        pytest.fail("An exact prepared window must not touch the filesystem")
+
+    class NoInventoryWalk(list[_Source]):
+        def __iter__(self) -> NoReturn:
+            pytest.fail("An exact prepared window must not walk the inventory")
+
+    with monkeypatch.context() as patches:
+        for method in ("stat", "glob", "rglob", "open"):
+            patches.setattr(Path, method, fail_filesystem)
+        patches.setattr(nc, "Dataset", fail_filesystem)
+        patches.setattr(backend, "_check_source", fail_filesystem)
+        patches.setattr(backend, "_sources", NoInventoryWalk(backend._sources))
+        backend.prepare_window(date, timedelta(0), missions)
+        results = [
+            backend.geographic_point_in_r_dt(
+                FULL_FIELDS,
+                LATITUDE[4],
+                LONGITUDE[4],
+                date,
+                radius=0,
+                time_window=timedelta(0),
+                missions=missions,
+            ),
+            backend.geographic_nearest_neighbors(
+                NEAREST_FIELDS,
+                LATITUDE[4],
+                LONGITUDE[4],
+                date,
+                time_window=timedelta(0),
+                missions=missions,
+                max_radius=0,
+            ),
+        ]
+        for nearest in (False, True):
+            results.extend(
+                _query_batch(
+                    backend,
+                    nearest,
+                    FULL_FIELDS,
+                    [LATITUDE[4], LATITUDE[4]],
+                    [LONGITUDE[4], LONGITUDE[4]],
+                    [date, date],
+                    missions=missions,
+                )
+            )
+            assert list(_query_batch(backend, nearest, FULL_FIELDS, [], [], [])) == []
+        backend.prepare_window(date, timedelta(0), missions)
+
+    assert len(results) == 6
+    for result in results:
+        if window == "source":
+            _assert_source_row(result, 4)
+        else:
+            assert result is None
+    assert backend.stats == before
+    for current, original, snapshot in zip(
+        (backend._active, backend._offsets, backend._vectors),
+        arrays,
+        snapshots,
+        strict=True,
+    ):
+        assert current is original
+        assert not original.flags.writeable
+        assert original.tobytes() == snapshot
+
+
 def test_disk_cache_survives_restart_and_adjacent_time_windows(
     source_layout: tuple[Path, Path, Path],
 ) -> None:
@@ -600,12 +1440,16 @@ def test_disk_cache_survives_restart_and_adjacent_time_windows(
     )
 
 
-def test_changed_source_invalidates_persisted_rows(
+def test_changed_source_keeps_prepared_window_but_rejects_memory_rebuilds(
     source_layout: tuple[Path, Path, Path],
 ) -> None:
-    """Never serve old scientific values when source bytes change on disk."""
+    """Pin prepared science until refresh, but validate every new preparation.
+
+    :param source_layout: Temporary product root, cache, and literal source.
+    """
     product, cache, source = source_layout
-    first = AlongTrack(backend=IndexedAlongTrackBackend(product, cache))
+    backend = IndexedAlongTrackBackend(product, cache)
+    first = AlongTrack(backend=backend)
     before = first.geographic_point_in_r_dt(
         ["sla_filtered"],
         LATITUDE[4],
@@ -624,15 +1468,22 @@ def test_changed_source_invalidates_persisted_rows(
     # Guarantee a distinct metadata fingerprint on coarse-resolution filesystems.
     os.utime(source, ns=(old_stat.st_atime_ns, old_stat.st_mtime_ns + 2_000_000_000))
 
+    same = first.geographic_point_in_r_dt(
+        ["sla_filtered"],
+        LATITUDE[4],
+        LONGITUDE[4],
+        DATES[4],
+        radius=0,
+        time_window=timedelta(0),
+    )
+    assert isinstance(same, Dataset)
+    np.testing.assert_array_equal(same.get_unscaled("sla_filtered"), [-1])
+    assert backend.stats.window_builds == backend.stats.source_reads == 1
+    assert source in backend._files
     with pytest.raises(RuntimeError, match="source changed"):
-        first.geographic_point_in_r_dt(
-            ["sla_filtered"],
-            LATITUDE[4],
-            LONGITUDE[4],
-            DATES[4],
-            radius=0,
-            time_window=timedelta(0),
-        )
+        backend.prepare_window(DATES[0], timedelta(0))
+    assert backend.stats.memory_hits == 0
+    assert backend.stats.window_builds == backend.stats.source_reads == 1
 
     restarted = AlongTrack(backend=IndexedAlongTrackBackend(product, cache))
     after = restarted.geographic_point_in_r_dt(
@@ -646,39 +1497,66 @@ def test_changed_source_invalidates_persisted_rows(
     assert isinstance(after, Dataset)
     np.testing.assert_array_equal(after.get_unscaled("sla_filtered"), [-1234])
     np.testing.assert_allclose(after["sla_filtered"], [-1.234], rtol=0, atol=1e-12)
+    np.testing.assert_array_equal(before.get_unscaled("sla_filtered"), [-1])
 
 
-def test_deleted_source_is_not_served_from_disk_cache(
+def test_deleted_source_keeps_prepared_window_but_rejects_memory_rebuilds(
     source_layout: tuple[Path, Path, Path],
 ) -> None:
-    """A cached observation disappears when its only backing file is removed."""
+    """A deleted selected source is usable only in the already prepared window.
+
+    :param source_layout: Temporary product root, cache, and literal source.
+    """
     product, cache, source = source_layout
-    first = AlongTrack(backend=IndexedAlongTrackBackend(product, cache))
-    fields: list[schema.along_track_fields] = ["date_time"]
-    assert (
+    _copy_shifted_mission_source(product, source, "j3", 100)
+    backend = IndexedAlongTrackBackend(product, cache)
+    first = AlongTrack(backend=backend)
+    _assert_source_row(
         first.geographic_nearest_neighbors(
-            fields,
+            FULL_FIELDS,
             LATITUDE[0],
             LONGITUDE[0],
             DATES[0],
             time_window=timedelta(0),
             max_radius=0,
-        )
-        is not None
+        ),
+        0,
     )
     source.unlink()
-    with pytest.raises(RuntimeError, match="source disappeared"):
+    _assert_source_row(
         first.geographic_nearest_neighbors(
-            fields,
+            FULL_FIELDS,
+            LATITUDE[0],
+            LONGITUDE[0],
+            DATES[0],
+            time_window=timedelta(0),
+            max_radius=0,
+        ),
+        0,
+    )
+    assert backend.stats.window_builds == backend.stats.source_reads == 1
+    assert source in backend._files
+    with pytest.raises(RuntimeError, match="source disappeared"):
+        backend.prepare_window(DATES[1], timedelta(0))
+    assert backend.stats.memory_hits == 0
+    assert backend.stats.window_builds == backend.stats.source_reads == 1
+
+    backend.refresh()
+    assert backend._active is None and backend._active_key is None
+    assert backend.stats.active_bytes == backend.stats.cached_bytes == 0
+    assert backend.stats.window_builds == 1
+    assert (
+        first.geographic_nearest_neighbors(
+            FULL_FIELDS,
             LATITUDE[0],
             LONGITUDE[0],
             DATES[0],
             time_window=timedelta(0),
             max_radius=0,
         )
-    # With no sources left the backend fails closed instead of replaying disk rows.
-    with pytest.raises(FileNotFoundError, match="No mission/year/month"):
-        IndexedAlongTrackBackend(product, cache)
+        is None
+    )
+    assert backend.stats.window_builds == 2
 
 
 def test_corrupt_prepared_file_is_rebuilt_from_source(
@@ -752,10 +1630,10 @@ def test_default_netcdf_fill_without_attributes_stays_missing(
     assert result["track"][0] == TRACK[0]
 
 
-def test_changed_file_outside_window_invalidates_cached_coverage(
+def test_changed_file_outside_window_keeps_snapshot_coverage_until_refresh(
     source_layout: tuple[Path, Path, Path],
 ) -> None:
-    """A previously unselected source cannot silently move into a window.
+    """Use actual pinned coverage, then catch newly overlapping keys on refresh.
 
     :param source_layout: Temporary product root, cache directory, and source.
     """
@@ -767,7 +1645,8 @@ def test_changed_file_outside_window_invalidates_cached_coverage(
         variable.set_auto_maskandscale(False)
         variable[:] = np.asarray(TIME_RAW) + 100
 
-    client = AlongTrack(backend=IndexedAlongTrackBackend(product, cache))
+    backend = IndexedAlongTrackBackend(product, cache)
+    client = AlongTrack(backend=backend)
     fields: list[schema.along_track_fields] = ["date_time"]
     initial = client.geographic_point_in_r_dt(
         fields,
@@ -784,7 +1663,23 @@ def test_changed_file_outside_window_invalidates_cached_coverage(
         variable.set_auto_maskandscale(False)
         variable[:] = TIME_RAW
     os.utime(other, ns=(old_stat.st_atime_ns, old_stat.st_mtime_ns + 2_000_000_000))
-    with pytest.raises(RuntimeError, match="source changed"):
+    for index in (0, 1):
+        unchanged = client.geographic_point_in_r_dt(
+            fields,
+            LATITUDE[index],
+            LONGITUDE[index],
+            DATES[index],
+            radius=0,
+            time_window=timedelta(0),
+        )
+        assert isinstance(unchanged, Dataset) and unchanged.row_count == 1
+        np.testing.assert_array_equal(
+            unchanged["date_time"], np.asarray([DATES[index]], dtype=object)
+        )
+    backend.refresh()
+    assert backend._active is None and backend._active_key is None
+    assert backend.stats.active_bytes == backend.stats.cached_bytes == 0
+    with pytest.raises(ValueError, match="Duplicate AlongTrack"):
         client.geographic_point_in_r_dt(
             fields,
             LATITUDE[0],
