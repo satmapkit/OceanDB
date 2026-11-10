@@ -6,11 +6,15 @@ import tempfile
 import warnings
 from collections import OrderedDict
 from collections.abc import Generator, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 from hashlib import sha256
 from importlib import resources
 from pathlib import Path
+from queue import Queue
+from threading import Event, Lock, Semaphore, Thread
 from time import perf_counter
 from typing import get_args
 
@@ -126,8 +130,11 @@ class IndexedCacheInfo:
 class IndexedAlongTrackBackend:
     """An OceanDB AlongTrack backend over locally downloaded NetCDF files.
 
-    The instance owns a mutable active window and is **not thread-safe**. Only
-    the four serial windowed radius/nearest methods are supported. An explicit
+    The instance is not generally thread-safe. Native streams run concurrent
+    queries over immutable windows, with one owner of file/cache preparation.
+    Other queries, preparation, and refresh are rejected during an active stream.
+    Close partially consumed streams to release their workers and ownership.
+    An explicit
     :meth:`refresh` is needed to include newly added source files; changed or
     missing files from the existing snapshot instead raise before reuse.
 
@@ -166,6 +173,8 @@ class IndexedAlongTrackBackend:
         self._connections = BasinConnections().connection_map
         self._basin_signature = self._asset_signature()
         self.stats = IndexedCacheInfo()
+        self._stream_lock = Lock()
+        self._stats_lock = Lock()
         self._files: OrderedDict[Path, np.ndarray] = OrderedDict()
         self._grid_geometry: dict[
             tuple[float, float, float], tuple[int, np.ndarray, np.ndarray]
@@ -257,7 +266,10 @@ class IndexedAlongTrackBackend:
 
         New files become visible only after this explicit operation. Prepared
         files for unchanged sources remain available on disk.
+
+        :raises RuntimeError: If a stream is active on this instance.
         """
+        self._require_idle()
         self._files.clear()
         self._active = self._vectors = self._offsets = None
         self._active_key = None
@@ -337,7 +349,9 @@ class IndexedAlongTrackBackend:
         :param longitudes: Longitude of each paired center.
         :param radius: Inclusive radius for the reusable cell cover, in meters.
         :raises ValueError: If the centers or radius are invalid.
+        :raises RuntimeError: If a stream is active on this instance.
         """
+        self._require_idle()
         if len(latitudes) != len(longitudes):
             raise ValueError("latitudes and longitudes must have equal lengths")
         if not np.isfinite(radius) or radius < 0:
@@ -563,6 +577,29 @@ class IndexedAlongTrackBackend:
         :param date: Center datetime.
         :param time_window: Nonnegative temporal half-width.
         :param missions: Literal mission selection, or ``None`` for all.
+        :raises RuntimeError: If a source changed or a stream is active.
+        """
+        self._require_idle()
+        self._prepare_window(date, time_window, missions)
+
+    def _require_idle(self) -> None:
+        """Reject external state changes while a stream owns preparation.
+
+        :raises RuntimeError: If a stream is active on this instance.
+        """
+        if self._stream_lock.locked():
+            raise RuntimeError(
+                "An indexed stream is active; close it before other operations"
+            )
+
+    def _prepare_window(
+        self, date: datetime, time_window: timedelta, missions: Sequence[Mission] | None
+    ) -> None:
+        """Prepare a window under the caller's exclusive ownership.
+
+        :param date: Center datetime.
+        :param time_window: Nonnegative temporal half-width.
+        :param missions: Literal mission selection, or ``None`` for all.
         """
         center = _microseconds(date)
         if time_window < timedelta(0):
@@ -662,7 +699,8 @@ class IndexedAlongTrackBackend:
             cells = cap_cells(longitude, latitude, radius, self._cell_size)
             center = None
         else:
-            self.stats.geometry_hits += 1
+            with self._stats_lock:
+                self.stats.geometry_hits += 1
             basin, cells, center = geometry
         connected = self._connections[basin]
         segments = [
@@ -877,6 +915,7 @@ class IndexedAlongTrackBackend:
         :param nearest: Select three nearest rows instead of all inside radius.
         :returns: One result per center in input order.
         """
+        self._require_idle()
         if len(latitudes) != len(longitudes) or len(latitudes) != len(dates):
             raise ValueError("latitudes, longitudes, and dates must have equal lengths")
         unknown = set(fields).difference(along_track_schema)
@@ -897,6 +936,217 @@ class IndexedAlongTrackBackend:
                 radius,
                 nearest=nearest,
             )
+
+    def _stream(
+        self,
+        fields: list[along_track_fields],
+        latitudes: list[float],
+        longitudes: list[float],
+        dates: list[datetime],
+        radius: float | None,
+        time_window: timedelta,
+        missions: list[Mission] | None,
+        *,
+        nearest: bool,
+        n_jobs: int,
+        chunk_size: int,
+    ) -> Generator[tuple[int, Dataset[along_track_fields] | None], None, None]:
+        """Prepare bounded work and publish native query-worker completions.
+
+        :param fields: Requested OceanDB columns.
+        :param latitudes: Paired center latitudes.
+        :param longitudes: Paired center longitudes.
+        :param dates: Paired UTC-naive center datetimes.
+        :param radius: Radius or optional nearest cap.
+        :param time_window: Inclusive temporal half-width.
+        :param missions: Literal mission filter, or ``None`` for all.
+        :param nearest: Select three nearest rows rather than radius membership.
+        :param n_jobs: Maximum concurrent query workers.
+        :param chunk_size: Maximum outstanding centers per worker.
+        :returns: Indexed results in completion order.
+        """
+        if n_jobs < 1 or chunk_size < 1:
+            raise ValueError("n_jobs and chunk_size must be at least 1")
+        if len(latitudes) != len(longitudes) or len(latitudes) != len(dates):
+            raise ValueError("latitudes, longitudes, and dates must have equal lengths")
+        unknown = set(fields).difference(along_track_schema)
+        if unknown:
+            raise ValueError(f"Unknown AlongTrack fields: {sorted(unknown)}")
+        if radius is not None and (not np.isfinite(radius) or radius < 0):
+            raise ValueError("radius must be finite and nonnegative")
+        if time_window < timedelta(0):
+            raise ValueError("time_window must be nonnegative")
+        if not latitudes:
+            return
+        # shortcut: one stream per instance; coordinate cache mutation before allowing overlap.
+        if not self._stream_lock.acquire(blocking=False):
+            raise RuntimeError("An indexed stream is already active on this instance")
+        try:
+            results: Queue[
+                tuple[int, Future[Dataset[along_track_fields] | None]]
+                | BaseException
+                | None
+            ] = Queue()
+            capacity = Semaphore(n_jobs * chunk_size)
+            stopped = Event()
+            fields = fields.copy()
+            missions = None if missions is None else missions.copy()
+
+            def publish(
+                index: int, future: Future[Dataset[along_track_fields] | None]
+            ) -> None:
+                results.put((index, future))
+
+            with ThreadPoolExecutor(
+                max_workers=n_jobs, thread_name_prefix="oceandb-indexed-query"
+            ) as executor:
+
+                def prepare() -> None:
+                    try:
+                        # BasinMask is lazy and also reads NetCDF: load it before workers.
+                        _ = self._basins.data
+                        for index, (latitude, longitude, date) in enumerate(
+                            zip(latitudes, longitudes, dates, strict=True)
+                        ):
+                            capacity.acquire()
+                            if stopped.is_set():
+                                break
+                            self._prepare_window(date, time_window, missions)
+                            if stopped.is_set():
+                                break
+                            future = executor.submit(
+                                self._query,
+                                self._snapshot(),
+                                fields,
+                                latitude,
+                                longitude,
+                                date,
+                                radius,
+                                nearest=nearest,
+                            )
+                            future.add_done_callback(partial(publish, index))
+                    except BaseException as error:
+                        results.put(error)
+                    finally:
+                        executor.shutdown(wait=True, cancel_futures=stopped.is_set())
+                        results.put(None)
+
+                producer = Thread(target=prepare, name="oceandb-indexed-prepare")
+                producer.start()
+                try:
+                    while True:
+                        completed = results.get()
+                        if completed is None:
+                            break
+                        if isinstance(completed, BaseException):
+                            raise completed
+                        index, future = completed
+                        yield index, future.result()
+                        capacity.release()
+                finally:
+                    stopped.set()
+                    capacity.release()
+                    executor.shutdown(wait=True, cancel_futures=True)
+                    producer.join()
+        finally:
+            self._stream_lock.release()
+
+    def geographic_point_in_r_dt_stream(
+        self,
+        fields: list[along_track_fields],
+        latitudes: list[float],
+        longitudes: list[float],
+        dates: list[datetime],
+        radius: float = 500_000.0,
+        time_window: timedelta = timedelta(days=10),
+        missions: list[Mission] | None = None,
+        *,
+        n_jobs: int = 4,
+        chunk_size: int = 16,
+    ) -> Generator[tuple[int, Dataset[along_track_fields] | None], None, None]:
+        """Stream radius/time results from concurrent native query workers.
+
+        :param fields: Requested fields; ``distance`` is optional, in meters.
+        :param latitudes: Query-center latitudes in degrees.
+        :param longitudes: Query-center longitudes, paired by input index.
+        :param dates: Paired UTC-naive datetimes.
+        :param radius: Inclusive WGS84 ellipsoidal radius in meters.
+        :param time_window: Inclusive temporal half-width, default ten days.
+        :param missions: ``None`` selects all missions; ``[]`` selects none.
+        :param n_jobs: Maximum query threads, default four.
+        :param chunk_size: Outstanding centers per worker, default sixteen.
+        :returns: One ``(input_index, Dataset | None)`` per center, in completion
+            order. ``None`` means no match, not failure. Empty input yields nothing.
+        :raises ValueError: On iteration, for invalid inputs or nonpositive limits.
+        :raises RuntimeError: If another stream is active or sources have changed.
+
+        Preparation is serial; spatial queries run concurrently on read-only
+        snapshots. At most ``n_jobs * chunk_size`` centers are outstanding,
+        including buffered results. Different windows can coexist, so this is not
+        a byte limit or part of ``max_cache_bytes``. Close a partially consumed
+        generator: pending work is cancelled and running queries/preparation are
+        awaited.
+        Use this endpoint directly on the backend, not the PostgreSQL-only facade.
+        """
+        return self._stream(
+            fields,
+            latitudes,
+            longitudes,
+            dates,
+            radius,
+            time_window,
+            missions,
+            nearest=False,
+            n_jobs=n_jobs,
+            chunk_size=chunk_size,
+        )
+
+    def geographic_nearest_neighbors_stream(
+        self,
+        fields: list[along_track_fields],
+        latitudes: list[float],
+        longitudes: list[float],
+        dates: list[datetime],
+        time_window: timedelta = timedelta(days=10),
+        missions: list[Mission] | None = None,
+        *,
+        max_radius: float | None = None,
+        n_jobs: int = 4,
+        chunk_size: int = 16,
+    ) -> Generator[tuple[int, Dataset[along_track_fields] | None], None, None]:
+        """Stream up to three nearest observations for each center concurrently.
+
+        Uses the buffering, ownership, and closure rules of
+        :meth:`geographic_point_in_r_dt_stream`. Rows retain deterministic
+        distance/date/latitude/stored-longitude ranking, independent of center
+        completion order. ``distance`` is always included.
+
+        :param fields: Requested OceanDB fields.
+        :param latitudes: Query-center latitudes in degrees.
+        :param longitudes: Query-center longitudes, paired by input index.
+        :param dates: Paired UTC-naive datetimes.
+        :param time_window: Inclusive temporal half-width, default ten days.
+        :param missions: ``None`` selects all missions; ``[]`` selects none.
+        :param max_radius: Inclusive finite, nonnegative WGS84 cap in meters,
+            or ``None`` for unbounded nearest selection.
+        :param n_jobs: Maximum query threads, default four.
+        :param chunk_size: Outstanding centers per worker, default sixteen.
+        :returns: One indexed Dataset or ``None`` per center, in completion order.
+        :raises ValueError: On iteration, for invalid inputs or nonpositive limits.
+        :raises RuntimeError: If another stream is active or sources have changed.
+        """
+        return self._stream(
+            fields,
+            latitudes,
+            longitudes,
+            dates,
+            max_radius,
+            time_window,
+            missions,
+            nearest=True,
+            n_jobs=n_jobs,
+            chunk_size=chunk_size,
+        )
 
     def geographic_point_in_r_dt(
         self,
