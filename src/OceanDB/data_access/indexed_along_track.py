@@ -23,17 +23,22 @@ import numpy as np
 from numpy.typing import NDArray
 
 from OceanDB.data_access.along_track import Mission
-from OceanDB.data_access.indexed_geometry import (MAX_WGS84_DISTANCE_M,
-                                                  cap_cells, cell_dimensions,
-                                                  cell_ids,
-                                                  exact_wgs84_distance_m,
-                                                  unit_vectors,
-                                                  wgs84_distance_m)
+from OceanDB.data_access.indexed_geometry import (
+    MAX_WGS84_DISTANCE_M,
+    cap_cells,
+    cell_dimensions,
+    cell_ids,
+    exact_wgs84_distance_m,
+    unit_vectors,
+    wgs84_distance_m,
+)
 from OceanDB.ocean_data.basins import BasinConnections, BasinMask
 from OceanDB.ocean_data.dataset import Dataset
-from OceanDB.schemas.along_track_schema import (along_track_columns_schema,
-                                                along_track_fields,
-                                                along_track_schema)
+from OceanDB.schemas.along_track_schema import (
+    along_track_columns_schema,
+    along_track_fields,
+    along_track_schema,
+)
 
 _PRODUCT = "SEALEVEL_GLO_PHY_L3_MY_008_062"
 _EPOCH = datetime(1950, 1, 1)
@@ -218,19 +223,30 @@ class IndexedAlongTrackBackend:
         return parts[2]
 
     @staticmethod
-    def _times(variable: nc.Variable) -> np.ndarray:
+    def _times(variable: nc.Variable, *, bounds_only: bool = False) -> np.ndarray:
         """Decode CF times to exact Python microseconds as in PostgreSQL ETL.
 
         :param variable: Source time variable.
-        :returns: One integer microsecond count per source observation.
+        :param bounds_only: Decode only extrema after validating every raw time.
+        :returns: Integer microseconds for each observation, or just its bounds.
         :raises ValueError: If the calendar or times cannot be represented.
         """
         raw = np.ma.asarray(variable[:])
-        if raw.ndim != 1 or np.ma.getmaskarray(raw).any():
-            raise ValueError("AlongTrack time must be a complete one-dimensional array")
+        if (
+            raw.ndim != 1
+            or np.ma.getmaskarray(raw).any()
+            or raw.dtype.kind not in "iuf"
+            or not np.isfinite(raw.data).all()
+        ):
+            raise ValueError(
+                "AlongTrack time must be a complete finite one-dimensional numeric array"
+            )
         calendar = getattr(variable, "calendar", "standard")
         if calendar not in ("standard", "gregorian", "proleptic_gregorian"):
             raise ValueError(f"Unsupported AlongTrack calendar: {calendar}")
+        if bounds_only and raw.size:
+            # Supported CF units/calendars are monotonic in the numeric time.
+            raw = np.ma.asarray((raw.min(), raw.max()))
         decoded = nc.num2date(
             raw,
             variable.units,
@@ -255,7 +271,7 @@ class IndexedAlongTrackBackend:
         with nc.Dataset(path) as dataset:
             if "time" not in dataset.variables:
                 raise ValueError(f"Missing required time variable in {path}")
-            times = self._times(dataset.variables["time"])
+            times = self._times(dataset.variables["time"], bounds_only=True)
         self.stats.catalog_reads += 1
         if not len(times):
             raise ValueError(f"No observations in AlongTrack source: {path}")
