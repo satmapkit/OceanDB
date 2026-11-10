@@ -207,6 +207,231 @@ def test_unreadable_catalog_is_rebuilt(
     assert rebuilt.stats.catalog_reads == 1
 
 
+@pytest.mark.parametrize("interruption", [RuntimeError, KeyboardInterrupt])
+@pytest.mark.parametrize("tail", ["empty", "truncated", "invalid", "unterminated"])
+def test_cold_discovery_resumes_completed_work_but_not_partial_inventory(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    interruption: type[BaseException],
+    tail: str,
+) -> None:
+    """Retain flushed entries across failures while rediscovering the full source list.
+
+    :param source_layout: Product root, cache directory, and source.
+    :param monkeypatch: Scoped method patcher.
+    :param interruption: Exception simulating failure or process interruption.
+    :param tail: Optional invalid or unterminated source records.
+    """
+    product, cache, source = source_layout
+    second = _append_source(source)
+    coverage = indexed.IndexedAlongTrackBackend._coverage
+    reads: list[Path] = []
+    publishes: list[Path] = []
+    atomic_json = indexed._atomic_json
+
+    def interrupted(
+        backend: indexed.IndexedAlongTrackBackend, path: Path
+    ) -> tuple[int, int]:
+        reads.append(path)
+        if path == second:
+            raise interruption("interrupted coverage")
+        return coverage(backend, path)
+
+    def publish(path: Path, payload: object) -> None:
+        publishes.append(path)
+        atomic_json(path, payload)
+
+    monkeypatch.setattr(indexed.IndexedAlongTrackBackend, "_coverage", interrupted)
+    monkeypatch.setattr(indexed, "_atomic_json", publish)
+    with pytest.raises(interruption, match="interrupted coverage"):
+        indexed.IndexedAlongTrackBackend(product, cache)
+    assert reads == [source, second]
+    assert publishes == []
+    assert list(cache.glob("catalog-*.json")) == []
+    journal = next(cache.glob("*.progress.jsonl"))
+    lines = journal.read_bytes().splitlines()
+    assert len(lines) == 2
+    second_entry = json.loads(lines[1])
+    second_entry["path"] = second.relative_to(product).as_posix()
+    second_entry["size"] = second.stat().st_size
+    second_entry["mtime_ns"] = second.stat().st_mtime_ns
+    with journal.open("ab") as stream:
+        if tail == "truncated":
+            stream.write(b'{"path":')
+        elif tail == "invalid":
+            second_entry["end_us"] = -1
+            stream.write(json.dumps(second_entry).encode() + b'\n{"path":')
+        elif tail == "unterminated":
+            stream.write(json.dumps(second_entry).encode())
+    third = _append_source(source, 4)
+    reads.clear()
+
+    def resumed(
+        backend: indexed.IndexedAlongTrackBackend, path: Path
+    ) -> tuple[int, int]:
+        reads.append(path)
+        return coverage(backend, path)
+
+    monkeypatch.setattr(indexed.IndexedAlongTrackBackend, "_coverage", resumed)
+    rebuilt = indexed.IndexedAlongTrackBackend(product, cache)
+    assert reads == [second, third]
+    assert [entry.path for entry in rebuilt._sources] == [source, second, third]
+    assert rebuilt.stats.catalog_reads == 2
+    assert publishes == [rebuilt._catalog_path]
+    assert not journal.exists()
+
+
+@pytest.mark.parametrize(
+    "corruption", ["truncated", "schema", "version", "root", "boolean"]
+)
+def test_invalid_journal_identity_does_not_reuse_completed_entries(
+    source_layout: tuple[Path, Path, Path], corruption: str
+) -> None:
+    """Require a complete root/version header before reusing journal records.
+
+    :param source_layout: Product root, cache directory, and source.
+    :param corruption: Invalid or incomplete journal header component.
+    """
+    product, cache, _ = source_layout
+    first = indexed.IndexedAlongTrackBackend(product, cache)
+    record = json.dumps(first._catalog_entry(first._sources[0])).encode() + b"\n"
+    journal = first._catalog_path.with_suffix(".progress.jsonl")
+    header: dict[str, str | int] = {
+        "version": indexed._CACHE_VERSION,
+        "root": str(product),
+    }
+    if corruption == "version":
+        header["version"] = -1
+    elif corruption == "root":
+        header["root"] = "/another/root"
+    elif corruption == "boolean":
+        header["version"] = True
+    elif corruption == "schema":
+        header = {}
+    invalid_header = json.dumps(header).encode() + b"\n"
+    if corruption == "truncated":
+        invalid_header = b'{"version":'
+    journal.write_bytes(invalid_header + record)
+    first._catalog_path.unlink()
+    rebuilt = indexed.IndexedAlongTrackBackend(product, cache)
+    assert rebuilt._sources == first._sources
+    assert rebuilt.stats.catalog_reads == 1
+
+
+def test_journal_entry_requires_current_source_fingerprint(
+    source_layout: tuple[Path, Path, Path],
+) -> None:
+    """Never reuse journal coverage after the source metadata changes.
+
+    :param source_layout: Product root, cache directory, and source.
+    """
+    product, cache, source = source_layout
+    first = indexed.IndexedAlongTrackBackend(product, cache)
+    manifest = json.loads(first._catalog_path.read_bytes())
+    journal = first._catalog_path.with_suffix(".progress.jsonl")
+    journal.write_text(
+        json.dumps({"version": manifest["version"], "root": manifest["root"]})
+        + "\n"
+        + json.dumps(manifest["sources"][0])
+        + "\n",
+        encoding="utf-8",
+    )
+    first._catalog_path.unlink()
+    stat = source.stat()
+    os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    rebuilt = indexed.IndexedAlongTrackBackend(product, cache)
+    assert rebuilt.stats.catalog_reads == 1
+    assert rebuilt._sources[0].mtime_ns != first._sources[0].mtime_ns
+
+
+@pytest.mark.parametrize("failure", ["coverage", "publish"])
+def test_failed_refresh_preserves_complete_inventory_and_prepared_cache(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """Keep the old on-disk and RAM snapshots until publication succeeds.
+
+    :param source_layout: Product root, cache directory, and source.
+    :param monkeypatch: Scoped method patcher.
+    :param failure: Fail during coverage or atomic catalog publication.
+    """
+    product, cache, source = source_layout
+    backend = indexed.IndexedAlongTrackBackend(product, cache)
+    backend.prepare_window(_DATE, timedelta(0))
+    inventory = backend._sources
+    active, vectors, offsets = backend._active, backend._vectors, backend._offsets
+    active_key, active_sources = backend._active_key, backend._active_sources
+    files = dict(backend._files)
+    before = replace(backend.stats)
+    original = backend._catalog_path.read_bytes()
+    added = _append_source(source)
+
+    def fail(*args: object, **kwargs: object) -> None:
+        raise OSError("injected refresh failure")
+
+    with monkeypatch.context() as scoped:
+        if failure == "coverage":
+            scoped.setattr(backend, "_coverage", fail)
+        else:
+            scoped.setattr(indexed, "_atomic_json", fail)
+        with pytest.raises(OSError, match="injected refresh failure"):
+            backend.refresh()
+    assert backend._catalog_path.read_bytes() == original
+    assert backend._sources is inventory
+    assert (
+        backend._active is active
+        and backend._vectors is vectors
+        and backend._offsets is offsets
+    )
+    assert (
+        backend._active_key == active_key and backend._active_sources is active_sources
+    )
+    assert backend._files.keys() == files.keys()
+    assert all(backend._files[path] is rows for path, rows in files.items())
+    assert backend.stats == replace(
+        before, catalog_reads=before.catalog_reads + (failure == "publish")
+    )
+    backend.prepare_window(_DATE, timedelta(0))
+    assert backend._active is active
+    restarted = indexed.IndexedAlongTrackBackend(product, cache)
+    assert restarted._sources == inventory
+    assert restarted.stats.catalog_reads == 0
+    backend.refresh()
+    assert [entry.path for entry in backend._sources] == [source, added]
+    assert backend.stats.catalog_reads == before.catalog_reads + 1
+    assert backend.stats.cached_bytes == backend.stats.active_bytes == 0
+
+
+def test_coverage_read_rejects_source_changed_during_decoding(
+    source_layout: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check source fingerprints both before and after a coverage read.
+
+    :param source_layout: Product root, cache directory, and source.
+    :param monkeypatch: Scoped method patcher.
+    """
+    product, cache, source = source_layout
+    coverage = indexed.IndexedAlongTrackBackend._coverage
+
+    def changing(
+        backend: indexed.IndexedAlongTrackBackend, path: Path
+    ) -> tuple[int, int]:
+        bounds = coverage(backend, path)
+        stat = path.stat()
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+        return bounds
+
+    monkeypatch.setattr(indexed.IndexedAlongTrackBackend, "_coverage", changing)
+    with pytest.raises(RuntimeError, match="source changed"):
+        indexed.IndexedAlongTrackBackend(product, cache)
+    assert list(cache.glob("catalog-*.json")) == []
+    assert len(next(cache.glob("*.progress.jsonl")).read_bytes().splitlines()) == 1
+    monkeypatch.setattr(indexed.IndexedAlongTrackBackend, "_coverage", coverage)
+    assert indexed.IndexedAlongTrackBackend(product, cache)._sources[0].path == source
+
+
 @pytest.mark.parametrize("calendar", ["standard", "gregorian", "proleptic_gregorian"])
 @pytest.mark.parametrize(
     ("dtype", "units", "raw", "expected"),

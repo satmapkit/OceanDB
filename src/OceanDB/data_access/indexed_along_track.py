@@ -375,51 +375,104 @@ class IndexedAlongTrackBackend:
             "end_us": source.end_us,
         }
 
-    def refresh(self) -> None:
-        """Reinventory local sources and invalidate the in-memory snapshot.
+    def _resume_catalog(self, path: Path) -> dict[Path, _Source]:
+        """Recover validated completed entries and discard an unfinished tail.
 
-        New files become visible only after this explicit operation. Prepared
-        files for unchanged sources remain available on disk.
+        :param path: Separate append-only coverage progress journal.
+        :returns: Reusable candidates, still requiring current source stat checks.
+        """
+        sources: dict[Path, _Source] = {}
+        # shortcut: one catalog writer per cache; add a process lock for concurrent refreshes.
+        with path.open("a+b") as stream:
+            stream.seek(0)
+            header = stream.readline()
+            try:
+                valid = header.endswith(b"\n") and self._catalog_identity(
+                    json.loads(header)
+                )
+            except (ValueError, TypeError):
+                valid = False
+            if not valid:
+                stream.seek(0)
+                stream.truncate()
+                identity = {"version": _CACHE_VERSION, "root": str(self.data_root)}
+                stream.write(json.dumps(identity).encode() + b"\n")
+                stream.flush()
+                return sources
+            while True:
+                offset = stream.tell()
+                line = stream.readline()
+                if not line:
+                    break
+                if not line.endswith(b"\n"):
+                    stream.truncate(offset)
+                    break
+                try:
+                    source = self._catalog_source(json.loads(line))
+                except (ValueError, TypeError):
+                    continue
+                sources[source.path] = source
+        return sources
+
+    def refresh(self) -> None:
+        """Publish a complete new inventory before invalidating the RAM snapshot.
+
+        New files become visible only after this explicit operation. A failed
+        refresh leaves the previous inventory and prepared RAM/disk rows usable.
+        Completed coverage work is journaled for recovery on the next attempt.
 
         :raises RuntimeError: If a stream is active on this instance.
         """
         self._require_idle()
-        self._files.clear()
-        self._active = self._vectors = self._offsets = None
-        self._active_key = None
-        self._active_sources = ()
-        self.stats.cached_bytes = self.stats.active_bytes = 0
         previous = {source.path: source for source in self._read_catalog() or ()}
+        journal_path = self._catalog_path.with_suffix(".progress.jsonl")
+        previous.update(self._resume_catalog(journal_path))
         paths = sorted(self.data_root.glob("*/*/*/*.nc"))
         if not paths:
             raise FileNotFoundError(
                 f"No mission/year/month/*.nc files under {self.data_root}"
             )
-        self._sources = []
-        for path in paths:
-            mission = self._mission(path)
-            stat = path.stat()
-            cached = previous.get(path)
-            if cached is not None and (cached.size, cached.mtime_ns) == (
-                stat.st_size,
-                stat.st_mtime_ns,
-            ):
-                source = cached
-            else:
-                start, end = self._coverage(path)
-                source = _Source(
-                    path, stat.st_size, stat.st_mtime_ns, start, end, mission
-                )
-            self._sources.append(source)
+        sources: list[_Source] = []
+        with journal_path.open("ab") as journal:
+            for path in paths:
+                mission = self._mission(path)
+                stat = path.stat()
+                cached = previous.get(path)
+                if cached is not None and (cached.size, cached.mtime_ns) == (
+                    stat.st_size,
+                    stat.st_mtime_ns,
+                ):
+                    source = cached
+                else:
+                    start, end = self._coverage(path)
+                    source = _Source(
+                        path, stat.st_size, stat.st_mtime_ns, start, end, mission
+                    )
+                    self._check_source(source)
+                    journal.write(
+                        json.dumps(self._catalog_entry(source)).encode() + b"\n"
+                    )
+                    journal.flush()
+                sources.append(source)
         _atomic_json(
             self._catalog_path,
             {
                 "version": _CACHE_VERSION,
                 "root": str(self.data_root),
-                "sources": [self._catalog_entry(source) for source in self._sources],
+                "sources": [self._catalog_entry(source) for source in sources],
             },
         )
-        self._missions = tuple(sorted({source.mission for source in self._sources}))
+        self._sources = sources
+        self._missions = tuple(sorted({source.mission for source in sources}))
+        self._files.clear()
+        self._active = self._vectors = self._offsets = None
+        self._active_key = None
+        self._active_sources = ()
+        self.stats.cached_bytes = self.stats.active_bytes = 0
+        try:
+            journal_path.unlink()
+        except OSError:
+            pass
 
     def prepare_grid(
         self,
