@@ -8,6 +8,8 @@ import hashlib
 import os
 import re
 import shutil
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import NoReturn
@@ -21,11 +23,18 @@ from OceanDB.data_access.along_track import AlongTrack, Mission
 from OceanDB.data_access.indexed_along_track import IndexedAlongTrackBackend
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas import along_track_schema as schema
-from tests.data.along_track_reference.generate import (BASIN_ID, CYCLE,
-                                                       LATITUDE, LONGITUDE,
-                                                       ROW_COUNT, SCIENCE,
-                                                       SOURCE_NAME, TIME_RAW,
-                                                       TIME_UTC, TRACK)
+from tests.data.along_track_reference.generate import (
+    BASIN_ID,
+    CYCLE,
+    LATITUDE,
+    LONGITUDE,
+    ROW_COUNT,
+    SCIENCE,
+    SOURCE_NAME,
+    TIME_RAW,
+    TIME_UTC,
+    TRACK,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -1098,3 +1107,503 @@ def test_cell_count_has_a_safe_bound(source_layout: tuple[Path, Path, Path]) -> 
     product, cache, _ = source_layout
     with pytest.raises(ValueError, match="index is too large"):
         IndexedAlongTrackBackend(product, cache, cell_size_degrees=0.001)
+
+
+# These exact integer offsets encode the independent TIME_UTC literals, without
+# asking the production decoder (or floating-day arithmetic) to make an oracle.
+_REFERENCE_TIME_US = (-876_544, -2, 2, 1_654_321, 2_000_000, 3_333_333)
+_SECOND_SOURCE_SHIFT = timedelta(seconds=7)
+
+
+@dataclass(frozen=True)
+class _ProjectionOracleRow:
+    """Identify a literal source row independently of window/file indices."""
+
+    file_name: str
+    mission: Mission
+    source_index: int
+    date_time: datetime
+    latitude: float
+    longitude: float
+    basin_id: int
+    distance: float = 0.0
+
+
+def _reference_projection_oracle(
+    source: Path, *, second_mission: bool = False
+) -> tuple[_ProjectionOracleRow, ...]:
+    """Describe unchanged coordinates and explicitly shifted reference times.
+
+    :param source: Filename to expect in projected provenance.
+    :param second_mission: Select the seven-second-shifted j3 clone.
+    :returns: One independent identity/coordinate oracle per source row.
+    """
+    return tuple(
+        _ProjectionOracleRow(
+            file_name=source.name,
+            mission="j3" if second_mission else "j2",
+            source_index=index,
+            date_time=date + (_SECOND_SOURCE_SHIFT if second_mission else timedelta(0)),
+            latitude=latitude,
+            longitude=longitude,
+            basin_id=basin_id,
+        )
+        for index, (date, latitude, longitude, basin_id) in enumerate(
+            zip(DATES, LATITUDE, LONGITUDE, BASIN_ID, strict=True)
+        )
+    )
+
+
+def _clone_shifted_reference_source(source: Path) -> Path:
+    """Make a nonduplicate j3 source with explicitly transformed raw literals.
+
+    Valid row-science integers increase by 100, while both missing sentinels
+    remain unchanged. The missing scalar correction becomes the valid -123.
+    Track/cycle increase by 1000/10. Physical expectations independently add
+    0.1 to the existing physical literals; they never use a production decoder.
+
+    :param source: Original temporary reference file to clone.
+    :returns: Newly written j3 source alongside the original j2 file.
+    """
+    destination = source.with_name(source.name.replace("_j2_", "_j3_"))
+    shutil.copyfile(source, destination)
+    with nc.Dataset(destination, "r+") as dataset:
+        variable = dataset["time"]
+        variable.set_auto_maskandscale(False)
+        variable.units = "microseconds since 2024-01-02 00:00:00"
+        variable[:] = np.asarray(_REFERENCE_TIME_US, dtype=np.int64) + 7_000_000
+        for name, values in (("track", TRACK), ("cycle", CYCLE)):
+            variable = dataset[name]
+            variable.set_auto_maskandscale(False)
+            variable[:] = np.asarray(values) + (1000 if name == "track" else 10)
+        for name, oracle in SCIENCE.items():
+            variable = dataset[name]
+            variable.set_auto_maskandscale(False)
+            if isinstance(oracle.raw, int):
+                variable[...] = -123
+            else:
+                variable[:] = [
+                    value if value in (32767, -32766) else value + 100
+                    for value in oracle.raw
+                ]
+    return destination
+
+
+def _assert_complete_projection(
+    result: Dataset[schema.along_track_fields] | None,
+    expected_rows: Sequence[_ProjectionOracleRow],
+    center: datetime,
+    *,
+    ordered: bool = False,
+) -> None:
+    """Compare all metadata, packed/scaled science, masks, and derived columns.
+
+    Radius membership is compared by scientific/provenance key, without adding
+    a radius-order contract. Nearest callers supply the required ranked order.
+
+    :param result: Complete radius or nearest result.
+    :param expected_rows: Independent source-row oracles, ranked for nearest.
+    :param center: Query time used for signed center-minus-observation seconds.
+    :param ordered: Preserve the supplied nearest sequence rather than sort keys.
+    """
+    assert isinstance(result, Dataset)
+    assert result.name == "along_track"
+    assert result.schema == schema.along_track_schema
+    assert result.row_count == len(expected_rows)
+    assert set(result) == set(schema.along_track_schema)
+    assert len(
+        {(row.date_time, row.latitude, row.longitude) for row in expected_rows}
+    ) == len(expected_rows)
+    if ordered:
+        rows = tuple(expected_rows)
+        order = np.arange(result.row_count)
+    else:
+        rows = tuple(
+            sorted(
+                expected_rows,
+                key=lambda row: (
+                    row.file_name,
+                    row.date_time,
+                    row.latitude,
+                    row.longitude,
+                ),
+            )
+        )
+        order = np.lexsort(
+            (
+                result["longitude"],
+                result["latitude"],
+                result["date_time"],
+                result["file_name"],
+            )
+        )
+    metadata: dict[
+        schema.along_track_fields, Sequence[str | int | float | datetime]
+    ] = {
+        "file_name": [row.file_name for row in rows],
+        "mission": [row.mission for row in rows],
+        "date_time": [row.date_time for row in rows],
+        "latitude": [row.latitude for row in rows],
+        "longitude": [row.longitude for row in rows],
+        "basin_id": [row.basin_id for row in rows],
+        "track": [
+            TRACK[row.source_index] + (1000 if row.mission == "j3" else 0)
+            for row in rows
+        ],
+        "cycle": [
+            CYCLE[row.source_index] + (10 if row.mission == "j3" else 0) for row in rows
+        ],
+    }
+    for field, values in metadata.items():
+        np.testing.assert_array_equal(
+            result[field][order], np.asarray(values, dtype=object)
+        )
+        np.testing.assert_array_equal(
+            result.get_unscaled(field)[order], np.asarray(values, dtype=object)
+        )
+    for field, oracle in SCIENCE.items():
+        packed: list[float] = []
+        physical: list[float] = []
+        for row in rows:
+            if row.mission == "j3" and field == "tpa_correction":
+                packed.append(-123.0)
+                physical.append(-0.123)
+                continue
+            raw_value = oracle.packed[row.source_index]
+            physical_value = oracle.physical[row.source_index]
+            packed.append(
+                np.nan
+                if raw_value is None
+                else float(raw_value + (100 if row.mission == "j3" else 0))
+            )
+            physical.append(
+                np.nan
+                if physical_value is None
+                else physical_value + (0.1 if row.mission == "j3" else 0.0)
+            )
+        actual_packed = result.get_unscaled(field)[order]
+        actual_physical = result[field][order]
+        np.testing.assert_array_equal(np.isnan(actual_packed), np.isnan(packed))
+        np.testing.assert_array_equal(np.isnan(actual_physical), np.isnan(physical))
+        np.testing.assert_allclose(
+            actual_packed, packed, rtol=0, atol=0, equal_nan=True
+        )
+        np.testing.assert_allclose(
+            actual_physical, physical, rtol=0, atol=1e-12, equal_nan=True
+        )
+    np.testing.assert_allclose(
+        result["distance"][order],
+        [row.distance for row in rows],
+        rtol=0,
+        atol=1e-4,
+    )
+    np.testing.assert_array_equal(
+        result["delta_t"][order],
+        [(center - row.date_time).total_seconds() for row in rows],
+    )
+
+
+def _prepared_artifact_fingerprints(cache: Path) -> dict[str, tuple[int, int, str]]:
+    """Record prepared-file bytes and metadata without changing their contents.
+
+    :param cache: Temporary indexed-backend disk-cache directory.
+    :returns: Prepared basenames mapped to size, mtime, and content SHA256.
+    """
+    return {
+        path.name: (
+            path.stat().st_size,
+            path.stat().st_mtime_ns,
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+        )
+        for path in (cache / "files").glob("*.npy")
+    }
+
+
+def test_multifile_projection_preserves_provenance_after_cell_sort(
+    source_layout: tuple[Path, Path, Path],
+) -> None:
+    """Keep two missions aligned through cell sorting and the nearest cutoff.
+
+    :param source_layout: Isolated product root, disk cache, and literal asset.
+    """
+    product, cache, source = source_layout
+    second = _clone_shifted_reference_source(source)
+    # Each source straddles the wrapped 180-degree cell boundary; the two files
+    # interleave in cell order, unlike j2-then-j3 inventory order or source rows.
+    longitudes = (185, 181, 183, 179, 177, 175)
+    second_longitudes = (184, 180, 182, 178, 176, 174)
+    for path, values in ((source, longitudes), (second, second_longitudes)):
+        with nc.Dataset(path, "r+") as dataset:
+            variable = dataset["latitude"]
+            variable.set_auto_maskandscale(False)
+            variable[:] = 0
+            variable = dataset["longitude"]
+            variable.set_auto_maskandscale(False)
+            variable[:] = np.asarray(values, dtype=np.int64) * 1_000_000
+    # Equatorial WGS84 distances are independent GeographicLib inverse literals;
+    # basin labels were pinned once from the packaged raster, not query results.
+    j2_distances = (
+        556597.4539663679,
+        111319.49079327357,
+        333958.4723798207,
+        111319.49079327357,
+        333958.4723798207,
+        556597.4539663679,
+    )
+    j3_distances = (
+        445277.96317309426,
+        0.0,
+        222638.98158654713,
+        222638.98158654713,
+        445277.96317309426,
+        667916.9447596414,
+    )
+    first_rows = tuple(
+        replace(
+            row, latitude=0.0, longitude=float(lon), basin_id=basin, distance=distance
+        )
+        for row, lon, basin, distance in zip(
+            _reference_projection_oracle(source),
+            longitudes,
+            (5, 5, 5, 4, 4, 4),
+            j2_distances,
+            strict=True,
+        )
+    )
+    second_rows = tuple(
+        replace(
+            row, latitude=0.0, longitude=float(lon), basin_id=basin, distance=distance
+        )
+        for row, lon, basin, distance in zip(
+            _reference_projection_oracle(second, second_mission=True),
+            second_longitudes,
+            (5, 5, 5, 4, 4, 5),
+            j3_distances,
+            strict=True,
+        )
+    )
+    client = AlongTrack(backend=IndexedAlongTrackBackend(product, cache))
+    center = datetime(2024, 1, 2, 0, 0, 5)
+    radius = client.geographic_point_in_r_dt(
+        FULL_FIELDS,
+        0.0,
+        180.0,
+        center,
+        radius=700_000,
+        time_window=timedelta(seconds=20),
+        missions=["j3", "j2"],
+    )
+    _assert_complete_projection(radius, (*first_rows, *second_rows), center)
+    nearest = client.geographic_nearest_neighbors(
+        NEAREST_FIELDS,
+        0.0,
+        180.0,
+        center,
+        time_window=timedelta(seconds=20),
+        missions=["j2", "j3"],
+        max_radius=700_000,
+    )
+    # Zero distance wins first; the two one-degree ties then use observation
+    # time. The nine remaining radius members must not leak past the cutoff.
+    _assert_complete_projection(
+        nearest, (second_rows[1], first_rows[1], first_rows[3]), center, ordered=True
+    )
+
+
+def test_refresh_visibility_geometry_and_cumulative_counters(
+    source_layout: tuple[Path, Path, Path],
+) -> None:
+    """Discover new files explicitly while keeping geometry and disk artifacts.
+
+    :param source_layout: Isolated product root, disk cache, and literal asset.
+    """
+    product, cache, source = source_layout
+    backend = IndexedAlongTrackBackend(product, cache)
+    backend.prepare_grid([LATITUDE[0]], [LONGITUDE[0]], radius=0)
+    client = AlongTrack(backend=backend)
+    original = client.geographic_point_in_r_dt(
+        FULL_FIELDS,
+        LATITUDE[0],
+        LONGITUDE[0],
+        DATES[0],
+        radius=0,
+        time_window=timedelta(0),
+    )
+    _assert_source_row(original, 0)
+    artifacts = _prepared_artifact_fingerprints(cache)
+    assert len(artifacts) == 1
+    second = _clone_shifted_reference_source(source)
+    new_date = DATES[0] + _SECOND_SOURCE_SHIFT
+    assert (
+        client.geographic_point_in_r_dt(
+            FULL_FIELDS,
+            LATITUDE[0],
+            LONGITUDE[0],
+            new_date,
+            radius=0,
+            time_window=timedelta(0),
+        )
+        is None
+    )
+    # Restore a nonempty active window and exercise a decoded-file memory hit
+    # before testing which current-byte fields and cumulative counters refresh.
+    _assert_source_row(
+        client.geographic_point_in_r_dt(
+            FULL_FIELDS,
+            LATITUDE[0],
+            LONGITUDE[0],
+            DATES[0],
+            radius=0,
+            time_window=timedelta(0),
+        ),
+        0,
+    )
+    before = replace(backend.stats)
+    assert before.cached_bytes > 0 and before.active_bytes > 0
+    assert before.geometry_bytes > 0 and before.geometry_hits > 0
+    assert before.memory_hits > 0 and before.window_builds > 0
+    backend.refresh()
+    # The only cumulative cost of this refresh is cataloging the added file.
+    assert backend.stats == replace(
+        before,
+        catalog_reads=before.catalog_reads + 1,
+        cached_bytes=0,
+        active_bytes=0,
+    )
+    assert _prepared_artifact_fingerprints(cache) == artifacts
+    _assert_source_row(
+        client.geographic_point_in_r_dt(
+            FULL_FIELDS,
+            LATITUDE[0],
+            LONGITUDE[0],
+            DATES[0],
+            radius=0,
+            time_window=timedelta(0),
+        ),
+        0,
+    )
+    assert backend.stats.disk_hits == before.disk_hits + 1
+    assert backend.stats.source_reads == before.source_reads
+    assert backend.stats.memory_hits == before.memory_hits
+    assert backend.stats.window_builds == before.window_builds + 1
+    assert backend.stats.geometry_builds == before.geometry_builds
+    assert backend.stats.geometry_hits == before.geometry_hits + 1
+    assert backend.stats.geometry_bytes == before.geometry_bytes
+    assert _prepared_artifact_fingerprints(cache) == artifacts
+    new_result = client.geographic_point_in_r_dt(
+        FULL_FIELDS,
+        LATITUDE[0],
+        LONGITUDE[0],
+        new_date,
+        radius=0,
+        time_window=timedelta(0),
+    )
+    _assert_complete_projection(
+        new_result,
+        [_reference_projection_oracle(second, second_mission=True)[0]],
+        new_date,
+    )
+    assert backend.stats.source_reads == before.source_reads + 1
+    assert backend.stats.disk_hits == before.disk_hits + 1
+    assert backend.stats.geometry_builds == before.geometry_builds
+    assert backend.stats.geometry_hits == before.geometry_hits + 2
+    after_artifacts = _prepared_artifact_fingerprints(cache)
+    assert len(after_artifacts) == 2
+    assert {name: after_artifacts[name] for name in artifacts} == artifacts
+
+
+@pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])
+def test_returned_dataset_survives_eviction_window_change_and_refresh(
+    source_layout: tuple[Path, Path, Path], nearest: bool
+) -> None:
+    """Retain read and unread scaled columns across eviction and refresh.
+
+    :param source_layout: Isolated product root, disk cache, and literal asset.
+    :param nearest: Exercise a ranked nearest result instead of radius membership.
+    """
+    product, cache, source = source_layout
+    second = _clone_shifted_reference_source(source)
+    # One six-row prepared file fits, but the two files cannot both be retained.
+    backend = IndexedAlongTrackBackend(product, cache, max_cache_bytes=1024)
+    client = AlongTrack(backend=backend)
+    center = DATES[1]
+    if nearest:
+        retained = client.geographic_nearest_neighbors(
+            NEAREST_FIELDS,
+            LATITUDE[1],
+            LONGITUDE[1],
+            center,
+            time_window=timedelta(microseconds=4),
+            max_radius=111_000,
+        )
+    else:
+        retained = client.geographic_point_in_r_dt(
+            FULL_FIELDS,
+            LATITUDE[1],
+            LONGITUDE[1],
+            center,
+            radius=111_000,
+            time_window=timedelta(microseconds=4),
+        )
+    assert isinstance(retained, Dataset)
+    assert retained.row_count == 2
+    # Only this science column is accessed before eviction. In particular, the
+    # valid/NaN values in other scaled columns remain genuinely lazy until last.
+    np.testing.assert_allclose(
+        retained["sla_filtered"][np.argsort(retained["date_time"])],
+        [199e-3, np.nan],
+        rtol=0,
+        atol=1e-12,
+        equal_nan=True,
+    )
+    first_state = replace(backend.stats)
+    assert 0 < first_state.cached_bytes <= 1024
+    assert first_state.cached_bytes * 2 > 1024
+    second_center = center + _SECOND_SOURCE_SHIFT
+    also_retained = client.geographic_point_in_r_dt(
+        FULL_FIELDS,
+        LATITUDE[1],
+        LONGITUDE[1],
+        second_center,
+        radius=111_000,
+        time_window=timedelta(microseconds=4),
+    )
+    assert isinstance(also_retained, Dataset) and also_retained.row_count == 2
+    second_state = replace(backend.stats)
+    assert second_state.source_reads == first_state.source_reads + 1
+    assert second_state.window_builds == first_state.window_builds + 1
+    assert second_state.cached_bytes == first_state.cached_bytes
+    assert second_state.memory_hits == first_state.memory_hits
+    # Request a third window in the first source. A disk hit, not a memory hit,
+    # proves the first file was evicted rather than merely switching windows.
+    _assert_source_row(
+        client.geographic_point_in_r_dt(
+            FULL_FIELDS,
+            LATITUDE[4],
+            LONGITUDE[4],
+            DATES[4],
+            radius=0,
+            time_window=timedelta(0),
+        ),
+        4,
+    )
+    assert backend.stats.disk_hits == second_state.disk_hits + 1
+    assert backend.stats.memory_hits == second_state.memory_hits
+    assert backend.stats.source_reads == second_state.source_reads
+    assert backend.stats.window_builds == second_state.window_builds + 1
+    backend.refresh()
+    assert backend.stats.cached_bytes == backend.stats.active_bytes == 0
+    first_rows = _reference_projection_oracle(source)
+    second_rows = _reference_projection_oracle(second, second_mission=True)
+    boundary = 110574.38855779878  # Independent WGS84 (0, 180) -> (1, 180).
+    _assert_complete_projection(
+        retained,
+        [first_rows[1], replace(first_rows[2], distance=boundary)],
+        center,
+        ordered=nearest,
+    )
+    _assert_complete_projection(
+        also_retained,
+        [second_rows[1], replace(second_rows[2], distance=boundary)],
+        second_center,
+    )
