@@ -20,7 +20,8 @@ import psycopg
 import pytest
 
 from OceanDB.data_access.along_track import AlongTrack, AlongTrackBackend, Mission
-from OceanDB.data_access.indexed_along_track import IndexedAlongTrackBackend, _Source
+from OceanDB.data_access.along_track_index import PreparedWindow, _Source
+from OceanDB.data_access.indexed_along_track import IndexedAlongTrackBackend
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas import along_track_schema as schema
 from tests.data.along_track_reference.generate import (
@@ -170,8 +171,9 @@ def _observe_work(
     :returns: Mutable event log; all wrapped methods retain their behavior.
     """
     events = _WorkEvents()
-    check_source = backend._check_source
-    prepare_window = backend.prepare_window
+    index = backend._index
+    check_source = index._check_source
+    prepare_window = index.prepare_window
 
     def observe_source(source: _Source) -> None:
         events.selected_checks.append(source.path)
@@ -181,12 +183,12 @@ def _observe_work(
         date: datetime,
         time_window: timedelta,
         missions: Sequence[Mission] | None = None,
-    ) -> None:
+    ) -> PreparedWindow:
         events.windows.append(date)
-        prepare_window(date, time_window, missions)
+        return prepare_window(date, time_window, missions)
 
-    monkeypatch.setattr(backend, "_check_source", observe_source)
-    monkeypatch.setattr(backend, "prepare_window", observe_window)
+    monkeypatch.setattr(index, "_check_source", observe_source)
+    monkeypatch.setattr(index, "prepare_window", observe_window)
     return events
 
 
@@ -1292,9 +1294,10 @@ def test_prepared_window_all_four_queries_do_no_filesystem_work(
     date = datetime(2030, 1, 1) if window == "outside-coverage" else DATES[4]
     missions: list[Mission] | None = [] if window == "no-missions" else None
     backend.prepare_window(date, timedelta(0), missions)
-    active, offsets, vectors = backend._active, backend._offsets, backend._vectors
-    assert active is not None and offsets is not None and vectors is not None
-    arrays = (active, offsets, vectors)
+    index = backend._index
+    prepared = index._window
+    assert prepared is not None
+    arrays = (prepared.rows, prepared._offsets, prepared._vectors)
     snapshots = tuple(array.tobytes() for array in arrays)
     for array in arrays:
         assert not array.flags.writeable
@@ -1325,8 +1328,8 @@ def test_prepared_window_all_four_queries_do_no_filesystem_work(
         for method in ("stat", "glob", "rglob", "open"):
             patches.setattr(Path, method, fail_filesystem)
         patches.setattr(nc, "Dataset", fail_filesystem)
-        patches.setattr(backend, "_check_source", fail_filesystem)
-        patches.setattr(backend, "_sources", NoInventoryWalk(backend._sources))
+        patches.setattr(index, "_check_source", fail_filesystem)
+        patches.setattr(index, "_sources", NoInventoryWalk(index._sources))
         backend.prepare_window(date, timedelta(0), missions)
         results = [
             backend.geographic_point_in_r_dt(
@@ -1370,8 +1373,9 @@ def test_prepared_window_all_four_queries_do_no_filesystem_work(
         else:
             assert result is None
     assert backend.stats == before
+    assert index._window is prepared
     for current, original, snapshot in zip(
-        (backend._active, backend._offsets, backend._vectors),
+        (prepared.rows, prepared._offsets, prepared._vectors),
         arrays,
         snapshots,
         strict=True,
@@ -1479,7 +1483,7 @@ def test_changed_source_keeps_prepared_window_but_rejects_memory_and_disk_rebuil
     assert isinstance(same, Dataset)
     np.testing.assert_array_equal(same.get_unscaled("sla_filtered"), [-1])
     assert backend.stats.window_builds == backend.stats.source_reads == 1
-    assert source in backend._files
+    assert source in backend._index._files
     with pytest.raises(RuntimeError, match="source changed"):
         backend.prepare_window(DATES[0], timedelta(0))
     assert backend.stats.memory_hits == 0
@@ -1496,8 +1500,8 @@ def test_changed_source_keeps_prepared_window_but_rejects_memory_and_disk_rebuil
     assert restarted_backend.stats.window_builds == 0
 
     restarted_backend.refresh()
-    assert restarted_backend._active is None
-    assert restarted_backend._active_key is None
+    assert restarted_backend._index._window is None
+    assert restarted_backend._index._active_key is None
     restarted = AlongTrack(backend=restarted_backend)
     after = restarted.geographic_point_in_r_dt(
         ["sla_filtered"],
@@ -1548,7 +1552,7 @@ def test_deleted_source_keeps_prepared_window_but_rejects_memory_and_disk_rebuil
         0,
     )
     assert backend.stats.window_builds == backend.stats.source_reads == 1
-    assert source in backend._files
+    assert source in backend._index._files
     with pytest.raises(RuntimeError, match="source disappeared"):
         backend.prepare_window(DATES[1], timedelta(0))
     assert backend.stats.memory_hits == 0
@@ -1563,7 +1567,7 @@ def test_deleted_source_keeps_prepared_window_but_rejects_memory_and_disk_rebuil
     assert restarted.stats.window_builds == 0
 
     backend.refresh()
-    assert backend._active is None and backend._active_key is None
+    assert backend._index._window is None and backend._index._active_key is None
     assert backend.stats.active_bytes == backend.stats.cached_bytes == 0
     assert backend.stats.window_builds == 1
     assert (
@@ -1698,7 +1702,7 @@ def test_changed_file_outside_window_keeps_snapshot_coverage_until_refresh(
             unchanged["date_time"], np.asarray([DATES[index]], dtype=object)
         )
     backend.refresh()
-    assert backend._active is None and backend._active_key is None
+    assert backend._index._window is None and backend._index._active_key is None
     assert backend.stats.active_bytes == backend.stats.cached_bytes == 0
     with pytest.raises(ValueError, match="Duplicate AlongTrack"):
         client.geographic_point_in_r_dt(

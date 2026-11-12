@@ -1,135 +1,37 @@
+"""Scientific AlongTrack queries over index-owned, immutable windows."""
+
 from __future__ import annotations
 
-import json
-import os
-import tempfile
-import warnings
-from collections import OrderedDict
 from collections.abc import Generator, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import partial
-from hashlib import sha256
-from importlib import resources
 from pathlib import Path
 from queue import Queue
-from threading import Event, Lock, Semaphore, Thread
-from time import perf_counter
-from typing import get_args
+from threading import Event, Semaphore, Thread
 
-import netCDF4 as nc
 import numpy as np
 from numpy.typing import NDArray
 
-from OceanDB.data_access.along_track import Mission
+from OceanDB.along_track_missions import Mission
+from OceanDB.data_access.along_track_index import (
+    _EPOCH,
+    AlongTrackIndex,
+)
+from OceanDB.data_access.along_track_index import IndexedCacheInfo as IndexedCacheInfo
+from OceanDB.data_access.along_track_index import (
+    PreparedWindow,
+    _microseconds,
+)
 from OceanDB.data_access.indexed_geometry import (
     MAX_WGS84_DISTANCE_M,
-    cap_cells,
-    cell_dimensions,
-    cell_ids,
     exact_wgs84_distance_m,
-    unit_vectors,
     wgs84_distance_m,
 )
-from OceanDB.ocean_data.basins import BasinConnections, BasinMask
 from OceanDB.ocean_data.dataset import Dataset
-from OceanDB.schemas.along_track_schema import (
-    along_track_columns_schema,
-    along_track_fields,
-    along_track_schema,
-)
+from OceanDB.schemas.along_track_schema import along_track_fields, along_track_schema
 
-_PRODUCT = "SEALEVEL_GLO_PHY_L3_MY_008_062"
-_EPOCH = datetime(1950, 1, 1)
-_CACHE_VERSION = 2
 _DECISION_MARGIN_M = 0.01
-_SUPPORTED_MISSIONS = frozenset(get_args(Mission))
-_SCIENCE = tuple(
-    name for name, field in along_track_columns_schema.items() if field.scaling != 1
-)
-_SOURCE = ("track", "cycle", *_SCIENCE)
-_FILE_DTYPE = np.dtype(
-    [
-        ("time_us", "<i8"),
-        ("longitude", "<f8"),
-        ("latitude", "<f8"),
-        ("basin_id", "<i2"),
-        ("source_row", "<i8"),
-        ("track", "<i8"),
-        ("cycle", "<i8"),
-        *((name, "<f8") for name in _SCIENCE),
-    ]
-)
-_WINDOW_DTYPE = np.dtype([*_FILE_DTYPE.descr, ("file_id", "<i4")])
-
-
-def _microseconds(value: datetime) -> int:
-    """Convert a supported UTC-naive datetime without floating-day rounding.
-
-    :param value: Source or query datetime.
-    :returns: Microseconds relative to the source epoch.
-    :raises ValueError: If a timezone-aware datetime is supplied.
-    """
-    if value.tzinfo is not None:
-        raise ValueError("AlongTrack datetimes must be UTC-naive")
-    delta = value - _EPOCH
-    return (delta.days * 86_400 + delta.seconds) * 1_000_000 + delta.microseconds
-
-
-def _atomic_json(path: Path, payload: object) -> None:
-    """Replace a cache manifest only after writing a complete temporary file.
-
-    :param path: Destination manifest.
-    :param payload: JSON-serializable data.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump(payload, stream, separators=(",", ":"), allow_nan=False)
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-
-
-@dataclass(frozen=True)
-class _Source:
-    path: Path
-    size: int
-    mtime_ns: int
-    start_us: int
-    end_us: int
-    mission: str
-
-
-@dataclass(frozen=True)
-class _PreparedWindow:
-    """Read-only query arrays and the provenance belonging to those rows."""
-
-    rows: NDArray[np.void]
-    offsets: NDArray[np.int64]
-    vectors: NDArray[np.float64]
-    sources: tuple[_Source, ...]
-
-
-@dataclass
-class IndexedCacheInfo:
-    """Observable source, preparation, and retained-memory costs."""
-
-    source_reads: int = 0
-    catalog_reads: int = 0
-    disk_hits: int = 0
-    memory_hits: int = 0
-    window_builds: int = 0
-    preparation_seconds: float = 0.0
-    cached_bytes: int = 0
-    active_bytes: int = 0
-    peak_retained_bytes: int = 0
-    geometry_bytes: int = 0
-    geometry_builds: int = 0
-    geometry_hits: int = 0
 
 
 class IndexedAlongTrackBackend:
@@ -139,17 +41,18 @@ class IndexedAlongTrackBackend:
     queries over immutable windows, with one owner of file/cache preparation.
     Other queries, preparation, and refresh are rejected during an active stream.
     Close partially consumed streams to release their workers and ownership.
-    An explicit
-    :meth:`refresh` discovers archive changes. Construction reuses a valid saved
-    inventory without rescanning. New windows validate only selected sources;
-    repeated queries reuse immutable prepared arrays without filesystem checks,
-    even after source edits. Changed or missing selected files raise when a new
-    window is prepared against an outdated inventory.
+    An explicit :meth:`refresh` discovers archive changes. Construction reuses a
+    valid saved inventory without rescanning. New windows validate only selected
+    sources; repeated queries reuse immutable prepared arrays without filesystem
+    checks, even after source edits. Changed or missing selected files raise when
+    a new window is prepared against an outdated inventory.
 
     :param data_root: ``ALONG_TRACK_DATA_DIRECTORY`` or its product directory.
     :param cache_dir: Directory for reusable, versioned local cache artifacts.
     :param cell_size_degrees: Spatial index cell width (must divide 180 and 360).
-    :param max_cache_bytes: Approximate upper bound for retained per-file RAM.
+    :param max_cache_bytes: Approximate upper bound for retained per-file RAM,
+        excluding active and in-flight windows.
+    :param max_geometry_cache_bytes: Upper bound for retained query geometry.
     """
 
     def __init__(
@@ -161,318 +64,25 @@ class IndexedAlongTrackBackend:
         max_cache_bytes: int = 2_000_000_000,
         max_geometry_cache_bytes: int = 1_000_000_000,
     ) -> None:
-        root = Path(data_root).expanduser().resolve()
-        self.data_root = root / _PRODUCT if (root / _PRODUCT).is_dir() else root
-        if not self.data_root.is_dir():
-            raise FileNotFoundError(
-                f"AlongTrack source directory does not exist: {root}"
-            )
-        self.cache_dir = Path(cache_dir).expanduser().resolve()
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._nx, self._ny = cell_dimensions(cell_size_degrees)
-        self._cell_size = cell_size_degrees
-        if max_cache_bytes < 0:
-            raise ValueError("max_cache_bytes must be nonnegative")
-        if max_geometry_cache_bytes < 0:
-            raise ValueError("max_geometry_cache_bytes must be nonnegative")
-        self._max_cache_bytes = max_cache_bytes
-        self._max_geometry_cache_bytes = max_geometry_cache_bytes
-        self._basins = BasinMask()
-        self._connections = BasinConnections().connection_map
-        self._basin_signature = self._asset_signature()
-        self.stats = IndexedCacheInfo()
-        self._stream_lock = Lock()
-        self._stats_lock = Lock()
-        self._files: OrderedDict[Path, np.ndarray] = OrderedDict()
-        self._grid_geometry: dict[
-            tuple[float, float, float], tuple[int, np.ndarray, np.ndarray]
-        ] = {}
-        self._active: np.ndarray | None = None
-        self._vectors: np.ndarray | None = None
-        self._offsets: np.ndarray | None = None
-        self._active_key: tuple[int, int, tuple[str, ...]] | None = None
-        self._active_sources: tuple[_Source, ...] = ()
-        self._catalog_path = (
-            self.cache_dir
-            / f"catalog-{sha256(str(self.data_root).encode()).hexdigest()[:20]}.json"
+        self._index = AlongTrackIndex(
+            data_root,
+            cache_dir,
+            cell_size_degrees=cell_size_degrees,
+            max_cache_bytes=max_cache_bytes,
+            max_geometry_cache_bytes=max_geometry_cache_bytes,
         )
-        sources = self._read_catalog()
-        self._sources: list[_Source] = sources if sources is not None else []
-        self._missions = tuple(sorted({source.mission for source in self._sources}))
-        if sources is None:
-            self.refresh()
-
-    @staticmethod
-    def _asset_signature() -> str:
-        """Fingerprint the packaged basin assets for cache invalidation.
-
-        :returns: Hash of raster and direct-connection data.
-        """
-        assets = resources.files("OceanDB.data")
-        digest = sha256()
-        for path in (
-            "basin_masks/new_basin_mask.nc",
-            "basins/basin_connection_table.txt",
-        ):
-            digest.update(assets.joinpath(path).read_bytes())
-        return digest.hexdigest()
-
-    @staticmethod
-    def _mission(path: Path) -> str:
-        """Use the mission parsed by existing PostgreSQL ingestion.
-
-        :param path: Source file path.
-        :returns: Literal mission string embedded in its basename.
-        :raises ValueError: If the filename cannot supply a mission.
-        """
-        parts = path.name.split("_")
-        if len(parts) < 3 or not parts[2]:
-            raise ValueError(f"Could not parse mission from file name: {path.name}")
-        if parts[2] not in _SUPPORTED_MISSIONS:
-            raise ValueError(f"Unsupported mission {parts[2]!r} in {path.name}")
-        return parts[2]
-
-    @staticmethod
-    def _times(variable: nc.Variable, *, bounds_only: bool = False) -> np.ndarray:
-        """Decode CF times to exact Python microseconds as in PostgreSQL ETL.
-
-        :param variable: Source time variable.
-        :param bounds_only: Decode only extrema after validating every raw time.
-        :returns: Integer microseconds for each observation, or just its bounds.
-        :raises ValueError: If the calendar or times cannot be represented.
-        """
-        raw = np.ma.asarray(variable[:])
-        if (
-            raw.ndim != 1
-            or np.ma.getmaskarray(raw).any()
-            or raw.dtype.kind not in "iuf"
-            or not np.isfinite(raw.data).all()
-        ):
-            raise ValueError(
-                "AlongTrack time must be a complete finite one-dimensional numeric array"
-            )
-        calendar = getattr(variable, "calendar", "standard")
-        if calendar not in ("standard", "gregorian", "proleptic_gregorian"):
-            raise ValueError(f"Unsupported AlongTrack calendar: {calendar}")
-        if bounds_only and raw.size:
-            # Supported CF units/calendars are monotonic in the numeric time.
-            raw = np.ma.asarray((raw.min(), raw.max()))
-        decoded = nc.num2date(
-            raw,
-            variable.units,
-            calendar=calendar,
-            only_use_cftime_datetimes=False,
-            only_use_python_datetimes=True,
-        )
-        values = [decoded] if isinstance(decoded, datetime) else decoded
-        timestamps: list[int] = []
-        for value in values:
-            if not isinstance(value, datetime):
-                raise ValueError(f"Unsupported AlongTrack datetime: {value!r}")
-            timestamps.append(_microseconds(value))
-        return np.asarray(timestamps, dtype=np.int64)
-
-    def _coverage(self, path: Path) -> tuple[int, int]:
-        """Read actual observation bounds when catalog metadata cannot be reused.
-
-        :param path: NetCDF source file.
-        :returns: Inclusive first and last observation times in microseconds.
-        """
-        with nc.Dataset(path) as dataset:
-            if "time" not in dataset.variables:
-                raise ValueError(f"Missing required time variable in {path}")
-            times = self._times(dataset.variables["time"], bounds_only=True)
-        self.stats.catalog_reads += 1
-        if not len(times):
-            raise ValueError(f"No observations in AlongTrack source: {path}")
-        return int(times.min()), int(times.max())
-
-    def _catalog_identity(self, value: object) -> bool:
-        """Check the root and version shared by complete and progress manifests.
-
-        :param value: Decoded JSON header or manifest.
-        :returns: Whether the manifest belongs to this source root and decoder.
-        """
-        return (
-            isinstance(value, dict)
-            and type(value.get("version")) is int
-            and value.get("version") == _CACHE_VERSION
-            and value.get("root") == str(self.data_root)
-        )
-
-    def _catalog_source(self, value: object) -> _Source:
-        """Validate a source record without accessing its filesystem metadata.
-
-        :param value: Decoded JSON source record.
-        :returns: A source pinned to this root with supported coverage and mission.
-        :raises ValueError: If a field, path, or coverage bound is invalid.
-        """
-        if not isinstance(value, dict):
-            raise ValueError("Invalid AlongTrack catalog source")
-        relative: object = value.get("path")
-        size: object = value.get("size")
-        mtime_ns: object = value.get("mtime_ns")
-        start: object = value.get("start_us")
-        end: object = value.get("end_us")
-        if not isinstance(relative, str) or "\\" in relative or "\x00" in relative:
-            raise ValueError("Invalid AlongTrack catalog path")
-        path = Path(relative)
-        if (
-            path.is_absolute()
-            or len(path.parts) != 4
-            or ".." in path.parts
-            or path.as_posix() != relative
-            or path.suffix != ".nc"
-        ):
-            raise ValueError("Unsafe AlongTrack catalog path")
-        if (
-            type(size) is not int
-            or not 0 <= size <= 2**63 - 1
-            or type(mtime_ns) is not int
-            or not 0 <= mtime_ns <= 2**63 - 1
-            or type(start) is not int
-            or type(end) is not int
-            or not _microseconds(datetime.min)
-            <= start
-            <= end
-            <= _microseconds(datetime.max)
-        ):
-            raise ValueError("Invalid AlongTrack catalog fingerprint or coverage")
-        return _Source(
-            self.data_root / path, size, mtime_ns, start, end, self._mission(path)
-        )
-
-    def _read_catalog(self) -> list[_Source] | None:
-        """Load only a complete validated inventory, never discover source files.
-
-        :returns: The saved snapshot, or ``None`` when it must be rebuilt.
-        """
-        try:
-            manifest: object = json.loads(self._catalog_path.read_bytes())
-            if not isinstance(manifest, dict) or not self._catalog_identity(manifest):
-                return None
-            entries: object = manifest.get("sources")
-            if not isinstance(entries, list) or not entries:
-                return None
-            sources = [self._catalog_source(entry) for entry in entries]
-            if len({source.path for source in sources}) != len(sources):
-                return None
-            return sources
-        except (OSError, ValueError, TypeError):
-            return None
-
-    def _catalog_entry(self, source: _Source) -> dict[str, str | int]:
-        """Serialize the shared complete-catalog and journal source record.
-
-        :param source: Completed source coverage and fingerprint.
-        :returns: Root-relative JSON fields.
-        """
-        return {
-            "path": source.path.relative_to(self.data_root).as_posix(),
-            "size": source.size,
-            "mtime_ns": source.mtime_ns,
-            "start_us": source.start_us,
-            "end_us": source.end_us,
-        }
-
-    def _resume_catalog(self, path: Path) -> dict[Path, _Source]:
-        """Recover validated completed entries and discard an unfinished tail.
-
-        :param path: Separate append-only coverage progress journal.
-        :returns: Reusable candidates, still requiring current source stat checks.
-        """
-        sources: dict[Path, _Source] = {}
-        # shortcut: one catalog writer per cache; add a process lock for concurrent refreshes.
-        with path.open("a+b") as stream:
-            stream.seek(0)
-            header = stream.readline()
-            try:
-                valid = header.endswith(b"\n") and self._catalog_identity(
-                    json.loads(header)
-                )
-            except (ValueError, TypeError):
-                valid = False
-            if not valid:
-                stream.seek(0)
-                stream.truncate()
-                identity = {"version": _CACHE_VERSION, "root": str(self.data_root)}
-                stream.write(json.dumps(identity).encode() + b"\n")
-                stream.flush()
-                return sources
-            while True:
-                offset = stream.tell()
-                line = stream.readline()
-                if not line:
-                    break
-                if not line.endswith(b"\n"):
-                    stream.truncate(offset)
-                    break
-                try:
-                    source = self._catalog_source(json.loads(line))
-                except (ValueError, TypeError):
-                    continue
-                sources[source.path] = source
-        return sources
+        self.data_root = self._index.data_root
+        self.cache_dir = self._index.cache_dir
+        self.stats = self._index.stats
 
     def refresh(self) -> None:
-        """Publish a complete new inventory before invalidating the RAM snapshot.
+        """Discover archive changes and invalidate the current cached window.
 
-        New files become visible only after this explicit operation. A failed
-        refresh leaves the previous inventory and prepared RAM/disk rows usable.
-        Completed coverage work is journaled for recovery on the next attempt.
+        A failed refresh leaves the previous inventory and cached rows usable.
 
         :raises RuntimeError: If a stream is active on this instance.
         """
-        self._require_idle()
-        previous = {source.path: source for source in self._read_catalog() or ()}
-        journal_path = self._catalog_path.with_suffix(".progress.jsonl")
-        previous.update(self._resume_catalog(journal_path))
-        paths = sorted(self.data_root.glob("*/*/*/*.nc"))
-        if not paths:
-            raise FileNotFoundError(
-                f"No mission/year/month/*.nc files under {self.data_root}"
-            )
-        sources: list[_Source] = []
-        with journal_path.open("ab") as journal:
-            for path in paths:
-                mission = self._mission(path)
-                stat = path.stat()
-                cached = previous.get(path)
-                if cached is not None and (cached.size, cached.mtime_ns) == (
-                    stat.st_size,
-                    stat.st_mtime_ns,
-                ):
-                    source = cached
-                else:
-                    start, end = self._coverage(path)
-                    source = _Source(
-                        path, stat.st_size, stat.st_mtime_ns, start, end, mission
-                    )
-                    self._check_source(source)
-                    journal.write(
-                        json.dumps(self._catalog_entry(source)).encode() + b"\n"
-                    )
-                    journal.flush()
-                sources.append(source)
-        _atomic_json(
-            self._catalog_path,
-            {
-                "version": _CACHE_VERSION,
-                "root": str(self.data_root),
-                "sources": [self._catalog_entry(source) for source in sources],
-            },
-        )
-        self._sources = sources
-        self._missions = tuple(sorted({source.mission for source in sources}))
-        self._files.clear()
-        self._active = self._vectors = self._offsets = None
-        self._active_key = None
-        self._active_sources = ()
-        self.stats.cached_bytes = self.stats.active_bytes = 0
-        try:
-            journal_path.unlink()
-        except OSError:
-            pass
+        self._index.refresh()
 
     def prepare_grid(
         self,
@@ -481,221 +91,15 @@ class IndexedAlongTrackBackend:
         *,
         radius: float = 500_000.0,
     ) -> None:
-        """Reuse basin labels, vectors, and cell covers across moving windows.
-
-        This optional operation takes paired centers, not Cartesian grid axes.
-        Queries outside the cache or at a different radius use the direct path.
+        """Warm index geometry for paired centers, not Cartesian grid axes.
 
         :param latitudes: Latitude of each center.
         :param longitudes: Longitude of each paired center.
-        :param radius: Inclusive radius for the reusable cell cover, in meters.
+        :param radius: Inclusive radius for reusable geometry, in meters.
         :raises ValueError: If the centers or radius are invalid.
         :raises RuntimeError: If a stream is active on this instance.
         """
-        self._require_idle()
-        if len(latitudes) != len(longitudes):
-            raise ValueError("latitudes and longitudes must have equal lengths")
-        if not np.isfinite(radius) or radius < 0:
-            raise ValueError("radius must be finite and nonnegative")
-        for latitude, longitude in zip(latitudes, longitudes, strict=True):
-            key = (longitude, latitude, radius)
-            if key in self._grid_geometry:
-                continue
-            cells = cap_cells(longitude, latitude, radius, self._cell_size)
-            vector = unit_vectors(longitude, latitude)
-            cost = cells.nbytes + vector.nbytes
-            if cost + self.stats.geometry_bytes > self._max_geometry_cache_bytes:
-                continue
-            basin = int(self._basins.lookup(latitude, longitude))
-            cells.setflags(write=False)
-            vector.setflags(write=False)
-            self._grid_geometry[key] = (basin, cells, vector)
-            self.stats.geometry_bytes += cost
-            self.stats.geometry_builds += 1
-            self._record_retained()
-
-    def _record_retained(self) -> None:
-        """Track the high-water size of retained arrays, excluding temporaries."""
-        retained = (
-            self.stats.cached_bytes
-            + self.stats.active_bytes
-            + self.stats.geometry_bytes
-        )
-        self.stats.peak_retained_bytes = max(self.stats.peak_retained_bytes, retained)
-
-    @staticmethod
-    def _check_source(source: _Source) -> None:
-        """Reject an invalidated pinned source rather than return stale rows.
-
-        :param source: Catalogued file and its source metadata.
-        :raises RuntimeError: If a source has gone missing or changed.
-        """
-        try:
-            stat = source.path.stat()
-        except FileNotFoundError as error:
-            raise RuntimeError(
-                f"AlongTrack source disappeared: {source.path}; call refresh()"
-            ) from error
-        if (stat.st_size, stat.st_mtime_ns) != (source.size, source.mtime_ns):
-            raise RuntimeError(
-                f"AlongTrack source changed: {source.path}; call refresh()"
-            )
-
-    def _prepare_file(self, source: _Source) -> np.ndarray:
-        """Decode one source into aligned packed columns and row provenance.
-
-        :param source: Pinned source record.
-        :returns: Prepared columns for all observations in the file.
-        :raises ValueError: If the source format cannot match OceanDB ingestion.
-        """
-        with nc.Dataset(source.path) as dataset:
-            missing = set(("time", "latitude", "longitude", *_SOURCE)).difference(
-                dataset.variables
-            )
-            if missing:
-                raise ValueError(
-                    f"Missing required variables in {source.path}: {sorted(missing)}"
-                )
-            time_us = self._times(dataset.variables["time"])
-            count = len(time_us)
-            dataset.variables["latitude"].set_auto_scale(True)
-            dataset.variables["longitude"].set_auto_scale(True)
-            latitude = np.ma.asarray(dataset.variables["latitude"][:], dtype=np.float64)
-            longitude = np.ma.asarray(
-                dataset.variables["longitude"][:], dtype=np.float64
-            )
-            if (
-                latitude.shape != (count,)
-                or longitude.shape != (count,)
-                or np.ma.getmaskarray(latitude).any()
-                or np.ma.getmaskarray(longitude).any()
-            ):
-                raise ValueError(f"Invalid AlongTrack coordinates in {source.path}")
-            lat = np.asarray(latitude, dtype=np.float64)
-            lon = np.asarray(longitude, dtype=np.float64)
-            if (
-                not np.isfinite(lat).all()
-                or not np.isfinite(lon).all()
-                or (lat < -90).any()
-                or (lat >= 90).any()
-            ):
-                raise ValueError(f"Invalid AlongTrack coordinates in {source.path}")
-            rows = np.empty(count, dtype=_FILE_DTYPE)
-            rows["time_us"] = time_us
-            rows["latitude"] = lat
-            rows["longitude"] = lon
-            rows["basin_id"] = self._basins.lookup(lat, lon)
-            rows["source_row"] = np.arange(count)
-            for name in _SOURCE:
-                variable = dataset.variables[name]
-                if variable.ndim != 0 and variable.shape != (count,):
-                    raise ValueError(f"Unsupported {name} shape in {source.path}")
-                variable.set_auto_maskandscale(False)
-                raw = np.asarray(variable[:])
-                values = (
-                    np.full(count, raw, dtype=np.float64)
-                    if variable.ndim == 0
-                    else np.asarray(raw, dtype=np.float64)
-                )
-                invalid = ~np.isfinite(values)
-                if "_FillValue" not in variable.ncattrs():
-                    default_fill = nc.default_fillvals.get(variable.dtype.str[1:])
-                    if default_fill is not None:
-                        invalid |= values == default_fill
-                for attribute in ("_FillValue", "missing_value"):
-                    if attribute in variable.ncattrs():
-                        sentinel = variable.getncattr(attribute)
-                        invalid |= values == sentinel
-                if name in _SCIENCE:
-                    expected_scale = along_track_columns_schema[name].scaling
-                    if not np.isclose(
-                        float(getattr(variable, "scale_factor", 1)),
-                        expected_scale,
-                        rtol=1e-6,
-                        atol=0,
-                    ) or not np.isclose(
-                        float(getattr(variable, "add_offset", 0)),
-                        0,
-                        rtol=0,
-                        atol=1e-12,
-                    ):
-                        warnings.warn(
-                            f"Source scaling for {name} differs from OceanDB schema in {source.path}; "
-                            "using OceanDB's packed-value scaling",
-                            RuntimeWarning,
-                            stacklevel=2,
-                        )
-                    values[invalid] = np.nan
-                elif invalid.any() or (values != np.floor(values)).any():
-                    raise ValueError(
-                        f"Unsupported missing or nonintegral {name} in {source.path}"
-                    )
-                rows[name] = values
-            keys = np.rec.fromarrays(
-                (rows["time_us"], rows["latitude"], rows["longitude"])
-            )
-            if len(np.unique(keys)) != count:
-                raise ValueError(
-                    f"Duplicate AlongTrack (date_time, latitude, longitude) source key in {source.path}"
-                )
-        self._check_source(source)
-        self.stats.source_reads += 1
-        return rows
-
-    def _load_file(self, source: _Source) -> np.ndarray:
-        """Use a valid memory/disk cache or prepare an unchanged source.
-
-        :param source: Pinned source record.
-        :returns: Source rows with the indexed cache dtype.
-        :raises RuntimeError: If the source changed after cataloguing.
-        """
-        self._check_source(source)
-        if source.path in self._files:
-            self.stats.memory_hits += 1
-            self._files.move_to_end(source.path)
-            return self._files[source.path]
-        identity = json.dumps(
-            [
-                _CACHE_VERSION,
-                str(source.path),
-                source.size,
-                source.mtime_ns,
-                self._basin_signature,
-                _FILE_DTYPE.descr,
-            ],
-            separators=(",", ":"),
-        )
-        key = sha256(identity.encode()).hexdigest()
-        path = self.cache_dir / "files" / f"{key}.npy"
-        rows: np.ndarray | None = None
-        if path.exists():
-            try:
-                candidate = np.load(path, mmap_mode="r", allow_pickle=False)
-                if candidate.dtype != _FILE_DTYPE or candidate.ndim != 1:
-                    raise ValueError("Prepared file schema differs from decoder")
-                rows = candidate
-                self.stats.disk_hits += 1
-            except (OSError, ValueError, KeyError):
-                rows = None
-        if rows is None:
-            prepared = self._prepare_file(source)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            descriptor, temporary = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-            try:
-                with os.fdopen(descriptor, "wb") as stream:
-                    np.save(stream, prepared, allow_pickle=False)
-                os.replace(temporary, path)
-            finally:
-                if os.path.exists(temporary):
-                    os.unlink(temporary)
-            rows = np.load(path, mmap_mode="r", allow_pickle=False)
-        self._files[source.path] = rows
-        self.stats.cached_bytes += rows.nbytes
-        self._record_retained()
-        while self.stats.cached_bytes > self._max_cache_bytes and self._files:
-            _, evicted = self._files.popitem(last=False)
-            self.stats.cached_bytes -= evicted.nbytes
-        return rows
+        self._index.prepare_grid(latitudes, longitudes, radius=radius)
 
     def prepare_window(
         self,
@@ -703,160 +107,35 @@ class IndexedAlongTrackBackend:
         time_window: timedelta,
         missions: Sequence[Mission] | None = None,
     ) -> None:
-        """Validate selected sources and prepare immutable rows for spatial queries.
+        """Warm an immutable temporal window without querying it.
 
-        An already prepared key is reused without source checks. Call
-        :meth:`refresh` to incorporate archive edits, including coverage changes
-        in previously unselected files.
+        Exact-key reuse performs no source checks; use :meth:`refresh` to
+        incorporate archive edits.
 
         :param date: Center datetime.
         :param time_window: Nonnegative temporal half-width.
         :param missions: Literal mission selection, or ``None`` for all.
         :raises RuntimeError: If a source changed or a stream is active.
         """
-        self._require_idle()
-        self._prepare_window(date, time_window, missions)
-
-    def _require_idle(self) -> None:
-        """Reject external state changes while a stream owns preparation.
-
-        :raises RuntimeError: If a stream is active on this instance.
-        """
-        if self._stream_lock.locked():
-            raise RuntimeError(
-                "An indexed stream is active; close it before other operations"
-            )
-
-    def _prepare_window(
-        self, date: datetime, time_window: timedelta, missions: Sequence[Mission] | None
-    ) -> None:
-        """Prepare a window under the caller's exclusive ownership.
-
-        :param date: Center datetime.
-        :param time_window: Nonnegative temporal half-width.
-        :param missions: Literal mission selection, or ``None`` for all.
-        """
-        center = _microseconds(date)
-        if time_window < timedelta(0):
-            raise ValueError("time_window must be nonnegative")
-        half = (
-            time_window.days * 86_400 + time_window.seconds
-        ) * 1_000_000 + time_window.microseconds
-        selection = (
-            tuple(sorted(set(missions))) if missions is not None else self._missions
-        )
-        key = (center, half, selection)
-        if self._active_key == key:
-            return
-        started = perf_counter()
-        # Empty and disk-cached windows must also load lazy basin data before queries.
-        _ = self._basins.data
-        lower, upper = center - half, center + half
-        selected = tuple(
-            source
-            for source in self._sources
-            if source.mission in selection
-            and source.start_us <= upper
-            and source.end_us >= lower
-        )
-        self._active = self._vectors = self._offsets = None
-        self._active_key = None
-        self.stats.active_bytes = 0
-        chunks: list[np.ndarray] = []
-        for file_id, source in enumerate(selected):
-            data = self._load_file(source)
-            mask = (data["time_us"] >= lower) & (data["time_us"] <= upper)
-            window = np.empty(int(mask.sum()), dtype=_WINDOW_DTYPE)
-            for name in _FILE_DTYPE.names or ():
-                window[name] = data[name][mask]
-            window["file_id"] = file_id
-            chunks.append(window)
-        active = np.concatenate(chunks) if chunks else np.empty(0, dtype=_WINDOW_DTYPE)
-        # PostgreSQL's scientific unique key must not be silently deduplicated.
-        if len(active):
-            keys = np.rec.fromarrays(
-                (active["time_us"], active["latitude"], active["longitude"])
-            )
-            if len(np.unique(keys)) != len(active):
-                raise ValueError(
-                    "Duplicate AlongTrack (date_time, latitude, longitude) source key"
-                )
-        cells = cell_ids(active["longitude"], active["latitude"], self._cell_size)
-        order = np.argsort(cells, kind="stable")
-        self._active = active[order]
-        counts = np.bincount(cells, minlength=self._nx * self._ny)
-        self._offsets = np.r_[0, np.cumsum(counts)]
-        self._vectors = unit_vectors(
-            self._active["longitude"], self._active["latitude"]
-        )
-        self._active.setflags(write=False)
-        self._offsets.setflags(write=False)
-        self._vectors.setflags(write=False)
-        self._active_sources = selected
-        self._active_key = key
-        self.stats.window_builds += 1
-        self.stats.active_bytes = (
-            self._active.nbytes + self._vectors.nbytes + self._offsets.nbytes
-        )
-        self._record_retained()
-        self.stats.preparation_seconds += perf_counter() - started
-
-    def _snapshot(self) -> _PreparedWindow:
-        """Capture the prepared arrays without copying them.
-
-        :returns: A stable window, including source-row provenance.
-        :raises RuntimeError: If no window has been prepared.
-        """
-        active, offsets, vectors = self._active, self._offsets, self._vectors
-        if active is None or offsets is None or vectors is None:
-            raise RuntimeError("AlongTrack window has not been prepared")
-        return _PreparedWindow(active, offsets, vectors, self._active_sources)
+        self._index.prepare_window(date, time_window, missions)
 
     def _select(
-        self, window: _PreparedWindow, latitude: float, longitude: float, radius: float
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Prune by cell and basin, then apply exact WGS84 radius selection.
+        self, window: PreparedWindow, latitude: float, longitude: float, radius: float
+    ) -> tuple[NDArray[np.intp], NDArray[np.float64]]:
+        """Apply the exact WGS84 predicate to conservative index candidates.
 
-        :param window: Stable prepared arrays for this query.
+        :param window: Stable prepared observations for this query.
         :param latitude: Query-center latitude.
         :param longitude: Query-center longitude.
         :param radius: Inclusive WGS84 radius in meters.
-        :returns: Active row indices and their corresponding distances.
+        :returns: Row indices and their corresponding distances.
         """
-        active, offsets, vectors = window.rows, window.offsets, window.vectors
         if not np.isfinite(radius) or radius < 0:
             raise ValueError("radius must be finite and nonnegative")
-        geometry = self._grid_geometry.get((longitude, latitude, radius))
-        if geometry is None:
-            basin = int(self._basins.lookup(latitude, longitude))
-            cells = cap_cells(longitude, latitude, radius, self._cell_size)
-            center = None
-        else:
-            with self._stats_lock:
-                self.stats.geometry_hits += 1
-            basin, cells, center = geometry
-        connected = self._connections[basin]
-        segments = [
-            np.arange(offsets[cell], offsets[cell + 1])
-            for cell in cells
-            if offsets[cell] < offsets[cell + 1]
-        ]
-        if not segments:
-            return np.empty(0, dtype=np.intp), np.empty(0, dtype=np.float64)
-        candidates = np.concatenate(segments)
-        candidates = candidates[np.isin(active["basin_id"][candidates], connected)]
+        active = window.rows
+        candidates = window.candidates(latitude, longitude, radius)
         if not len(candidates):
             return candidates, np.empty(0, dtype=np.float64)
-        # The spherical filter only over-selects; the final WGS84 predicate below
-        # does not use a radius epsilon. The cell cover includes roundoff padding.
-        if radius < MAX_WGS84_DISTANCE_M:
-            if center is None:
-                center = unit_vectors(longitude, latitude)
-            difference = vectors[candidates] - center
-            chord_squared = np.einsum("ij,ij->i", difference, difference)
-            angle = min((radius + 1e-5) / 6_335_000.0, np.pi)
-            threshold = 2 * np.sin(angle / 2)
-            candidates = candidates[chord_squared <= threshold * threshold + 1e-14]
         distances = wgs84_distance_m(
             active["longitude"][candidates],
             active["latitude"][candidates],
@@ -876,14 +155,14 @@ class IndexedAlongTrackBackend:
 
     def _nearest(
         self,
-        window: _PreparedWindow,
+        window: PreparedWindow,
         latitude: float,
         longitude: float,
         max_radius: float | None,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[NDArray[np.intp], NDArray[np.float64]]:
         """Expand complete inner caps until three eligible rows are enclosed.
 
-        :param window: Stable prepared arrays for this query.
+        :param window: Stable prepared observations for this query.
         :param latitude: Query-center latitude.
         :param longitude: Query-center longitude.
         :param max_radius: Inclusive cap, or ``None`` for global nearest.
@@ -925,19 +204,19 @@ class IndexedAlongTrackBackend:
 
     def _materialize(
         self,
-        window: _PreparedWindow,
+        window: PreparedWindow,
         fields: list[along_track_fields],
-        rows: np.ndarray,
-        distances: np.ndarray,
+        rows: NDArray[np.intp],
+        distances: NDArray[np.float64],
         date: datetime,
         *,
         nearest: bool,
     ) -> Dataset[along_track_fields] | None:
         """Project stored values into a schema-backed OceanDB dataset.
 
-        :param window: Stable prepared arrays and their source metadata.
+        :param window: Stable prepared observations and provenance.
         :param fields: Requested field names in result order.
-        :param rows: Selected active-window row indices.
+        :param rows: Selected window row indices.
         :param distances: Exact WGS84 distances aligned with ``rows``.
         :param date: Query-center time for ``delta_t``.
         :param nearest: Include mandatory nearest-neighbor ``distance``.
@@ -953,6 +232,7 @@ class IndexedAlongTrackBackend:
         for name in requested:
             if name not in along_track_schema:
                 raise ValueError(f"Unknown AlongTrack field: {name}")
+            values: NDArray[np.generic]
             if name == "distance":
                 values = distances
             elif name == "delta_t":
@@ -965,24 +245,8 @@ class IndexedAlongTrackBackend:
                     ],
                     dtype=object,
                 )
-            elif name == "file_name":
-                values = np.asarray(
-                    [
-                        window.sources[int(index)].path.name
-                        for index in active["file_id"][rows]
-                    ],
-                    dtype=str,
-                )
-            elif name == "mission":
-                values = np.asarray(
-                    [
-                        window.sources[int(index)].mission
-                        for index in active["file_id"][rows]
-                    ],
-                    dtype=str,
-                )
             else:
-                values = active[name][rows]
+                values = window.column(name, rows)
             data[name] = np.asarray(values)
         dtypes: dict[along_track_fields, type] = {}
         for name in requested:
@@ -995,7 +259,7 @@ class IndexedAlongTrackBackend:
 
     def _query(
         self,
-        window: _PreparedWindow,
+        window: PreparedWindow,
         fields: list[along_track_fields],
         latitude: float,
         longitude: float,
@@ -1006,7 +270,7 @@ class IndexedAlongTrackBackend:
     ) -> Dataset[along_track_fields] | None:
         """Select and project one center against its captured window.
 
-        :param window: Stable prepared arrays and provenance.
+        :param window: Stable prepared observations and provenance.
         :param fields: Requested OceanDB columns.
         :param latitude: Query-center latitude.
         :param longitude: Query-center longitude.
@@ -1048,7 +312,7 @@ class IndexedAlongTrackBackend:
         :param nearest: Select three nearest rows instead of all inside radius.
         :returns: One result per center in input order.
         """
-        self._require_idle()
+        self._index.require_idle()
         if len(latitudes) != len(longitudes) or len(latitudes) != len(dates):
             raise ValueError("latitudes, longitudes, and dates must have equal lengths")
         unknown = set(fields).difference(along_track_schema)
@@ -1057,9 +321,8 @@ class IndexedAlongTrackBackend:
         if radius is not None and (not np.isfinite(radius) or radius < 0):
             raise ValueError("radius must be finite and nonnegative")
         for latitude, longitude, date in zip(latitudes, longitudes, dates, strict=True):
-            self.prepare_window(date, time_window, missions)
             yield self._query(
-                self._snapshot(),
+                self._index.prepare_window(date, time_window, missions),
                 fields,
                 latitude,
                 longitude,
@@ -1109,10 +372,7 @@ class IndexedAlongTrackBackend:
             raise ValueError("time_window must be nonnegative")
         if not latitudes:
             return
-        # shortcut: one stream per instance; coordinate cache mutation before allowing overlap.
-        if not self._stream_lock.acquire(blocking=False):
-            raise RuntimeError("An indexed stream is already active on this instance")
-        try:
+        with self._index.preparation() as prepare_window:
             results: Queue[
                 tuple[int, Future[Dataset[along_track_fields] | None]]
                 | BaseException
@@ -1134,20 +394,18 @@ class IndexedAlongTrackBackend:
 
                 def prepare() -> None:
                     try:
-                        # BasinMask is lazy and also reads NetCDF: load it before workers.
-                        _ = self._basins.data
                         for index, (latitude, longitude, date) in enumerate(
                             zip(latitudes, longitudes, dates, strict=True)
                         ):
                             capacity.acquire()
                             if stopped.is_set():
                                 break
-                            self._prepare_window(date, time_window, missions)
+                            window = prepare_window(date, time_window, missions)
                             if stopped.is_set():
                                 break
                             future = executor.submit(
                                 self._query,
-                                self._snapshot(),
+                                window,
                                 fields,
                                 latitude,
                                 longitude,
@@ -1155,6 +413,7 @@ class IndexedAlongTrackBackend:
                                 radius,
                                 nearest=nearest,
                             )
+                            del window
                             future.add_done_callback(partial(publish, index))
                     except BaseException as error:
                         results.put(error)
@@ -1179,8 +438,6 @@ class IndexedAlongTrackBackend:
                     capacity.release()
                     executor.shutdown(wait=True, cancel_futures=True)
                     producer.join()
-        finally:
-            self._stream_lock.release()
 
     def geographic_point_in_r_dt_stream(
         self,
@@ -1212,7 +469,7 @@ class IndexedAlongTrackBackend:
         :raises RuntimeError: If another stream is active or sources have changed.
 
         Preparation is serial; spatial queries run concurrently on read-only
-        snapshots. At most ``n_jobs * chunk_size`` centers are outstanding,
+        windows. At most ``n_jobs * chunk_size`` centers are outstanding,
         including buffered results. Different windows can coexist, so this is not
         a byte limit or part of ``max_cache_bytes``. Close a partially consumed
         generator: pending work is cancelled and running queries/preparation are

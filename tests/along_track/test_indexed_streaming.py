@@ -1,8 +1,7 @@
 """Native indexed streams: science, concurrency, backpressure, and ownership."""
 
 import os
-
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from concurrent.futures import Future
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
@@ -15,10 +14,8 @@ import numpy as np
 import pytest
 
 from OceanDB.data_access.along_track import Mission
-from OceanDB.data_access.indexed_along_track import (
-    IndexedAlongTrackBackend,
-    _PreparedWindow,
-)
+from OceanDB.data_access.along_track_index import PreparedWindow
+from OceanDB.data_access.indexed_along_track import IndexedAlongTrackBackend
 from OceanDB.ocean_data.dataset import Dataset
 from OceanDB.schemas.along_track_schema import along_track_fields, along_track_schema
 from tests.along_track.test_indexed_backend import (
@@ -28,9 +25,11 @@ from tests.along_track.test_indexed_backend import (
     LONGITUDE,
     NEAREST_FIELDS,
     _assert_source_row,
-    forbid_database_connections as forbid_database_connections,
-    source_layout as source_layout,
 )
+from tests.along_track.test_indexed_backend import (
+    forbid_database_connections as forbid_database_connections,
+)
+from tests.along_track.test_indexed_backend import source_layout as source_layout
 
 pytestmark = pytest.mark.unit
 
@@ -208,7 +207,7 @@ def test_default_four_workers_overlap_and_publish_before_first_center_finishes(
     query = backend._query
 
     def synchronized_query(
-        window: _PreparedWindow,
+        window: PreparedWindow,
         fields: list[along_track_fields],
         latitude: float,
         longitude: float,
@@ -272,17 +271,18 @@ def test_stream_backpressure_and_early_close_bound_preparation(
     """
     prepared: Queue[datetime] = Queue()
     full = Event()
-    prepare_window = backend._prepare_window
+    prepare_window = backend._index._prepare_window
 
     def observe_preparation(
-        date: datetime, time_window: timedelta, missions: list[Mission] | None
-    ) -> None:
+        date: datetime, time_window: timedelta, missions: Sequence[Mission] | None
+    ) -> PreparedWindow:
         prepared.put(date)
-        prepare_window(date, time_window, missions)
+        window = prepare_window(date, time_window, missions)
         if prepared.qsize() == 4:
             full.set()
+        return window
 
-    monkeypatch.setattr(backend, "_prepare_window", observe_preparation)
+    monkeypatch.setattr(backend._index, "_prepare_window", observe_preparation)
     with closing(
         _stream(
             backend,
@@ -320,20 +320,21 @@ def test_close_cancels_queued_queries_and_waits_for_running_query(
     executed: list[datetime] = []
     preparations = 0
     query = backend._query
-    prepare_window = backend._prepare_window
+    prepare_window = backend._index._prepare_window
     cancel = Future.cancel
 
     def observe_preparation(
-        date: datetime, time_window: timedelta, missions: list[Mission] | None
-    ) -> None:
+        date: datetime, time_window: timedelta, missions: Sequence[Mission] | None
+    ) -> PreparedWindow:
         nonlocal preparations
-        prepare_window(date, time_window, missions)
+        window = prepare_window(date, time_window, missions)
         preparations += 1
         if preparations == 4:
             queued.set()
+        return window
 
     def blocking_query(
-        window: _PreparedWindow,
+        window: PreparedWindow,
         fields: list[along_track_fields],
         latitude: float,
         longitude: float,
@@ -354,7 +355,7 @@ def test_close_cancels_queued_queries_and_waits_for_running_query(
             cancelled.set()
         return result
 
-    monkeypatch.setattr(backend, "_prepare_window", observe_preparation)
+    monkeypatch.setattr(backend._index, "_prepare_window", observe_preparation)
     monkeypatch.setattr(backend, "_query", blocking_query)
     monkeypatch.setattr(Future, "cancel", observe_cancel)
     stream = _stream(
@@ -432,7 +433,10 @@ def test_stream_propagates_failures_and_joins_workers(
         raise ValueError("injected stream failure")
 
     with monkeypatch.context() as patch:
-        patch.setattr(backend, "_prepare_window" if preparation else "_query", fail)
+        if preparation:
+            patch.setattr(backend._index, "_prepare_window", fail)
+        else:
+            patch.setattr(backend, "_query", fail)
         with pytest.raises(ValueError, match="injected stream failure"):
             list(_stream(backend, nearest, chunk_size=1))
     _assert_workers_stopped()
@@ -457,7 +461,7 @@ def test_empty_stream_validates_without_starting_work(
     monkeypatch.setattr(
         "OceanDB.data_access.indexed_along_track.ThreadPoolExecutor", fail
     )
-    monkeypatch.setattr(backend, "_prepare_window", fail)
+    monkeypatch.setattr(backend._index, "_prepare_window", fail)
     assert list(_stream(backend, nearest, latitudes=[], longitudes=[], dates=[])) == []
     with pytest.raises(ValueError, match="equal lengths"):
         next(_stream(backend, nearest, latitudes=[], longitudes=[], dates=[DATES[0]]))
@@ -551,10 +555,33 @@ def test_stream_construction_and_unstarted_close_do_no_work(
         "OceanDB.data_access.indexed_along_track.ThreadPoolExecutor", fail
     )
     stream = _stream(backend, nearest)
-    assert not backend._stream_lock.locked()
+    assert not backend._index._stream_lock.locked()
     stream.close()
     assert backend.stats.window_builds == backend.stats.source_reads == 0
     _assert_workers_stopped()
+
+
+def test_owner_preparation_releases_ownership_after_exception(
+    backend: IndexedAlongTrackBackend,
+) -> None:
+    """Release exclusive preparation even when its caller raises.
+
+    :param backend: Synthetic direct backend.
+    """
+    index = backend._index
+    with pytest.raises(ValueError, match="injected owner failure"):
+        with index.preparation() as prepare_window:
+            assert index._stream_lock.locked()
+            window = prepare_window(DATES[0], timedelta(0), None)
+            assert index._window is window
+            with pytest.raises(RuntimeError, match="stream.*active"):
+                index.require_idle()
+            with pytest.raises(RuntimeError, match="stream.*active"):
+                index.prepare_window(DATES[0], timedelta(0))
+            raise ValueError("injected owner failure")
+    assert not index._stream_lock.locked()
+    index.require_idle()
+    assert index.prepare_window(DATES[0], timedelta(0)) is window
 
 
 @pytest.mark.parametrize("nearest", [False, True], ids=["radius", "nearest"])

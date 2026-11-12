@@ -11,7 +11,7 @@ import netCDF4 as nc
 import numpy as np
 import pytest
 
-from OceanDB.data_access import indexed_along_track as indexed
+from OceanDB.data_access import along_track_index as indexed
 from tests.data.along_track_reference.generate import SOURCE_NAME, TIME_RAW, TIME_UTC
 
 pytestmark = pytest.mark.unit
@@ -56,7 +56,7 @@ def test_warm_constructor_is_scan_free_and_keeps_saved_visibility(
     :param monkeypatch: Scoped method patcher.
     """
     product, cache, source = source_layout
-    first = indexed.IndexedAlongTrackBackend(product, cache)
+    first = indexed.AlongTrackIndex(product, cache)
     added = _append_source(source)
     stat = Path.stat
     dataset = nc.Dataset
@@ -80,7 +80,7 @@ def test_warm_constructor_is_scan_free_and_keeps_saved_visibility(
     monkeypatch.setattr(Path, "glob", forbid_discovery)
     monkeypatch.setattr(Path, "stat", guarded_stat)
     monkeypatch.setattr(nc, "Dataset", guarded_dataset)
-    restarted = indexed.IndexedAlongTrackBackend(product, cache)
+    restarted = indexed.AlongTrackIndex(product, cache)
     assert restarted._sources == first._sources
     assert restarted.stats.catalog_reads == restarted.stats.source_reads == 0
     assert [entry.path for entry in restarted._sources] == [source]
@@ -94,7 +94,7 @@ def test_explicit_refresh_discovers_and_publishes_actual_coverage(
     :param source_layout: Product root, cache directory, and source.
     """
     product, cache, source = source_layout
-    backend = indexed.IndexedAlongTrackBackend(product, cache)
+    backend = indexed.AlongTrackIndex(product, cache)
     backend.prepare_window(_DATE, timedelta(0))
     added = _append_source(source)
     with nc.Dataset(added, "r+") as dataset:
@@ -111,7 +111,7 @@ def test_explicit_refresh_discovers_and_publishes_actual_coverage(
     )
     assert second.start_us == first.start_us + 100 * 86_400_000_000
     assert second.end_us == first.end_us + 100 * 86_400_000_000
-    restarted = indexed.IndexedAlongTrackBackend(product, cache)
+    restarted = indexed.AlongTrackIndex(product, cache)
     assert restarted._sources == backend._sources
     assert restarted.stats.catalog_reads == 0
 
@@ -166,7 +166,7 @@ def test_invalid_catalog_is_rebuilt_without_trusting_records(
     :param invalid: Invalid JSON-compatible replacement.
     """
     product, cache, _ = source_layout
-    first = indexed.IndexedAlongTrackBackend(product, cache)
+    first = indexed.AlongTrackIndex(product, cache)
     catalog = first._catalog_path
     original = catalog.read_bytes()
     manifest: object = json.loads(original)
@@ -184,7 +184,7 @@ def test_invalid_catalog_is_rebuilt_without_trusting_records(
     else:
         entries[0][field] = invalid
     catalog.write_text(json.dumps(manifest), encoding="utf-8")
-    rebuilt = indexed.IndexedAlongTrackBackend(product, cache)
+    rebuilt = indexed.AlongTrackIndex(product, cache)
     assert rebuilt._sources == first._sources
     assert rebuilt.stats.catalog_reads == 1
     assert catalog.read_bytes() == original
@@ -200,9 +200,9 @@ def test_unreadable_catalog_is_rebuilt(
     :param damaged: Incomplete or non-manifest file contents.
     """
     product, cache, _ = source_layout
-    first = indexed.IndexedAlongTrackBackend(product, cache)
+    first = indexed.AlongTrackIndex(product, cache)
     first._catalog_path.write_bytes(damaged)
-    rebuilt = indexed.IndexedAlongTrackBackend(product, cache)
+    rebuilt = indexed.AlongTrackIndex(product, cache)
     assert rebuilt._sources == first._sources
     assert rebuilt.stats.catalog_reads == 1
 
@@ -224,14 +224,12 @@ def test_cold_discovery_resumes_completed_work_but_not_partial_inventory(
     """
     product, cache, source = source_layout
     second = _append_source(source)
-    coverage = indexed.IndexedAlongTrackBackend._coverage
+    coverage = indexed.AlongTrackIndex._coverage
     reads: list[Path] = []
     publishes: list[Path] = []
     atomic_json = indexed._atomic_json
 
-    def interrupted(
-        backend: indexed.IndexedAlongTrackBackend, path: Path
-    ) -> tuple[int, int]:
+    def interrupted(backend: indexed.AlongTrackIndex, path: Path) -> tuple[int, int]:
         reads.append(path)
         if path == second:
             raise interruption("interrupted coverage")
@@ -241,10 +239,10 @@ def test_cold_discovery_resumes_completed_work_but_not_partial_inventory(
         publishes.append(path)
         atomic_json(path, payload)
 
-    monkeypatch.setattr(indexed.IndexedAlongTrackBackend, "_coverage", interrupted)
+    monkeypatch.setattr(indexed.AlongTrackIndex, "_coverage", interrupted)
     monkeypatch.setattr(indexed, "_atomic_json", publish)
     with pytest.raises(interruption, match="interrupted coverage"):
-        indexed.IndexedAlongTrackBackend(product, cache)
+        indexed.AlongTrackIndex(product, cache)
     assert reads == [source, second]
     assert publishes == []
     assert list(cache.glob("catalog-*.json")) == []
@@ -266,14 +264,12 @@ def test_cold_discovery_resumes_completed_work_but_not_partial_inventory(
     third = _append_source(source, 4)
     reads.clear()
 
-    def resumed(
-        backend: indexed.IndexedAlongTrackBackend, path: Path
-    ) -> tuple[int, int]:
+    def resumed(backend: indexed.AlongTrackIndex, path: Path) -> tuple[int, int]:
         reads.append(path)
         return coverage(backend, path)
 
-    monkeypatch.setattr(indexed.IndexedAlongTrackBackend, "_coverage", resumed)
-    rebuilt = indexed.IndexedAlongTrackBackend(product, cache)
+    monkeypatch.setattr(indexed.AlongTrackIndex, "_coverage", resumed)
+    rebuilt = indexed.AlongTrackIndex(product, cache)
     assert reads == [second, third]
     assert [entry.path for entry in rebuilt._sources] == [source, second, third]
     assert rebuilt.stats.catalog_reads == 2
@@ -293,7 +289,7 @@ def test_invalid_journal_identity_does_not_reuse_completed_entries(
     :param corruption: Invalid or incomplete journal header component.
     """
     product, cache, _ = source_layout
-    first = indexed.IndexedAlongTrackBackend(product, cache)
+    first = indexed.AlongTrackIndex(product, cache)
     record = json.dumps(first._catalog_entry(first._sources[0])).encode() + b"\n"
     journal = first._catalog_path.with_suffix(".progress.jsonl")
     header: dict[str, str | int] = {
@@ -313,7 +309,7 @@ def test_invalid_journal_identity_does_not_reuse_completed_entries(
         invalid_header = b'{"version":'
     journal.write_bytes(invalid_header + record)
     first._catalog_path.unlink()
-    rebuilt = indexed.IndexedAlongTrackBackend(product, cache)
+    rebuilt = indexed.AlongTrackIndex(product, cache)
     assert rebuilt._sources == first._sources
     assert rebuilt.stats.catalog_reads == 1
 
@@ -326,7 +322,7 @@ def test_journal_entry_requires_current_source_fingerprint(
     :param source_layout: Product root, cache directory, and source.
     """
     product, cache, source = source_layout
-    first = indexed.IndexedAlongTrackBackend(product, cache)
+    first = indexed.AlongTrackIndex(product, cache)
     manifest = json.loads(first._catalog_path.read_bytes())
     journal = first._catalog_path.with_suffix(".progress.jsonl")
     journal.write_text(
@@ -339,7 +335,7 @@ def test_journal_entry_requires_current_source_fingerprint(
     first._catalog_path.unlink()
     stat = source.stat()
     os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
-    rebuilt = indexed.IndexedAlongTrackBackend(product, cache)
+    rebuilt = indexed.AlongTrackIndex(product, cache)
     assert rebuilt.stats.catalog_reads == 1
     assert rebuilt._sources[0].mtime_ns != first._sources[0].mtime_ns
 
@@ -357,11 +353,10 @@ def test_failed_refresh_preserves_complete_inventory_and_prepared_cache(
     :param failure: Fail during coverage or atomic catalog publication.
     """
     product, cache, source = source_layout
-    backend = indexed.IndexedAlongTrackBackend(product, cache)
-    backend.prepare_window(_DATE, timedelta(0))
+    backend = indexed.AlongTrackIndex(product, cache)
+    window = backend.prepare_window(_DATE, timedelta(0))
     inventory = backend._sources
-    active, vectors, offsets = backend._active, backend._vectors, backend._offsets
-    active_key, active_sources = backend._active_key, backend._active_sources
+    active_key = backend._active_key
     files = dict(backend._files)
     before = replace(backend.stats)
     original = backend._catalog_path.read_bytes()
@@ -379,22 +374,15 @@ def test_failed_refresh_preserves_complete_inventory_and_prepared_cache(
             backend.refresh()
     assert backend._catalog_path.read_bytes() == original
     assert backend._sources is inventory
-    assert (
-        backend._active is active
-        and backend._vectors is vectors
-        and backend._offsets is offsets
-    )
-    assert (
-        backend._active_key == active_key and backend._active_sources is active_sources
-    )
+    assert backend._window is window
+    assert backend._active_key == active_key
     assert backend._files.keys() == files.keys()
     assert all(backend._files[path] is rows for path, rows in files.items())
     assert backend.stats == replace(
         before, catalog_reads=before.catalog_reads + (failure == "publish")
     )
-    backend.prepare_window(_DATE, timedelta(0))
-    assert backend._active is active
-    restarted = indexed.IndexedAlongTrackBackend(product, cache)
+    assert backend.prepare_window(_DATE, timedelta(0)) is window
+    restarted = indexed.AlongTrackIndex(product, cache)
     assert restarted._sources == inventory
     assert restarted.stats.catalog_reads == 0
     backend.refresh()
@@ -413,23 +401,21 @@ def test_coverage_read_rejects_source_changed_during_decoding(
     :param monkeypatch: Scoped method patcher.
     """
     product, cache, source = source_layout
-    coverage = indexed.IndexedAlongTrackBackend._coverage
+    coverage = indexed.AlongTrackIndex._coverage
 
-    def changing(
-        backend: indexed.IndexedAlongTrackBackend, path: Path
-    ) -> tuple[int, int]:
+    def changing(backend: indexed.AlongTrackIndex, path: Path) -> tuple[int, int]:
         bounds = coverage(backend, path)
         stat = path.stat()
         os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
         return bounds
 
-    monkeypatch.setattr(indexed.IndexedAlongTrackBackend, "_coverage", changing)
+    monkeypatch.setattr(indexed.AlongTrackIndex, "_coverage", changing)
     with pytest.raises(RuntimeError, match="source changed"):
-        indexed.IndexedAlongTrackBackend(product, cache)
+        indexed.AlongTrackIndex(product, cache)
     assert list(cache.glob("catalog-*.json")) == []
     assert len(next(cache.glob("*.progress.jsonl")).read_bytes().splitlines()) == 1
-    monkeypatch.setattr(indexed.IndexedAlongTrackBackend, "_coverage", coverage)
-    assert indexed.IndexedAlongTrackBackend(product, cache)._sources[0].path == source
+    monkeypatch.setattr(indexed.AlongTrackIndex, "_coverage", coverage)
+    assert indexed.AlongTrackIndex(product, cache)._sources[0].path == source
 
 
 @pytest.mark.parametrize("calendar", ["standard", "gregorian", "proleptic_gregorian"])
@@ -481,7 +467,7 @@ def test_coverage_decodes_only_extrema_with_exact_full_decoder_bounds(
     :param expected: Independent decoded integer microseconds for all rows.
     """
     product, cache, _ = source_layout
-    backend = indexed.IndexedAlongTrackBackend(product, cache)
+    backend = indexed.AlongTrackIndex(product, cache)
     path = product.parent / "times.nc"
     with nc.Dataset(path, "w") as dataset:
         dataset.createDimension("obs", len(raw))
@@ -552,7 +538,7 @@ def test_time_bounds_validate_the_entire_raw_array(
         with pytest.raises(
             ValueError, match="complete finite one-dimensional numeric array"
         ):
-            indexed.IndexedAlongTrackBackend._times(variable, bounds_only=bounds_only)
+            indexed.AlongTrackIndex._times(variable, bounds_only=bounds_only)
 
 
 @pytest.mark.parametrize("bounds_only", [False, True])
@@ -575,7 +561,7 @@ def test_time_bounds_preserve_cf_decoder_validation(
         variable.calendar = "360_day" if invalid == "calendar" else "standard"
         variable[:] = [0, 1e30 if invalid == "overflow" else 0.5, 1]
         with pytest.raises((ValueError, OverflowError)):
-            indexed.IndexedAlongTrackBackend._times(variable, bounds_only=bounds_only)
+            indexed.AlongTrackIndex._times(variable, bounds_only=bounds_only)
 
 
 def test_empty_time_bounds_still_reject_empty_source_coverage(
@@ -586,7 +572,7 @@ def test_empty_time_bounds_still_reject_empty_source_coverage(
     :param source_layout: Product root, cache directory, and source.
     """
     product, cache, _ = source_layout
-    backend = indexed.IndexedAlongTrackBackend(product, cache)
+    backend = indexed.AlongTrackIndex(product, cache)
     path = product.parent / "empty.nc"
     with nc.Dataset(path, "w") as dataset:
         dataset.createDimension("obs", 0)
