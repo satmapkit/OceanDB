@@ -13,6 +13,7 @@ class Config(BaseSettings):
     postgres_database: str = Field(default="ocean")
 
     along_track_data_directory: str = ""
+    along_track_cache_directory: str = ""
     eddy_data_directory: str = ""
     copernicus_password: str = ""
     copernicus_username: str = ""

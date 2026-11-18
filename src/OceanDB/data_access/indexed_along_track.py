@@ -6,7 +6,6 @@ from collections.abc import Generator, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timedelta
 from functools import partial
-from pathlib import Path
 from queue import Queue
 from threading import Event, Semaphore, Thread
 
@@ -14,6 +13,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from OceanDB.along_track_missions import Mission
+from OceanDB.config import Config
 from OceanDB.data_access.along_track_index import (
     _EPOCH,
     AlongTrackIndex,
@@ -47,26 +47,33 @@ class IndexedAlongTrackBackend:
     checks, even after source edits. Changed or missing selected files raise when
     a new window is prepared against an outdated inventory.
 
-    :param data_root: ``ALONG_TRACK_DATA_DIRECTORY`` or its product directory.
-    :param cache_dir: Directory for reusable, versioned local cache artifacts.
+    :param config: Runtime settings; defaults to ``Config()``, which loads ``.env``.
+        Uses ``ALONG_TRACK_DATA_DIRECTORY`` or its product directory for sources
+        and ``ALONG_TRACK_CACHE_DIRECTORY`` for reusable local cache artifacts.
     :param cell_size_degrees: Spatial index cell width (must divide 180 and 360).
     :param max_cache_bytes: Approximate upper bound for retained per-file RAM,
         excluding active and in-flight windows.
     :param max_geometry_cache_bytes: Upper bound for retained query geometry.
+    :raises ValueError: If ``ALONG_TRACK_DATA_DIRECTORY`` or
+        ``ALONG_TRACK_CACHE_DIRECTORY`` is blank or whitespace-only.
     """
 
     def __init__(
         self,
-        data_root: str | Path,
-        cache_dir: str | Path,
+        config: Config | None = None,
         *,
         cell_size_degrees: float = 2.0,
         max_cache_bytes: int = 2_000_000_000,
         max_geometry_cache_bytes: int = 1_000_000_000,
     ) -> None:
+        self.config = Config() if config is None else config
+        if not self.config.along_track_data_directory.strip():
+            raise ValueError("ALONG_TRACK_DATA_DIRECTORY must not be blank")
+        if not self.config.along_track_cache_directory.strip():
+            raise ValueError("ALONG_TRACK_CACHE_DIRECTORY must not be blank")
         self._index = AlongTrackIndex(
-            data_root,
-            cache_dir,
+            self.config.along_track_data_directory,
+            self.config.along_track_cache_directory,
             cell_size_degrees=cell_size_degrees,
             max_cache_bytes=max_cache_bytes,
             max_geometry_cache_bytes=max_geometry_cache_bytes,
